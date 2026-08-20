@@ -129,6 +129,11 @@ public final class TerminalEmulator {
     private static final int DECSET_BIT_LEFTRIGHT_MARGIN_MODE = 1 << 11;
     /** Not really DECSET bit... - http://www.vt100.net/docs/vt510-rm/DECSACE */
     private static final int DECSET_BIT_RECTANGULAR_CHANGEATTRIBUTE = 1 << 12;
+    /**
+     * DECSET 2026 - defer rendering until a synchronized output frame is complete.
+     * @see <a href="https://contour-terminal.org/vt-extensions/synchronized-output/">Synchronized output protocol</a>
+     */
+    private static final int DECSET_BIT_SYNCHRONIZED_OUTPUT = 1 << 13;
 
 
     private String mTitle;
@@ -207,6 +212,9 @@ public final class TerminalEmulator {
      * @see TerminalEmulator#mapDecSetBitToInternalBit(int)
      */
     private int mCurrentDecSetFlags, mSavedDecSetFlags;
+
+    /** A cursor visibility callback received inside a synchronized frame and deferred until its end. */
+    private boolean mSynchronizedOutputCursorStateChanged;
 
     /**
      * If insert mode (as opposed to replace mode) is active. In insert mode new characters are inserted, pushing
@@ -319,6 +327,8 @@ public final class TerminalEmulator {
                 return DECSET_BIT_MOUSE_PROTOCOL_SGR;
             case 2004:
                 return DECSET_BIT_BRACKETED_PASTE_MODE;
+            case 2026:
+                return DECSET_BIT_SYNCHRONIZED_OUTPUT;
             default:
                 return -1;
             // throw new IllegalArgumentException("Unsupported decset: " + decsetBit);
@@ -346,6 +356,28 @@ public final class TerminalEmulator {
 
     public TerminalBuffer getScreen() {
         return mScreen;
+    }
+
+    /** Whether DEC private mode 2026 is currently deferring screen presentation. */
+    public boolean isSynchronizedOutputActive() {
+        return isDecsetInternalBitSet(DECSET_BIT_SYNCHRONIZED_OUTPUT);
+    }
+
+    /**
+     * End an unterminated synchronized output frame, for example after a watchdog timeout.
+     * Package-private so {@link TerminalSession} can guarantee that rendering never remains frozen.
+     */
+    void finishSynchronizedOutput() {
+        if (!isSynchronizedOutputActive()) return;
+        setDecsetinternalBit(DECSET_BIT_SYNCHRONIZED_OUTPUT, false);
+        dispatchDeferredCursorStateChange();
+    }
+
+    private void dispatchDeferredCursorStateChange() {
+        if (!mSynchronizedOutputCursorStateChanged) return;
+        mSynchronizedOutputCursorStateChanged = false;
+        if (mClient != null)
+            mClient.onTerminalCursorStateChange(isCursorEnabled());
     }
 
     public boolean isAlternateBufferActive() {
@@ -1217,8 +1249,11 @@ public final class TerminalEmulator {
             case 9: // X10 mouse reporting - outdated. Do not implement.
             case 12: // Control cursor blinking - ignore.
             case 25: // Hide/show cursor - no action needed, renderer will check with shouldCursorBeVisible().
-                if (mClient != null)
+                if (isSynchronizedOutputActive()) {
+                    mSynchronizedOutputCursorStateChanged = true;
+                } else if (mClient != null) {
                     mClient.onTerminalCursorStateChange(setting);
+                }
                 break;
             case 40: // Allow 80 => 132 Mode, ignore.
             case 45: // TODO: Reverse wrap-around. Implement???
@@ -1239,6 +1274,9 @@ public final class TerminalEmulator {
             case 1006: // SGR Mouse Mode
             case 1015:
             case 1034: // Interpret "meta" key, sets eighth bit.
+                break;
+            case 2026: // Synchronized output. Present the completed frame when reset.
+                if (!setting) dispatchDeferredCursorStateChange();
                 break;
             case 1048: // Set: Save cursor as in DECSC. Reset: Restore cursor as in DECRC.
                 if (setting)
@@ -2554,6 +2592,7 @@ public final class TerminalEmulator {
 
         mSavedStateMain.mSavedCursorRow = mSavedStateMain.mSavedCursorCol = mSavedStateMain.mSavedEffect = mSavedStateMain.mSavedDecFlags = 0;
         mSavedStateAlt.mSavedCursorRow = mSavedStateAlt.mSavedCursorCol = mSavedStateAlt.mSavedEffect = mSavedStateAlt.mSavedDecFlags = 0;
+        mSynchronizedOutputCursorStateChanged = false;
         mCurrentDecSetFlags = 0;
         // Initial wrap-around is not accurate but makes terminal more useful, especially on a small screen:
         setDecsetinternalBit(DECSET_BIT_AUTOWRAP, true);

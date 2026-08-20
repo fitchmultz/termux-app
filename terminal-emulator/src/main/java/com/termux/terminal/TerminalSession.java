@@ -32,6 +32,10 @@ public final class TerminalSession extends TerminalOutput {
 
     private static final int MSG_NEW_INPUT = 1;
     private static final int MSG_PROCESS_EXITED = 4;
+    private static final int MSG_SYNCHRONIZED_OUTPUT_TIMEOUT = 5;
+
+    /** Match Kitty's bounded recovery for an application that never sends CSI ? 2026 l. */
+    static final long SYNCHRONIZED_OUTPUT_TIMEOUT_MILLIS = 2000;
 
     public final String mHandle = UUID.randomUUID().toString();
 
@@ -52,6 +56,9 @@ public final class TerminalSession extends TerminalOutput {
 
     /** Callback which gets notified when a session finishes or changes title. */
     TerminalSessionClient mClient;
+
+    /** A palette update received inside a synchronized frame and deferred until presentation. */
+    private boolean mSynchronizedOutputColorsChanged;
 
     /** The pid of the shell process. 0 if not started and -1 if finished running. */
     int mShellPid;
@@ -222,11 +229,40 @@ public final class TerminalSession extends TerminalOutput {
 
     /** Notify the {@link #mClient} that the screen has changed. */
     protected void notifyScreenUpdate() {
+        if (mEmulator != null && mEmulator.isSynchronizedOutputActive()) {
+            if (!mMainThreadHandler.hasMessages(MSG_SYNCHRONIZED_OUTPUT_TIMEOUT))
+                mMainThreadHandler.sendEmptyMessageDelayed(MSG_SYNCHRONIZED_OUTPUT_TIMEOUT, SYNCHRONIZED_OUTPUT_TIMEOUT_MILLIS);
+            return;
+        }
+
+        mMainThreadHandler.removeMessages(MSG_SYNCHRONIZED_OUTPUT_TIMEOUT);
+        dispatchDeferredColorsChanged();
         mClient.onTextChanged(this);
+    }
+
+    private void dispatchDeferredColorsChanged() {
+        if (!mSynchronizedOutputColorsChanged) return;
+        mSynchronizedOutputColorsChanged = false;
+        mClient.onColorsChanged(this);
+    }
+
+    /** Force presentation after the synchronized-output watchdog expires. Package-private for tests. */
+    void handleSynchronizedOutputTimeout() {
+        mMainThreadHandler.removeMessages(MSG_SYNCHRONIZED_OUTPUT_TIMEOUT);
+        if (mEmulator == null || !mEmulator.isSynchronizedOutputActive()) return;
+        mEmulator.finishSynchronizedOutput();
+        notifyScreenUpdate();
+    }
+
+    private void finishSynchronizedOutput() {
+        mMainThreadHandler.removeMessages(MSG_SYNCHRONIZED_OUTPUT_TIMEOUT);
+        if (mEmulator != null) mEmulator.finishSynchronizedOutput();
     }
 
     /** Reset state for terminal emulator state. */
     public void reset() {
+        mMainThreadHandler.removeMessages(MSG_SYNCHRONIZED_OUTPUT_TIMEOUT);
+        mSynchronizedOutputColorsChanged = false;
         mEmulator.reset();
         notifyScreenUpdate();
     }
@@ -286,7 +322,11 @@ public final class TerminalSession extends TerminalOutput {
 
     @Override
     public void onColorsChanged() {
-        mClient.onColorsChanged(this);
+        if (mEmulator != null && mEmulator.isSynchronizedOutputActive()) {
+            mSynchronizedOutputColorsChanged = true;
+        } else {
+            mClient.onColorsChanged(this);
+        }
     }
 
     public int getPid() {
@@ -340,6 +380,11 @@ public final class TerminalSession extends TerminalOutput {
 
         @Override
         public void handleMessage(Message msg) {
+            if (msg.what == MSG_SYNCHRONIZED_OUTPUT_TIMEOUT) {
+                handleSynchronizedOutputTimeout();
+                return;
+            }
+
             int bytesRead = mProcessToTerminalIOQueue.read(mReceiveBuffer, false);
             if (bytesRead > 0) {
                 mEmulator.append(mReceiveBuffer, bytesRead);
@@ -348,6 +393,7 @@ public final class TerminalSession extends TerminalOutput {
 
             if (msg.what == MSG_PROCESS_EXITED) {
                 int exitCode = (Integer) msg.obj;
+                finishSynchronizedOutput();
                 cleanupResources(exitCode);
 
                 String exitDescription = "\r\n[Process completed";

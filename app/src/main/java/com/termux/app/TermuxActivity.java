@@ -1,6 +1,5 @@
 package com.termux.app;
 
-import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
@@ -50,6 +49,7 @@ import com.termux.shared.termux.extrakeys.ExtraKeysView;
 import com.termux.shared.termux.interact.TextInputDialogUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxUtils;
+import com.termux.shared.termux.settings.properties.TerminalSessionDrawerPosition;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.termux.shared.theme.NightMode;
@@ -62,6 +62,7 @@ import com.termux.view.TerminalViewClient;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.viewpager.widget.ViewPager;
 
@@ -174,6 +175,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private int mNavBarHeight;
 
     private float mTerminalToolbarDefaultHeight;
+    private boolean mUseStackedTerminalToolbarTextInput;
 
 
     private static final int CONTEXT_MENU_SELECT_URL_ID = 0;
@@ -190,6 +192,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_REPORT_ID = 9;
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
+    private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT_VISIBLE = "terminal_toolbar_text_input_visible";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
 
     private static final String LOG_TAG = "TermuxActivity";
@@ -498,6 +501,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void setTermuxSessionsListView() {
+        View terminalSessionsDrawer = findViewById(R.id.terminal_sessions_drawer);
+        DrawerLayout.LayoutParams drawerLayoutParams = (DrawerLayout.LayoutParams) terminalSessionsDrawer.getLayoutParams();
+        drawerLayoutParams.gravity = getTerminalSessionDrawerGravity();
+        terminalSessionsDrawer.setLayoutParams(drawerLayoutParams);
+
         ListView termuxSessionsListView = findViewById(R.id.terminal_sessions_list);
         mTermuxSessionListViewController = new TermuxSessionsListViewController(this, mTermuxService.getTermuxSessions());
         termuxSessionsListView.setAdapter(mTermuxSessionListViewController);
@@ -511,19 +519,32 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mTermuxTerminalExtraKeys = new TermuxTerminalExtraKeys(this, mTerminalView,
             mTermuxTerminalViewClient, mTermuxTerminalSessionActivityClient);
 
+        final View terminalToolbarContainer = getTerminalToolbarContainer();
         final ViewPager terminalToolbarViewPager = getTerminalToolbarViewPager();
-        if (mPreferences.shouldShowTerminalToolbar()) terminalToolbarViewPager.setVisibility(View.VISIBLE);
+        if (mPreferences.shouldShowTerminalToolbar()) terminalToolbarContainer.setVisibility(View.VISIBLE);
 
         ViewGroup.LayoutParams layoutParams = terminalToolbarViewPager.getLayoutParams();
         mTerminalToolbarDefaultHeight = layoutParams.height;
-
-        setTerminalToolbarHeight();
 
         String savedTextInput = null;
         if (savedInstanceState != null)
             savedTextInput = savedInstanceState.getString(ARG_TERMINAL_TOOLBAR_TEXT_INPUT);
 
-        terminalToolbarViewPager.setAdapter(new TerminalToolbarViewPager.PageAdapter(this, savedTextInput));
+        mUseStackedTerminalToolbarTextInput = mProperties.shouldShowTerminalToolbarTextInput();
+        boolean showStackedTextInput = mUseStackedTerminalToolbarTextInput;
+        if (mUseStackedTerminalToolbarTextInput && savedInstanceState != null &&
+            savedInstanceState.containsKey(ARG_TERMINAL_TOOLBAR_TEXT_INPUT_VISIBLE))
+            showStackedTextInput = savedInstanceState.getBoolean(ARG_TERMINAL_TOOLBAR_TEXT_INPUT_VISIBLE);
+        View stackedTextInputRow = findViewById(R.id.terminal_toolbar_stacked_text_input_row);
+        stackedTextInputRow.setVisibility(showStackedTextInput ? View.VISIBLE : View.GONE);
+        EditText stackedTextInput = findViewById(R.id.terminal_toolbar_stacked_text_input);
+        TerminalToolbarViewPager.setupTextInput(this, stackedTextInput,
+            mUseStackedTerminalToolbarTextInput ? savedTextInput : null);
+
+        setTerminalToolbarHeight();
+        terminalToolbarViewPager.setAdapter(new TerminalToolbarViewPager.PageAdapter(
+            this, mUseStackedTerminalToolbarTextInput ? null : savedTextInput,
+            mUseStackedTerminalToolbarTextInput));
         terminalToolbarViewPager.addOnPageChangeListener(new TerminalToolbarViewPager.OnPageChangeListener(this, terminalToolbarViewPager));
     }
 
@@ -531,34 +552,45 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         final ViewPager terminalToolbarViewPager = getTerminalToolbarViewPager();
         if (terminalToolbarViewPager == null) return;
 
-        ViewGroup.LayoutParams layoutParams = terminalToolbarViewPager.getLayoutParams();
-        layoutParams.height = Math.round(mTerminalToolbarDefaultHeight *
-            (mTermuxTerminalExtraKeys.getExtraKeysInfo() == null ? 0 : mTermuxTerminalExtraKeys.getExtraKeysInfo().getMatrix().length) *
-            mProperties.getTerminalToolbarHeightScaleFactor());
-        terminalToolbarViewPager.setLayoutParams(layoutParams);
+        int rowHeight = Math.round(mTerminalToolbarDefaultHeight * mProperties.getTerminalToolbarHeightScaleFactor());
+        ViewGroup.LayoutParams pagerLayoutParams = terminalToolbarViewPager.getLayoutParams();
+        pagerLayoutParams.height = rowHeight *
+            (mTermuxTerminalExtraKeys.getExtraKeysInfo() == null ? 0 : mTermuxTerminalExtraKeys.getExtraKeysInfo().getMatrix().length);
+        terminalToolbarViewPager.setLayoutParams(pagerLayoutParams);
+
+        View stackedTextInput = findViewById(R.id.terminal_toolbar_stacked_text_input);
+        if (stackedTextInput != null) {
+            ViewGroup.LayoutParams textInputLayoutParams = stackedTextInput.getLayoutParams();
+            textInputLayoutParams.height = rowHeight;
+            stackedTextInput.setLayoutParams(textInputLayoutParams);
+        }
     }
 
     public void toggleTerminalToolbar() {
-        final ViewPager terminalToolbarViewPager = getTerminalToolbarViewPager();
-        if (terminalToolbarViewPager == null) return;
+        final View terminalToolbarContainer = getTerminalToolbarContainer();
+        if (terminalToolbarContainer == null) return;
 
         final boolean showNow = mPreferences.toogleShowTerminalToolbar();
         Logger.showToast(this, (showNow ? getString(R.string.msg_enabling_terminal_toolbar) : getString(R.string.msg_disabling_terminal_toolbar)), true);
-        terminalToolbarViewPager.setVisibility(showNow ? View.VISIBLE : View.GONE);
+        terminalToolbarContainer.setVisibility(showNow ? View.VISIBLE : View.GONE);
         if (showNow && isTerminalToolbarTextInputViewSelected()) {
             // Focus the text input view if just revealed.
-            findViewById(R.id.terminal_toolbar_text_input).requestFocus();
+            EditText textInputView = getTerminalToolbarTextInputView();
+            if (textInputView != null) textInputView.requestFocus();
         }
     }
 
     private void saveTerminalToolbarTextInput(Bundle savedInstanceState) {
         if (savedInstanceState == null) return;
 
-        final EditText textInputView = findViewById(R.id.terminal_toolbar_text_input);
+        final EditText textInputView = getTerminalToolbarTextInputView();
         if (textInputView != null) {
             String textInput = textInputView.getText().toString();
             if (!textInput.isEmpty()) savedInstanceState.putString(ARG_TERMINAL_TOOLBAR_TEXT_INPUT, textInput);
         }
+        if (mUseStackedTerminalToolbarTextInput)
+            savedInstanceState.putBoolean(ARG_TERMINAL_TOOLBAR_TEXT_INPUT_VISIBLE,
+                isTerminalToolbarTextInputStackedVisible());
     }
 
 
@@ -598,10 +630,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
 
 
-    @SuppressLint("RtlHardcoded")
     @Override
     public void onBackPressed() {
-        if (getDrawer().isDrawerOpen(Gravity.LEFT)) {
+        if (getDrawer().isDrawerOpen(getTerminalSessionDrawerGravity())) {
             getDrawer().closeDrawers();
         } else {
             finishActivityIfNotFinishing();
@@ -774,7 +805,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
                 // If permission is granted, then also setup storage symlinks.
                 if(PermissionUtils.checkAndRequestLegacyOrManageExternalStoragePermission(
-                    TermuxActivity.this, requestCode, !isPermissionCallback)) {
+                    TermuxActivity.this, requestCode, true, !isPermissionCallback)) {
                     if (isPermissionCallback)
                         Logger.logInfoAndShowToast(TermuxActivity.this, LOG_TAG,
                             getString(com.termux.shared.R.string.msg_storage_permission_granted_on_request));
@@ -837,6 +868,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         return (DrawerLayout) findViewById(R.id.drawer_layout);
     }
 
+    public int getTerminalSessionDrawerGravity() {
+        return mProperties.getTerminalSessionDrawerPosition() == TerminalSessionDrawerPosition.END
+            ? GravityCompat.END : GravityCompat.START;
+    }
+
+
+    public View getTerminalToolbarContainer() {
+        return findViewById(R.id.terminal_toolbar_container);
+    }
 
     public ViewPager getTerminalToolbarViewPager() {
         return (ViewPager) findViewById(R.id.terminal_toolbar_view_pager);
@@ -846,11 +886,46 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         return mTerminalToolbarDefaultHeight;
     }
 
+    public void toggleTerminalToolbarTextInput() {
+        if (!mUseStackedTerminalToolbarTextInput) return;
+        View stackedTextInputRow = findViewById(R.id.terminal_toolbar_stacked_text_input_row);
+        if (stackedTextInputRow == null) return;
+
+        boolean showNow = stackedTextInputRow.getVisibility() != View.VISIBLE;
+        stackedTextInputRow.setVisibility(showNow ? View.VISIBLE : View.GONE);
+        if (showNow) {
+            EditText textInputView = findViewById(R.id.terminal_toolbar_stacked_text_input);
+            if (textInputView != null) textInputView.requestFocus();
+        } else if (mTerminalView != null) {
+            mTerminalView.requestFocus();
+        }
+    }
+
+    private boolean isTerminalToolbarTextInputStackedVisible() {
+        View stackedTextInputRow = findViewById(R.id.terminal_toolbar_stacked_text_input_row);
+        return mUseStackedTerminalToolbarTextInput && stackedTextInputRow != null &&
+            stackedTextInputRow.getVisibility() == View.VISIBLE;
+    }
+
+    private EditText getTerminalToolbarTextInputView() {
+        if (mUseStackedTerminalToolbarTextInput)
+            return findViewById(R.id.terminal_toolbar_stacked_text_input);
+        return findViewById(R.id.terminal_toolbar_text_input);
+    }
+
     public boolean isTerminalViewSelected() {
+        if (isTerminalToolbarTextInputStackedVisible()) {
+            EditText textInputView = getTerminalToolbarTextInputView();
+            return textInputView == null || !textInputView.hasFocus();
+        }
         return getTerminalToolbarViewPager().getCurrentItem() == 0;
     }
 
     public boolean isTerminalToolbarTextInputViewSelected() {
+        if (isTerminalToolbarTextInputStackedVisible()) {
+            EditText textInputView = getTerminalToolbarTextInputView();
+            return textInputView != null && textInputView.hasFocus();
+        }
         return getTerminalToolbarViewPager().getCurrentItem() == 1;
     }
 

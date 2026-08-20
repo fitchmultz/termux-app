@@ -20,7 +20,7 @@
             android:id="@+id/drawer_layout"
             android:layout_width="match_parent"
             android:layout_alignParentTop="true"
-            android:layout_above="@+id/terminal_toolbar_view_pager"
+            android:layout_above="@+id/terminal_toolbar_container"
             android:layout_height="match_parent">
 
             <com.termux.view.TerminalView
@@ -34,7 +34,7 @@
                 tools:ignore="UnusedAttribute" />
 
             <LinearLayout
-                android:id="@+id/left_drawer"
+                android:id="@+id/terminal_sessions_drawer"
                 android:layout_width="240dp"
                 android:layout_height="match_parent"
                 android:layout_gravity="start"
@@ -94,13 +94,35 @@
 
         </androidx.drawerlayout.widget.DrawerLayout>
 
-        <androidx.viewpager.widget.ViewPager
-            android:id="@+id/terminal_toolbar_view_pager"
+        <LinearLayout
+            android:id="@+id/terminal_toolbar_container"
             android:visibility="gone"
+            android:orientation="vertical"
             android:layout_width="match_parent"
-            android:layout_height="37.5dp"
+            android:layout_height="wrap_content"
             android:background="@color/black"
-            android:layout_alignParentBottom="true" />
+            android:layout_alignParentBottom="true">
+
+            <FrameLayout
+                android:id="@+id/terminal_toolbar_stacked_text_input_row"
+                android:visibility="gone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <include
+                    android:id="@+id/terminal_toolbar_stacked_text_input"
+                    layout="@layout/view_terminal_toolbar_text_input"
+                    android:layout_width="match_parent"
+                    android:layout_height="37.5dp" />
+
+            </FrameLayout>
+
+            <androidx.viewpager.widget.ViewPager
+                android:id="@+id/terminal_toolbar_view_pager"
+                android:layout_width="match_parent"
+                android:layout_height="37.5dp" />
+
+        </LinearLayout>
 
     </RelativeLayout>
 

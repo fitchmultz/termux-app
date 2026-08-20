@@ -44,3 +44,69 @@ jobs:
           java-version: '17'
       - name: Execute tests
         run: ./gradlew --no-daemon test
+
+  integration-apk-build:
+    name: Integration APK compile check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TERMUX_APK_VERSION_TAG: fold-integration-ci
+      TERMUX_PACKAGE_VARIANT: apt-android-7
+      TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '0'
+      TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS: '0'
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Validate opinionated release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          metadata="$(./gradlew --no-daemon -q :app:foldReleaseMetadata)"
+          grep -Fx 'versionName=0.119.0-fold.1' <<<"$metadata"
+          grep -Fx 'versionCode=2026082001' <<<"$metadata"
+          grep -Fx 'applicationLabel=Termux Fold' <<<"$metadata"
+          grep -Fx 'packageVariant=apt-android-7' <<<"$metadata"
+          grep -Fx 'supportedAbis=arm64-v8a' <<<"$metadata"
+      - name: Compile debug APK without publishing artifacts
+        run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Compile and verify reproducible unsigned release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          ./gradlew --no-daemon :app:assembleRelease
+          mapfile -t apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
+          test "${#apks[@]}" -eq 1
+          apk="${apks[0]}"
+          build_tools="$ANDROID_HOME/build-tools/$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          badging="$("$build_tools/aapt" dump badging "$apk")"
+          grep -F "package: name='com.termux' versionCode='2026082001' versionName='0.119.0-fold.1'" <<<"$badging"
+          grep -Fx "application-label:'Termux Fold'" <<<"$badging"
+          mapfile -t packaged_abis < <(unzip -Z1 "$apk" | awk -F/ '/^lib\// {print $2}' | sort -u)
+          test "${#packaged_abis[@]}" -eq 1
+          test "${packaged_abis[0]}" = 'arm64-v8a'
+          apksigner="$build_tools/apksigner"
+          if "$apksigner" verify "$apk" >/dev/null 2>&1; then
+            echo 'Release APK unexpectedly contains a signing certificate' >&2
+            exit 1
+          fi
+          first_hash="$(sha256sum "$apk" | cut -d' ' -f1)"
+
+          # Run clean separately: the upstream clean task removes downloaded bootstrap archives.
+          ./gradlew --no-daemon clean
+          # The upstream clean task deletes the embedded bootstrap archives, and the native build
+          # may run before Java compilation's implicit download dependency.
+          ./gradlew --no-daemon :app:downloadBootstraps
+          ./gradlew --no-daemon :app:assembleRelease
+          mapfile -t rebuilt_apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
+          test "${#rebuilt_apks[@]}" -eq 1
+          second_hash="$(sha256sum "${rebuilt_apks[0]}" | cut -d' ' -f1)"
+          test "$first_hash" = "$second_hash"
+          printf 'reproducible unsigned release sha256=%s\n' "$first_hash"

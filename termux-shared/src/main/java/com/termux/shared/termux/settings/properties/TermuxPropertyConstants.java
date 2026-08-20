@@ -7,6 +7,7 @@ import com.termux.shared.file.FileUtils;
 import com.termux.shared.file.filesystem.FileType;
 import com.termux.shared.settings.properties.SharedProperties;
 import com.termux.shared.termux.TermuxConstants;
+import com.termux.shared.termux.extrakeys.ExtraKeysConstants;
 import com.termux.shared.logger.Logger;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.view.TerminalView;
@@ -18,7 +19,7 @@ import java.util.List;
 import java.util.Set;
 
 /*
- * Version: v0.18.0
+ * Version: v0.20.0
  * SPDX-License-Identifier: MIT
  *
  * Changelog
@@ -80,6 +81,12 @@ import java.util.Set;
  *
  * - 0.18.0 (2022-06-13)
  *      - Add `KEY_DISABLE_FILE_SHARE_RECEIVER` and `KEY_DISABLE_FILE_VIEW_RECEIVER`.
+ *
+ * - 0.19.0 (2026-08-20)
+ *      - Add `KEY_SHOW_TERMINAL_TOOLBAR_TEXT_INPUT` and `KEY_TERMINAL_SESSION_DRAWER_POSITION`.
+ *
+ * - 0.20.0 (2026-08-20)
+ *      - Select opinionated Samsung Fold input, toolbar, extra-key, and drawer defaults.
  */
 
 /**
@@ -139,6 +146,9 @@ public final class TermuxPropertyConstants {
 
     /** Defines the key for whether url links in terminal transcript will automatically open on click or on tap */
     public static final String KEY_TERMINAL_ONCLICK_URL_OPEN =  "terminal-onclick-url-open"; // Default: "terminal-onclick-url-open"
+
+    /** Defines the key for showing a composable text input above the extra keys at the same time. */
+    public static final String KEY_SHOW_TERMINAL_TOOLBAR_TEXT_INPUT = "show-terminal-toolbar-text-input";
 
 
 
@@ -307,6 +317,19 @@ public final class TermuxPropertyConstants {
     public static final String IVALUE_BACK_KEY_BEHAVIOUR_ESCAPE = "escape";
     public static final String DEFAULT_IVALUE_BACK_KEY_BEHAVIOUR = IVALUE_BACK_KEY_BEHAVIOUR_BACK;
 
+    /** Defines which logical side contains the terminal session drawer. */
+    public static final String KEY_TERMINAL_SESSION_DRAWER_POSITION = "terminal-session-drawer-position";
+    public static final String IVALUE_TERMINAL_SESSION_DRAWER_POSITION_START = "start";
+    public static final String IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END = "end";
+    public static final String DEFAULT_IVALUE_TERMINAL_SESSION_DRAWER_POSITION = IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END;
+
+    /** Defines the bidirectional map for terminal session drawer positions. */
+    public static final ImmutableBiMap<String, String> MAP_TERMINAL_SESSION_DRAWER_POSITIONS =
+        new ImmutableBiMap.Builder<String, String>()
+            .put(IVALUE_TERMINAL_SESSION_DRAWER_POSITION_START, IVALUE_TERMINAL_SESSION_DRAWER_POSITION_START)
+            .put(IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END, IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END)
+            .build();
+
     /** Defines the bidirectional map for back key behaviour values and their internal values */
     public static final ImmutableBiMap<String, String> MAP_BACK_KEY_BEHAVIOUR =
         new ImmutableBiMap.Builder<String, String>()
@@ -326,7 +349,12 @@ public final class TermuxPropertyConstants {
     /** Defines the key for extra keys */
     public static final String KEY_EXTRA_KEYS =  "extra-keys"; // Default: "extra-keys"
     //public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[[ESC, TAB, CTRL, ALT, {key: '-', popup: '|'}, DOWN, UP]]"; // Single row
-    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[['ESC','/',{key: '-', popup: '|'},'HOME','UP','END','PGUP'], ['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN']]"; // Double row
+    public static final String DEFAULT_IVALUE_EXTRA_KEYS =
+        "[[ESC, TAB, {key: CTRL, popup: {macro: \"CTRL ALT UP\", display: PREV}}, " +
+        "{key: ALT, popup: {macro: \"CTRL ALT DOWN\", display: NEXT}}, " +
+        "{macro: \"CTRL ALT DOWN\", display: NEXT}, " + ExtraKeysConstants.ACTION_DRAWER +
+        "], [HOME, LEFT, {key: DOWN, popup: PGDN}, {key: UP, popup: PGUP}, RIGHT, " +
+        "{key: " + ExtraKeysConstants.ACTION_KEYBOARD + ", popup: " + ExtraKeysConstants.ACTION_TEXTBAR + "}]]";
 
     /** Defines the key for extra keys style */
     public static final String KEY_EXTRA_KEYS_STYLE =  "extra-keys-style"; // Default: "extra-keys-style"
@@ -399,6 +427,7 @@ public final class TermuxPropertyConstants {
         KEY_EXTRA_KEYS_TEXT_ALL_CAPS,
         KEY_HIDE_SOFT_KEYBOARD_ON_STARTUP,
         KEY_RUN_TERMUX_AM_SOCKET_SERVER,
+        KEY_SHOW_TERMINAL_TOOLBAR_TEXT_INPUT,
         KEY_TERMINAL_ONCLICK_URL_OPEN,
         KEY_USE_CTRL_SPACE_WORKAROUND,
         KEY_USE_FULLSCREEN,
@@ -430,6 +459,7 @@ public final class TermuxPropertyConstants {
         KEY_EXTRA_KEYS_STYLE,
         KEY_NIGHT_MODE,
         KEY_SOFT_KEYBOARD_TOGGLE_BEHAVIOUR,
+        KEY_TERMINAL_SESSION_DRAWER_POSITION,
         KEY_VOLUME_KEYS_BEHAVIOUR
     ));
 
@@ -443,7 +473,6 @@ public final class TermuxPropertyConstants {
         KEY_DISABLE_FILE_VIEW_RECEIVER,
         KEY_DISABLE_HARDWARE_KEYBOARD_SHORTCUTS,
         KEY_DISABLE_TERMINAL_SESSION_CHANGE_TOAST,
-        KEY_ENFORCE_CHAR_BASED_INPUT,
         KEY_HIDE_SOFT_KEYBOARD_ON_STARTUP,
         KEY_TERMINAL_ONCLICK_URL_OPEN,
         KEY_USE_CTRL_SPACE_WORKAROUND,
@@ -458,8 +487,10 @@ public final class TermuxPropertyConstants {
      * default: true
      */
     public static final Set<String> TERMUX_DEFAULT_TRUE_BOOLEAN_BEHAVIOUR_PROPERTIES_LIST = new HashSet<>(Arrays.asList(
+        KEY_ENFORCE_CHAR_BASED_INPUT,
         KEY_EXTRA_KEYS_TEXT_ALL_CAPS,
-        KEY_RUN_TERMUX_AM_SOCKET_SERVER
+        KEY_RUN_TERMUX_AM_SOCKET_SERVER,
+        KEY_SHOW_TERMINAL_TOOLBAR_TEXT_INPUT
     ));
 
     /** Defines the set for keys loaded by termux that have default inverted boolean behaviour with false as default.
