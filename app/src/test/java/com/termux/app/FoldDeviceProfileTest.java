@@ -1,5 +1,6 @@
 package com.termux.app;
 
+import com.termux.R;
 import com.termux.shared.termux.extrakeys.ExtraKeyButton;
 import com.termux.shared.termux.extrakeys.ExtraKeysConstants;
 import com.termux.shared.termux.extrakeys.ExtraKeysInfo;
@@ -8,6 +9,7 @@ import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
 import static org.junit.Assert.assertEquals;
@@ -15,6 +17,11 @@ import static org.junit.Assert.assertEquals;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 28)
 public class FoldDeviceProfileTest {
+
+    @Test
+    public void applicationLabelIdentifiesTheFoldBuild() {
+        assertEquals("Termux Fold", RuntimeEnvironment.getApplication().getString(R.string.application_name));
+    }
 
     @Test
     public void defaultExtraKeysParseAsTwoRowsOfSix() throws Exception {

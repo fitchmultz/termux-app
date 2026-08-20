@@ -47,6 +47,7 @@ android {
         versionCode appVersionCode
         versionName appVersionName
         validateVersionName(versionName)
+        resValue "string", "application_name", rootProject.ext.foldProfile.applicationLabel
 
         buildConfigField "String", "TERMUX_PACKAGE_VARIANT", "\"" + project.ext.packageVariant + "\"" // Used by TermuxApplication class
 
