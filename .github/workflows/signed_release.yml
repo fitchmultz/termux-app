@@ -245,6 +245,7 @@ jobs:
           echo 'packaged metadata and ABI verified'
 
           signed_hash="$(sha256sum "$signed_apk" | cut -d' ' -f1)"
+          printf 'signed APK sha256=%s\n' "$signed_hash"
           signed_name="$(basename "$signed_apk")"
           printf '%s  %s\n' "$signed_hash" "$signed_name" > release-output/SHA256SUMS
           cat > release-output/PROVENANCE <<EOF
