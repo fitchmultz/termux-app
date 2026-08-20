@@ -41,7 +41,7 @@ This is the canonical concise inventory of intentional differences from the audi
 - Uses `fold/main` as the GitHub default; `master` remains an audited reference point, not an automatic synchronization target.
 - Treats this as a permanent personal appliance fork. Upstream PRs and wholesale rebases/syncs are not goals; relevant security or compatibility fixes are selectively reviewed and cherry-picked.
 - Keeps `Fold checks` read-only for wrapper validation, full unit tests, packaged metadata/ABI/signature checks, and two reproducible unsigned builds.
-- Provides a manually dispatched, protected `Fold signed release` workflow: an unprivileged job builds twice, then a fresh environment-gated job signs, verifies, and publishes only the signed APK/checksum/provenance. Inherited upstream artifact/release/dependency/JitPack workflows remain disabled.
+- Provides a manually dispatched, protected `Fold signed release` workflow: an unprivileged job builds twice, then a fresh environment-gated job signs and verifies; public Release publication is a separate explicit boolean gate and includes only the signed APK/checksum/provenance. Inherited upstream artifact/release/dependency/JitPack workflows remain disabled.
 
 ## In development, not yet merged into `fold/main`
 

@@ -4,9 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing annotated Fold release tag to build, sign, and publish
+        description: Existing annotated Fold release tag to build and sign
         required: true
         type: string
+      publish_release:
+        description: Publish the verified signed APK as a public GitHub Release
+        required: true
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -262,8 +267,11 @@ jobs:
           printf 'version_name=%s\n' "$version_name" >> "$GITHUB_OUTPUT"
           printf 'source_commit=%s\n' "$source_commit" >> "$GITHUB_OUTPUT"
           printf 'signed_apk=%s\n' "$signed_name" >> "$GITHUB_OUTPUT"
+          printf 'signed_sha256=%s\n' "$signed_hash" >> "$GITHUB_OUTPUT"
+          printf 'Signed APK SHA-256: `%s`\n' "$signed_hash" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish signed GitHub Release
+        if: inputs.publish_release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
