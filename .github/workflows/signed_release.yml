@@ -189,11 +189,13 @@ jobs:
           test "$application_label" = 'Termux Fold'
           test "$(sha256sum candidate/termux-fold-unsigned.apk | cut -d' ' -f1)" = "$unsigned_hash"
           grep -Fx "$unsigned_hash  termux-fold-unsigned.apk" candidate/SHA256SUMS
+          echo 'candidate contract verified'
 
           build_tools="$ANDROID_HOME/build-tools/$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
           test -x "$build_tools/apksigner"
           test -x "$build_tools/aapt"
           test -x "$build_tools/zipalign"
+          echo "signing tools verified: $(basename "$build_tools")"
 
           key_store="$RUNNER_TEMP/termux-fold-release.p12"
           store_pass="$RUNNER_TEMP/store.pass"
@@ -204,6 +206,8 @@ jobs:
           printf '%s\n' "$FOLD_KEYSTORE_PASSWORD" > "$store_pass"
           printf '%s\n' "$FOLD_KEYSTORE_PASSWORD" > "$key_pass"
           test "$(sha256sum "$key_store" | cut -d' ' -f1)" = "$EXPECTED_KEYSTORE_SHA256"
+          keytool -list -keystore "$key_store" -storetype PKCS12 -storepass:file "$store_pass" >/dev/null
+          echo 'keystore integrity and password verified'
 
           mkdir -p release-output
           signed_apk="release-output/Termux-Fold-${version_name}-arm64.apk"
@@ -219,6 +223,7 @@ jobs:
             --v4-signing-enabled false \
             --out "$signed_apk" \
             candidate/termux-fold-unsigned.apk
+          echo 'APK signing completed'
 
           verify_output="$("$build_tools/apksigner" verify --verbose --print-certs "$signed_apk")"
           grep -Fq 'Verified using v1 scheme (JAR signing): true' <<<"$verify_output"
@@ -226,12 +231,15 @@ jobs:
           grep -Fq 'Verified using v3 scheme (APK Signature Scheme v3): true' <<<"$verify_output"
           actual_certificate="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print toupper($2); exit}' <<<"$verify_output" | sed 's/../&:/g; s/:$//')"
           test "$actual_certificate" = "$EXPECTED_CERTIFICATE_SHA256"
+          echo 'signature schemes and certificate verified'
           "$build_tools/zipalign" -c -P 16 4 "$signed_apk"
+          echo 'ZIP alignment verified'
 
           badging="$("$build_tools/aapt" dump badging "$signed_apk")"
           grep -F "package: name='com.termux' versionCode='$version_code' versionName='$version_name'" <<<"$badging"
           grep -Fx "application-label:'Termux Fold'" <<<"$badging"
           grep -Fx "native-code: 'arm64-v8a'" <<<"$badging"
+          echo 'packaged metadata and ABI verified'
 
           signed_hash="$(sha256sum "$signed_apk" | cut -d' ' -f1)"
           signed_name="$(basename "$signed_apk")"
