@@ -8,7 +8,8 @@ This is the canonical concise inventory of intentional differences from the audi
 - Keeps package ID `com.termux` and prefix `/data/data/com.termux/files/usr`; this is an in-place fork, not a side-by-side package.
 - Uses label `Termux Fold`; shipped source is `0.119.0-fold.1` (`2026082001`) at tag `fold-v0.119.0-fold.1-rc1`.
 - Packages only `arm64-v8a` with the `apt-android-7` bootstrap; split release APKs are disabled.
-- Uses a private dedicated Android signing identity. No signing material or APK is stored in GitHub, CI, or the public repository.
+- Retains target SDK 28 because targeting Android 10/API 29 or later prevents Termux from executing package-installed programs from its writable prefix. Android 17 may therefore show an old-app or **Install anyway** warning.
+- Uses a dedicated Android signing identity. Signing material must never be committed or made public, but protected GitHub Actions secrets and signed GitHub Releases are allowed when deliberately configured.
 
 ## Fixes
 
