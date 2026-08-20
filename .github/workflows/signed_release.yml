@@ -1,0 +1,291 @@
+name: Fold signed release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing annotated Fold release tag to build, sign, and publish
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: fold-signed-release-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Reproducible unprivileged build
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    env:
+      TERMUX_APK_VERSION_TAG: fold-release
+      TERMUX_PACKAGE_VARIANT: apt-android-7
+      TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '0'
+      TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS: '0'
+      REQUESTED_TAG: ${{ inputs.release_tag }}
+    steps:
+      - name: Validate release tag input
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_TAG" =~ ^fold-v0[.]119[.]0-fold[.][1-9][0-9]*(-rc[1-9][0-9]*)?$ ]]
+
+      - name: Check out exact tagged source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify annotated tag and source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit="$(git rev-parse HEAD)"
+          test "$(git rev-parse "$REQUESTED_TAG^{commit}")" = "$source_commit"
+          test "$(git cat-file -t "$REQUESTED_TAG")" = tag
+          printf 'source_commit=%s\n' "$source_commit"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Validate Gradle wrapper and run unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -d' ' -f1)" = \
+            '423cb469ccc0ecc31f0e4e1c309976198ccb734cdcbb7029d4bda0f18f57e8d9'
+          ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Build and verify the unsigned release twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          metadata="$(./gradlew --no-daemon -q :app:foldReleaseMetadata)"
+          value() { awk -F= -v key="$1" '$1 == key {print substr($0, index($0, "=") + 1); exit}' <<<"$metadata"; }
+          version_name="$(value versionName)"
+          version_code="$(value versionCode)"
+          application_label="$(value applicationLabel)"
+          package_variant="$(value packageVariant)"
+          supported_abis="$(value supportedAbis)"
+          source_commit="$(git rev-parse HEAD)"
+
+          [[ "$version_name" =~ ^0[.]119[.]0-fold[.][1-9][0-9]*$ ]]
+          [[ "$version_code" =~ ^[1-9][0-9]*$ ]]
+          test "$application_label" = 'Termux Fold'
+          test "$package_variant" = 'apt-android-7'
+          test "$supported_abis" = 'arm64-v8a'
+          [[ "$REQUESTED_TAG" == "fold-v${version_name}" ||
+             "$REQUESTED_TAG" =~ ^fold-v${version_name//./[.]}-rc[1-9][0-9]*$ ]]
+
+          ./gradlew --no-daemon :app:assembleDebug :app:assembleRelease
+          mapfile -t apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
+          test "${#apks[@]}" -eq 1
+          first_apk="${apks[0]}"
+
+          build_tools="$ANDROID_HOME/build-tools/$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          badging="$("$build_tools/aapt" dump badging "$first_apk")"
+          grep -F "package: name='com.termux' versionCode='$version_code' versionName='$version_name'" <<<"$badging"
+          grep -Fx "application-label:'$application_label'" <<<"$badging"
+          grep -Fx "native-code: 'arm64-v8a'" <<<"$badging"
+          if "$build_tools/apksigner" verify "$first_apk" >/dev/null 2>&1; then
+            echo 'Release intermediate unexpectedly contains a signing certificate' >&2
+            exit 1
+          fi
+
+          candidate="$RUNNER_TEMP/fold-release-candidate"
+          mkdir -p "$candidate"
+          cp "$first_apk" "$candidate/termux-fold-unsigned.apk"
+          first_hash="$(sha256sum "$candidate/termux-fold-unsigned.apk" | cut -d' ' -f1)"
+
+          ./gradlew --no-daemon clean
+          ./gradlew --no-daemon :app:downloadBootstraps
+          ./gradlew --no-daemon :app:assembleRelease
+          mapfile -t rebuilt < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
+          test "${#rebuilt[@]}" -eq 1
+          second_hash="$(sha256sum "${rebuilt[0]}" | cut -d' ' -f1)"
+          test "$first_hash" = "$second_hash"
+          cmp --silent "$candidate/termux-fold-unsigned.apk" "${rebuilt[0]}"
+
+          cat > "$candidate/release.env" <<EOF
+          source_commit=$source_commit
+          source_date_epoch=$SOURCE_DATE_EPOCH
+          release_tag=$REQUESTED_TAG
+          version_name=$version_name
+          version_code=$version_code
+          application_label=$application_label
+          package_name=com.termux
+          supported_abis=$supported_abis
+          unsigned_apk_sha256=$first_hash
+          java=$(java -version 2>&1 | head -1)
+          runner_os=$RUNNER_OS
+          runner_arch=$RUNNER_ARCH
+          signed=false
+          EOF
+          printf '%s  termux-fold-unsigned.apk\n' "$first_hash" > "$candidate/SHA256SUMS"
+          printf 'reproducible unsigned release sha256=%s\n' "$first_hash"
+
+      - name: Upload private signing input
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fold-release-candidate-${{ github.run_id }}
+          path: ${{ runner.temp }}/fold-release-candidate
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  sign-and-release:
+    name: Protected signing and GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: termux-fold-signing
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified signing input
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: fold-release-candidate-${{ github.run_id }}
+          path: candidate
+
+      - name: Sign and independently verify APK
+        id: sign
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+          FOLD_KEYSTORE_BASE64: ${{ secrets.TERMUX_FOLD_KEYSTORE_BASE64 }}
+          FOLD_KEYSTORE_PASSWORD: ${{ secrets.TERMUX_FOLD_KEYSTORE_PASSWORD }}
+          EXPECTED_KEYSTORE_SHA256: ${{ secrets.TERMUX_FOLD_KEYSTORE_SHA256 }}
+          EXPECTED_CERTIFICATE_SHA256: 22:1F:36:CC:A6:E3:2E:E1:66:6B:B2:10:04:66:54:B2:69:00:CD:9E:A9:8C:21:55:D0:CB:E6:61:02:06:04:37
+        run: |
+          set -euo pipefail
+          umask 077
+          value() { awk -F= -v key="$1" '$1 == key {print substr($0, index($0, "=") + 1); exit}' candidate/release.env; }
+          source_commit="$(value source_commit)"
+          release_tag="$(value release_tag)"
+          version_name="$(value version_name)"
+          version_code="$(value version_code)"
+          unsigned_hash="$(value unsigned_apk_sha256)"
+          application_label="$(value application_label)"
+
+          [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]]
+          test "$release_tag" = "$REQUESTED_TAG"
+          [[ "$version_name" =~ ^0[.]119[.]0-fold[.][1-9][0-9]*$ ]]
+          [[ "$version_code" =~ ^[1-9][0-9]*$ ]]
+          test "$application_label" = 'Termux Fold'
+          test "$(sha256sum candidate/termux-fold-unsigned.apk | cut -d' ' -f1)" = "$unsigned_hash"
+          grep -Fx "$unsigned_hash  termux-fold-unsigned.apk" candidate/SHA256SUMS
+
+          build_tools="$ANDROID_HOME/build-tools/$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          test -x "$build_tools/apksigner"
+          test -x "$build_tools/aapt"
+          test -x "$build_tools/zipalign"
+
+          key_store="$RUNNER_TEMP/termux-fold-release.p12"
+          store_pass="$RUNNER_TEMP/store.pass"
+          key_pass="$RUNNER_TEMP/key.pass"
+          cleanup() { rm -f "$key_store" "$store_pass" "$key_pass"; }
+          trap cleanup EXIT
+          printf '%s' "$FOLD_KEYSTORE_BASE64" | base64 --decode > "$key_store"
+          printf '%s\n' "$FOLD_KEYSTORE_PASSWORD" > "$store_pass"
+          printf '%s\n' "$FOLD_KEYSTORE_PASSWORD" > "$key_pass"
+          test "$(sha256sum "$key_store" | cut -d' ' -f1)" = "$EXPECTED_KEYSTORE_SHA256"
+
+          mkdir -p release-output
+          signed_apk="release-output/Termux-Fold-${version_name}-arm64.apk"
+          "$build_tools/apksigner" sign \
+            --ks "$key_store" \
+            --ks-type PKCS12 \
+            --ks-key-alias termux-fold-release \
+            --ks-pass "file:$store_pass" \
+            --key-pass "file:$key_pass" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --v4-signing-enabled false \
+            --out "$signed_apk" \
+            candidate/termux-fold-unsigned.apk
+
+          verify_output="$("$build_tools/apksigner" verify --verbose --print-certs "$signed_apk")"
+          grep -Fq 'Verified using v1 scheme (JAR signing): true' <<<"$verify_output"
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' <<<"$verify_output"
+          grep -Fq 'Verified using v3 scheme (APK Signature Scheme v3): true' <<<"$verify_output"
+          actual_certificate="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print toupper($2); exit}' <<<"$verify_output" | sed 's/../&:/g; s/:$//')"
+          test "$actual_certificate" = "$EXPECTED_CERTIFICATE_SHA256"
+          "$build_tools/zipalign" -c -P 16 4 "$signed_apk"
+
+          badging="$("$build_tools/aapt" dump badging "$signed_apk")"
+          grep -F "package: name='com.termux' versionCode='$version_code' versionName='$version_name'" <<<"$badging"
+          grep -Fx "application-label:'Termux Fold'" <<<"$badging"
+          grep -Fx "native-code: 'arm64-v8a'" <<<"$badging"
+
+          signed_hash="$(sha256sum "$signed_apk" | cut -d' ' -f1)"
+          signed_name="$(basename "$signed_apk")"
+          printf '%s  %s\n' "$signed_hash" "$signed_name" > release-output/SHA256SUMS
+          cat > release-output/PROVENANCE <<EOF
+          source_commit=$source_commit
+          source_tag=$release_tag
+          workflow_run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          package=com.termux
+          version_name=$version_name
+          version_code=$version_code
+          application_label=Termux Fold
+          supported_abi=arm64-v8a
+          unsigned_apk_sha256=$unsigned_hash
+          signed_apk_sha256=$signed_hash
+          certificate_sha256=$actual_certificate
+          v1=true
+          v2=true
+          v3=true
+          v4=false
+          EOF
+          cat > release-output/RELEASE_NOTES.md <<EOF
+          Private-appliance Termux Fold build from tagged source \`$source_commit\`.
+
+          - Package: \`com.termux\`
+          - Version: \`$version_name\` (\`$version_code\`)
+          - ABI: \`arm64-v8a\`
+          - APK SHA-256: \`$signed_hash\`
+          - Certificate SHA-256: \`$actual_certificate\`
+
+          Android may require **Install anyway** because Termux intentionally retains target SDK 28 for direct execution from its writable package prefix. Verify the checksum and choose **Update**; never uninstall an existing Fold-signed installation merely to update it.
+          EOF
+          printf 'version_name=%s\n' "$version_name" >> "$GITHUB_OUTPUT"
+          printf 'source_commit=%s\n' "$source_commit" >> "$GITHUB_OUTPUT"
+          printf 'signed_apk=%s\n' "$signed_name" >> "$GITHUB_OUTPUT"
+
+      - name: Publish signed GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+          VERSION_NAME: ${{ steps.sign.outputs.version_name }}
+          SOURCE_COMMIT: ${{ steps.sign.outputs.source_commit }}
+        run: |
+          set -euo pipefail
+          if gh release view "$REQUESTED_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists: $REQUESTED_TAG" >&2
+            exit 1
+          fi
+          release_args=(
+            "$REQUESTED_TAG"
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --target "$SOURCE_COMMIT"
+            --title "Termux Fold $VERSION_NAME"
+            --notes-file release-output/RELEASE_NOTES.md
+          )
+          [[ "$REQUESTED_TAG" == *-rc* ]] && release_args+=(--prerelease)
+          gh release create "${release_args[@]}" \
+            "release-output/${{ steps.sign.outputs.signed_apk }}" \
+            release-output/SHA256SUMS \
+            release-output/PROVENANCE
