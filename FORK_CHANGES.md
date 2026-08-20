@@ -37,7 +37,8 @@ This is the canonical concise inventory of intentional differences from the audi
 - Defines one immutable root Gradle profile for version, label, bootstrap variant, and ABI filters across modules.
 - Extends property schemas and tests so keys, accepted values, defaults, parsers, and UI consumers cannot silently drift.
 - Tests the Fold extra-key grammar, storage policy, drawer enum/default, simultaneous-input defaults, and synchronized-output behavior.
-- Uses `fold/main` as the GitHub default; `master` remains the clean audited upstream mirror.
+- Uses `fold/main` as the GitHub default; `master` remains an audited reference point, not an automatic synchronization target.
+- Treats this as a permanent personal appliance fork. Upstream PRs and wholesale rebases/syncs are not goals; relevant security or compatibility fixes are selectively reviewed and cherry-picked.
 - Keeps one read-only `Fold checks` workflow for wrapper validation, full unit tests, packaged metadata/ABI/signature checks, and two reproducible unsigned builds. Inherited artifact/release/dependency/JitPack workflows remain disabled.
 
 ## In development, not yet merged into `fold/main`

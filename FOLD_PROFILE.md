@@ -41,7 +41,7 @@ Java equivalents of shared TypeScript types/schemas are used at the new boundari
 
 ## Patch structure
 
-Generic fixes stay isolated when that makes review, testing, or upstream rebasing safer. The final integration branch adds this device profile explicitly. That separation is maintenance hygiene, not a commitment to support generic installations.
+Fixes stay isolated when that improves review, regression testing, or selective cherry-picking. This is a permanent personal appliance fork: upstream PRs and wholesale synchronization are not goals. The upstream branch is a reference for individually audited security or compatibility changes, not a target the Fold profile must continually rebase onto.
 
 ## Installation boundary
 
