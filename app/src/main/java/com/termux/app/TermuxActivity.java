@@ -49,8 +49,8 @@ import com.termux.shared.termux.extrakeys.ExtraKeysView;
 import com.termux.shared.termux.interact.TextInputDialogUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxUtils;
+import com.termux.shared.termux.settings.properties.TerminalSessionDrawerPosition;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
-import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.termux.shared.theme.NightMode;
 import com.termux.shared.view.ViewUtils;
@@ -869,8 +869,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     public int getTerminalSessionDrawerGravity() {
-        return TermuxPropertyConstants.IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END.equals(
-            mProperties.getTerminalSessionDrawerPosition()) ? GravityCompat.END : GravityCompat.START;
+        return mProperties.getTerminalSessionDrawerPosition() == TerminalSessionDrawerPosition.END
+            ? GravityCompat.END : GravityCompat.START;
     }
 
 

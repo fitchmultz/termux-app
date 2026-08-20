@@ -14,6 +14,10 @@ public class TermuxDrawerPositionPropertyTest {
         assertTrue(TermuxPropertyConstants.TERMUX_APP_PROPERTIES_LIST.contains(key));
         assertEquals(TermuxPropertyConstants.IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END,
             TermuxSharedProperties.getInternalTermuxPropertyValueFromValue(null, key, null));
+        assertEquals(TerminalSessionDrawerPosition.END,
+            TerminalSessionDrawerPosition.fromInternalValue(null));
+        assertEquals(TerminalSessionDrawerPosition.END,
+            TerminalSessionDrawerPosition.fromInternalValue("invalid"));
     }
 
     @Test
@@ -24,5 +28,11 @@ public class TermuxDrawerPositionPropertyTest {
             TermuxSharedProperties.getInternalTermuxPropertyValueFromValue(null, key, "START"));
         assertEquals(TermuxPropertyConstants.IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END,
             TermuxSharedProperties.getInternalTermuxPropertyValueFromValue(null, key, "end"));
+        assertEquals(TerminalSessionDrawerPosition.START,
+            TerminalSessionDrawerPosition.fromInternalValue(
+                TermuxPropertyConstants.IVALUE_TERMINAL_SESSION_DRAWER_POSITION_START));
+        assertEquals(TerminalSessionDrawerPosition.END,
+            TerminalSessionDrawerPosition.fromInternalValue(
+                TermuxPropertyConstants.IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END));
     }
 }

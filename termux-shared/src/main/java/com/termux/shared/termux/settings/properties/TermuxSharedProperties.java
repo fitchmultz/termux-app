@@ -681,8 +681,9 @@ public abstract class TermuxSharedProperties {
         return (String) getInternalPropertyValue(TermuxPropertyConstants.KEY_DEFAULT_WORKING_DIRECTORY, true);
     }
 
-    public String getTerminalSessionDrawerPosition() {
-        return (String) getInternalPropertyValue(TermuxPropertyConstants.KEY_TERMINAL_SESSION_DRAWER_POSITION, true);
+    public TerminalSessionDrawerPosition getTerminalSessionDrawerPosition() {
+        return TerminalSessionDrawerPosition.fromInternalValue((String) getInternalPropertyValue(
+            TermuxPropertyConstants.KEY_TERMINAL_SESSION_DRAWER_POSITION, true));
     }
 
     public String getNightMode() {
