@@ -8,11 +8,11 @@ import static org.junit.Assert.assertTrue;
 public class TermuxDrawerPositionPropertyTest {
 
     @Test
-    public void drawerPositionPropertyIsKnownAndDefaultsToStart() {
+    public void drawerPositionPropertyIsKnownAndDefaultsToEnd() {
         String key = TermuxPropertyConstants.KEY_TERMINAL_SESSION_DRAWER_POSITION;
 
         assertTrue(TermuxPropertyConstants.TERMUX_APP_PROPERTIES_LIST.contains(key));
-        assertEquals(TermuxPropertyConstants.IVALUE_TERMINAL_SESSION_DRAWER_POSITION_START,
+        assertEquals(TermuxPropertyConstants.IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END,
             TermuxSharedProperties.getInternalTermuxPropertyValueFromValue(null, key, null));
     }
 
