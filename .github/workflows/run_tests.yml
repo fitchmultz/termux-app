@@ -83,7 +83,9 @@ jobs:
           fi
           first_hash="$(sha256sum "$apk" | cut -d' ' -f1)"
 
-          ./gradlew --no-daemon clean :app:assembleRelease
+          # Run clean separately: the upstream clean task removes downloaded bootstrap archives.
+          ./gradlew --no-daemon clean
+          ./gradlew --no-daemon :app:assembleRelease
           mapfile -t rebuilt_apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
           test "${#rebuilt_apks[@]}" -eq 1
           second_hash="$(sha256sum "${rebuilt_apks[0]}" | cut -d' ' -f1)"
