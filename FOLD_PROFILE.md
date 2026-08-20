@@ -11,6 +11,8 @@ This is an opinionated personal fork of Termux for one deployment target:
 
 Compatibility with other devices, Android releases, keyboards, architectures, package variants, or user preferences is not a release criterion. Other people may use the public source, but downstream decisions optimize this device first.
 
+See [FORK_CHANGES.md](FORK_CHANGES.md) for the canonical concise list of shipped and pending deviations. Every downstream behavior, default, release constraint, or operational-policy change must update that inventory in the same commit.
+
 ## Defaults
 
 The integrated Fold profile:
