@@ -54,6 +54,7 @@ jobs:
       TERMUX_APK_VERSION_TAG: fold-integration-ci
       TERMUX_PACKAGE_VARIANT: apt-android-7
       TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '0'
+      TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS: '0'
     steps:
       - name: Clone repository
         uses: actions/checkout@v6
@@ -66,3 +67,25 @@ jobs:
           java-version: '17'
       - name: Compile debug APK without publishing artifacts
         run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Compile and verify reproducible unsigned release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          ./gradlew --no-daemon :app:assembleRelease
+          mapfile -t apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
+          test "${#apks[@]}" -eq 1
+          apk="${apks[0]}"
+          apksigner="$ANDROID_HOME/build-tools/$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)/apksigner"
+          if "$apksigner" verify "$apk" >/dev/null 2>&1; then
+            echo 'Release APK unexpectedly contains a signing certificate' >&2
+            exit 1
+          fi
+          first_hash="$(sha256sum "$apk" | cut -d' ' -f1)"
+
+          ./gradlew --no-daemon clean :app:assembleRelease
+          mapfile -t rebuilt_apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
+          test "${#rebuilt_apks[@]}" -eq 1
+          second_hash="$(sha256sum "${rebuilt_apks[0]}" | cut -d' ' -f1)"
+          test "$first_hash" = "$second_hash"
+          printf 'reproducible unsigned release sha256=%s\n' "$first_hash"
