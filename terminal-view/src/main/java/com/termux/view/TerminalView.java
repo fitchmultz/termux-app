@@ -1331,7 +1331,9 @@ public final class TerminalView extends View {
                     mCursorVisible = !mCursorVisible;
                     //mClient.logVerbose(LOG_TAG, "Toggling cursor blink state to " + mCursorVisible);
                     mEmulator.setCursorBlinkState(mCursorVisible);
-                    invalidate();
+                    // Keep Android's last recorded display list visible throughout a synchronized frame.
+                    // The completed-frame notification (or watchdog) will invalidate the view afterwards.
+                    if (!mEmulator.isSynchronizedOutputActive()) invalidate();
                 }
             } finally {
                 // Recall the Runnable after mBlinkRate milliseconds to toggle the blink state
