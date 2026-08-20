@@ -17,7 +17,8 @@ android {
 
     compileSdkVersion project.properties.compileSdkVersion.toInteger()
     ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
-    def appVersionName = System.getenv("TERMUX_APP_VERSION_NAME") ?: ""
+    def appVersionName = System.getenv("TERMUX_APP_VERSION_NAME") ?: "0.119.0-fold.1"
+    def appVersionCode = (System.getenv("TERMUX_APP_VERSION_CODE") ?: "2026082001").toInteger()
     def apkVersionTag = System.getenv("TERMUX_APK_VERSION_TAG") ?: ""
     def splitAPKsForDebugBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS") ?: "1"
     def splitAPKsForReleaseBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS") ?: "0" // F-Droid does not support split APKs #1904
@@ -43,16 +44,14 @@ android {
     defaultConfig {
         minSdkVersion project.properties.minSdkVersion.toInteger()
         targetSdkVersion project.properties.targetSdkVersion.toInteger()
-        versionCode 118
-        versionName "0.118.0"
-
-        if (appVersionName) versionName = appVersionName
+        versionCode appVersionCode
+        versionName appVersionName
         validateVersionName(versionName)
 
         buildConfigField "String", "TERMUX_PACKAGE_VARIANT", "\"" + project.ext.packageVariant + "\"" // Used by TermuxApplication class
 
         manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
-        manifestPlaceholders.TERMUX_APP_NAME = "Termux"
+        manifestPlaceholders.TERMUX_APP_NAME = "Termux Fold"
         manifestPlaceholders.TERMUX_API_APP_NAME = "Termux:API"
         manifestPlaceholders.TERMUX_BOOT_APP_NAME = "Termux:Boot"
         manifestPlaceholders.TERMUX_FLOAT_APP_NAME = "Termux:Float"
@@ -154,6 +153,15 @@ dependencies {
 task versionName {
     doLast {
         print android.defaultConfig.versionName
+    }
+}
+
+task foldReleaseMetadata {
+    doLast {
+        println "versionName=${android.defaultConfig.versionName}"
+        println "versionCode=${android.defaultConfig.versionCode}"
+        println "applicationLabel=${android.defaultConfig.manifestPlaceholders.TERMUX_APP_NAME}"
+        println "packageVariant=${project.ext.packageVariant}"
     }
 }
 
