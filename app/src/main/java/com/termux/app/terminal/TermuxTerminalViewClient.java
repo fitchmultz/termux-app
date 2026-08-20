@@ -1,6 +1,5 @@
 package com.termux.app.terminal;
 
-import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -8,7 +7,6 @@ import android.content.Context;
 import android.media.AudioManager;
 import android.os.Environment;
 import android.text.TextUtils;
-import android.view.Gravity;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -236,7 +234,6 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
 
 
-    @SuppressLint("RtlHardcoded")
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent e, TerminalSession currentSession) {
         if (handleVirtualKeys(keyCode, e, true)) return true;
@@ -254,7 +251,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
             } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP || unicodeChar == 'p' /* previous */) {
                 mTermuxTerminalSessionActivityClient.switchToSession(false);
             } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                mActivity.getDrawer().openDrawer(Gravity.LEFT);
+                mActivity.getDrawer().openDrawer(mActivity.getTerminalSessionDrawerGravity());
             } else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
                 mActivity.getDrawer().closeDrawers();
             } else if (unicodeChar == 'k'/* keyboard */) {
