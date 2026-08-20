@@ -44,3 +44,25 @@ jobs:
           java-version: '17'
       - name: Execute tests
         run: ./gradlew --no-daemon test
+
+  integration-apk-build:
+    name: Integration APK compile check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TERMUX_APP_VERSION_NAME: 0.119.0-fold.ci
+      TERMUX_APK_VERSION_TAG: fold-integration-ci
+      TERMUX_PACKAGE_VARIANT: apt-android-7
+      TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '0'
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Compile debug APK without publishing artifacts
+        run: ./gradlew --no-daemon :app:assembleDebug
