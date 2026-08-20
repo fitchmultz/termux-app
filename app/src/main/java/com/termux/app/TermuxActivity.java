@@ -175,6 +175,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private int mNavBarHeight;
 
     private float mTerminalToolbarDefaultHeight;
+    private boolean mUseStackedTerminalToolbarTextInput;
 
 
     private static final int CONTEXT_MENU_SELECT_URL_ID = 0;
@@ -191,6 +192,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_REPORT_ID = 9;
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
+    private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT_VISIBLE = "terminal_toolbar_text_input_visible";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
 
     private static final String LOG_TAG = "TermuxActivity";
@@ -528,15 +530,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (savedInstanceState != null)
             savedTextInput = savedInstanceState.getString(ARG_TERMINAL_TOOLBAR_TEXT_INPUT);
 
-        boolean showStackedTextInput = mProperties.shouldShowTerminalToolbarTextInput();
+        mUseStackedTerminalToolbarTextInput = mProperties.shouldShowTerminalToolbarTextInput();
+        boolean showStackedTextInput = mUseStackedTerminalToolbarTextInput;
+        if (mUseStackedTerminalToolbarTextInput && savedInstanceState != null &&
+            savedInstanceState.containsKey(ARG_TERMINAL_TOOLBAR_TEXT_INPUT_VISIBLE))
+            showStackedTextInput = savedInstanceState.getBoolean(ARG_TERMINAL_TOOLBAR_TEXT_INPUT_VISIBLE);
         View stackedTextInputRow = findViewById(R.id.terminal_toolbar_stacked_text_input_row);
         stackedTextInputRow.setVisibility(showStackedTextInput ? View.VISIBLE : View.GONE);
         EditText stackedTextInput = findViewById(R.id.terminal_toolbar_stacked_text_input);
-        TerminalToolbarViewPager.setupTextInput(this, stackedTextInput, showStackedTextInput ? savedTextInput : null);
+        TerminalToolbarViewPager.setupTextInput(this, stackedTextInput,
+            mUseStackedTerminalToolbarTextInput ? savedTextInput : null);
 
         setTerminalToolbarHeight();
         terminalToolbarViewPager.setAdapter(new TerminalToolbarViewPager.PageAdapter(
-            this, showStackedTextInput ? null : savedTextInput, showStackedTextInput));
+            this, mUseStackedTerminalToolbarTextInput ? null : savedTextInput,
+            mUseStackedTerminalToolbarTextInput));
         terminalToolbarViewPager.addOnPageChangeListener(new TerminalToolbarViewPager.OnPageChangeListener(this, terminalToolbarViewPager));
     }
 
@@ -580,6 +588,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             String textInput = textInputView.getText().toString();
             if (!textInput.isEmpty()) savedInstanceState.putString(ARG_TERMINAL_TOOLBAR_TEXT_INPUT, textInput);
         }
+        if (mUseStackedTerminalToolbarTextInput)
+            savedInstanceState.putBoolean(ARG_TERMINAL_TOOLBAR_TEXT_INPUT_VISIBLE,
+                isTerminalToolbarTextInputStackedVisible());
     }
 
 
@@ -876,6 +887,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     public void toggleTerminalToolbarTextInput() {
+        if (!mUseStackedTerminalToolbarTextInput) return;
         View stackedTextInputRow = findViewById(R.id.terminal_toolbar_stacked_text_input_row);
         if (stackedTextInputRow == null) return;
 
@@ -889,19 +901,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         }
     }
 
-    private boolean isTerminalToolbarTextInputStacked() {
+    private boolean isTerminalToolbarTextInputStackedVisible() {
         View stackedTextInputRow = findViewById(R.id.terminal_toolbar_stacked_text_input_row);
-        return stackedTextInputRow != null && stackedTextInputRow.getVisibility() == View.VISIBLE;
+        return mUseStackedTerminalToolbarTextInput && stackedTextInputRow != null &&
+            stackedTextInputRow.getVisibility() == View.VISIBLE;
     }
 
     private EditText getTerminalToolbarTextInputView() {
-        if (isTerminalToolbarTextInputStacked())
+        if (mUseStackedTerminalToolbarTextInput)
             return findViewById(R.id.terminal_toolbar_stacked_text_input);
         return findViewById(R.id.terminal_toolbar_text_input);
     }
 
     public boolean isTerminalViewSelected() {
-        if (isTerminalToolbarTextInputStacked()) {
+        if (isTerminalToolbarTextInputStackedVisible()) {
             EditText textInputView = getTerminalToolbarTextInputView();
             return textInputView == null || !textInputView.hasFocus();
         }
@@ -909,7 +922,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     public boolean isTerminalToolbarTextInputViewSelected() {
-        if (isTerminalToolbarTextInputStacked()) {
+        if (isTerminalToolbarTextInputStackedVisible()) {
             EditText textInputView = getTerminalToolbarTextInputView();
             return textInputView != null && textInputView.hasFocus();
         }
