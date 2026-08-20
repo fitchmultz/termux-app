@@ -16,6 +16,7 @@ Compatibility with other devices, Android releases, keyboards, architectures, pa
 The integrated Fold profile:
 
 - identifies itself as `Termux Fold` version `0.119.0-fold.1` with monotonic version code `2026082001`;
+- builds and packages only `arm64-v8a` with the Android 7 bootstrap variant;
 - enables Samsung character-based terminal input;
 - shows a real Android toolbar text field simultaneously with extra keys;
 - places the terminal-session drawer at the logical end/right edge;
@@ -33,7 +34,8 @@ Java equivalents of shared TypeScript types/schemas are used at the new boundari
 - Termux-specific extra-key actions live once in `ExtraKeysConstants` and are reused by the default profile, display map, dispatcher, and tests;
 - Android view references use generated `R.id` resources;
 - synchronized output uses one DEC mode bit and typed emulator/session methods;
-- schema/default consistency, extra-key parsing, and release metadata are CI assertions.
+- one immutable root Gradle profile supplies version, label, package variant, and ABI filters to every module;
+- schema/default consistency, extra-key parsing, release metadata, and ARM64 targeting are CI assertions.
 
 ## Patch structure
 

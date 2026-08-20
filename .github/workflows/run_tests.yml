@@ -73,6 +73,7 @@ jobs:
           grep -Fx 'versionCode=2026082001' <<<"$metadata"
           grep -Fx 'applicationLabel=Termux Fold' <<<"$metadata"
           grep -Fx 'packageVariant=apt-android-7' <<<"$metadata"
+          grep -Fx 'supportedAbis=arm64-v8a' <<<"$metadata"
       - name: Compile debug APK without publishing artifacts
         run: ./gradlew --no-daemon :app:assembleDebug
       - name: Compile and verify reproducible unsigned release APK
