@@ -24,6 +24,17 @@ The integrated Fold profile:
 
 Properties remain available as recovery switches, but their defaults are the Fold choices rather than upstream's general-purpose choices. Release metadata is centralized in `app/build.gradle` and asserted by the read-only integration workflow so label/version drift fails CI.
 
+## Shared contracts
+
+Java equivalents of shared TypeScript types/schemas are used at the new boundaries:
+
+- property names, accepted wire values, defaults, and parser registration live in `TermuxPropertyConstants`/`TermuxSharedProperties`;
+- drawer placement crosses into UI code as the `TerminalSessionDrawerPosition` enum, not an unchecked string;
+- Termux-specific extra-key actions live once in `ExtraKeysConstants` and are reused by the default profile, display map, dispatcher, and tests;
+- Android view references use generated `R.id` resources;
+- synchronized output uses one DEC mode bit and typed emulator/session methods;
+- schema/default consistency, extra-key parsing, and release metadata are CI assertions.
+
 ## Patch structure
 
 Generic fixes stay isolated when that makes review, testing, or upstream rebasing safer. The final integration branch adds this device profile explicitly. That separation is maintenance hygiene, not a commitment to support generic installations.
