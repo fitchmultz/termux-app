@@ -283,13 +283,8 @@ public class PermissionUtils {
         Logger.logVerbose(LOG_TAG, "Checking storage permission");
 
         String errmsg;
-        Boolean requestLegacyStoragePermission = null;
-
-        if (prioritizeManageExternalStoragePermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-            requestLegacyStoragePermission = false;
-
-        if (requestLegacyStoragePermission == null)
-            requestLegacyStoragePermission = isLegacyExternalStoragePossible(context);
+        boolean requestLegacyStoragePermission = shouldRequestLegacyStoragePermission(
+            prioritizeManageExternalStoragePermission, Build.VERSION.SDK_INT, isLegacyExternalStoragePossible(context));
 
         boolean checkIfHasRequestedLegacyExternalStorage = checkIfHasRequestedLegacyExternalStorage(context);
 
@@ -323,6 +318,13 @@ public class PermissionUtils {
         }
 
         return false;
+    }
+
+    /** Select the legacy permission path without depending on Android framework state, so the policy remains testable. */
+    static boolean shouldRequestLegacyStoragePermission(boolean prioritizeManageExternalStoragePermission,
+                                                        int sdkInt, boolean legacyExternalStoragePossible) {
+        return legacyExternalStoragePossible &&
+            !(prioritizeManageExternalStoragePermission && sdkInt >= Build.VERSION_CODES.R);
     }
 
     /**
