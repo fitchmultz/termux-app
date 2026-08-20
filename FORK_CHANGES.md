@@ -8,7 +8,7 @@ This is the canonical concise inventory of intentional differences from the audi
 - Keeps package ID `com.termux` and prefix `/data/data/com.termux/files/usr`; this is an in-place fork, not a side-by-side package.
 - Uses label `Termux Fold`; shipped source is `0.119.0-fold.1` (`2026082001`) at tag `fold-v0.119.0-fold.1-rc1`.
 - Packages only `arm64-v8a` with the `apt-android-7` bootstrap; split release APKs are disabled.
-- Retains target SDK 28 because targeting Android 10/API 29 or later prevents Termux from executing package-installed programs from its writable prefix. Android 17 may therefore show an old-app or **Install anyway** warning.
+- Retains target SDK 28 for direct execution of programs from the writable Termux prefix. Modern targets require routing execution through Android's system linker plus a separately patched package ecosystem; forced-linker tests currently break Node test workers and `age-keygen`. Android 17 may therefore show an old-app or **Install anyway** warning.
 - Uses a dedicated Android signing identity. Signing material must never be committed or made public, but protected GitHub Actions secrets and signed GitHub Releases are allowed when deliberately configured.
 
 ## Fixes
@@ -40,7 +40,8 @@ This is the canonical concise inventory of intentional differences from the audi
 - Tests the Fold extra-key grammar, storage policy, drawer enum/default, simultaneous-input defaults, and synchronized-output behavior.
 - Uses `fold/main` as the GitHub default; `master` remains an audited reference point, not an automatic synchronization target.
 - Treats this as a permanent personal appliance fork. Upstream PRs and wholesale rebases/syncs are not goals; relevant security or compatibility fixes are selectively reviewed and cherry-picked.
-- Keeps one read-only `Fold checks` workflow for wrapper validation, full unit tests, packaged metadata/ABI/signature checks, and two reproducible unsigned builds. Inherited artifact/release/dependency/JitPack workflows remain disabled.
+- Keeps `Fold checks` read-only for wrapper validation, full unit tests, packaged metadata/ABI/signature checks, and two reproducible unsigned builds.
+- Provides a manually dispatched, protected `Fold signed release` workflow: an unprivileged job builds twice, then a fresh environment-gated job signs and verifies; public Release publication is a separate explicit boolean gate and includes only the signed APK/checksum/provenance. Inherited upstream artifact/release/dependency/JitPack workflows remain disabled.
 
 ## In development, not yet merged into `fold/main`
 
