@@ -85,6 +85,9 @@ jobs:
 
           # Run clean separately: the upstream clean task removes downloaded bootstrap archives.
           ./gradlew --no-daemon clean
+          # The upstream clean task deletes the embedded bootstrap archives, and the native build
+          # may run before Java compilation's implicit download dependency.
+          ./gradlew --no-daemon :app:downloadBootstraps
           ./gradlew --no-daemon :app:assembleRelease
           mapfile -t rebuilt_apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
           test "${#rebuilt_apks[@]}" -eq 1
