@@ -149,7 +149,7 @@ jobs:
           compression-level: 0
 
   sign-and-release:
-    name: Protected signing and GitHub Release
+    name: Isolated signing and GitHub Release
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
