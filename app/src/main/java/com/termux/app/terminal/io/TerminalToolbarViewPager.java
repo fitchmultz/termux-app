@@ -20,15 +20,17 @@ public class TerminalToolbarViewPager {
 
         final TermuxActivity mActivity;
         String mSavedTextInput;
+        final boolean mExtraKeysOnly;
 
-        public PageAdapter(TermuxActivity activity, String savedTextInput) {
+        public PageAdapter(TermuxActivity activity, String savedTextInput, boolean extraKeysOnly) {
             this.mActivity = activity;
             this.mSavedTextInput = savedTextInput;
+            this.mExtraKeysOnly = extraKeysOnly;
         }
 
         @Override
         public int getCount() {
-            return 2;
+            return mExtraKeysOnly ? 1 : 2;
         }
 
         @Override
@@ -58,26 +60,8 @@ public class TerminalToolbarViewPager {
             } else {
                 layout = inflater.inflate(R.layout.view_terminal_toolbar_text_input, collection, false);
                 final EditText editText = layout.findViewById(R.id.terminal_toolbar_text_input);
-
-                if (mSavedTextInput != null) {
-                    editText.setText(mSavedTextInput);
-                    mSavedTextInput = null;
-                }
-
-                editText.setOnEditorActionListener((v, actionId, event) -> {
-                    TerminalSession session = mActivity.getCurrentSession();
-                    if (session != null) {
-                        if (session.isRunning()) {
-                            String textToSend = editText.getText().toString();
-                            if (textToSend.length() == 0) textToSend = "\r";
-                            session.write(textToSend);
-                        } else {
-                            mActivity.getTermuxTerminalSessionClient().removeFinishedSession(session);
-                        }
-                        editText.setText("");
-                    }
-                    return true;
-                });
+                setupTextInput(mActivity, editText, mSavedTextInput);
+                mSavedTextInput = null;
             }
             collection.addView(layout);
             return layout;
@@ -88,6 +72,27 @@ public class TerminalToolbarViewPager {
             collection.removeView((View) view);
         }
 
+    }
+
+    /** Configure either the legacy pager field or the opt-in field stacked above the extra keys. */
+    public static void setupTextInput(TermuxActivity activity, EditText editText, String savedTextInput) {
+        if (editText == null) return;
+        if (savedTextInput != null) editText.setText(savedTextInput);
+
+        editText.setOnEditorActionListener((v, actionId, event) -> {
+            TerminalSession session = activity.getCurrentSession();
+            if (session != null) {
+                if (session.isRunning()) {
+                    String textToSend = editText.getText().toString();
+                    if (textToSend.length() == 0) textToSend = "\r";
+                    session.write(textToSend);
+                } else {
+                    activity.getTermuxTerminalSessionClient().removeFinishedSession(session);
+                }
+                editText.setText("");
+            }
+            return true;
+        });
     }
 
 
