@@ -66,10 +66,51 @@ public class SynchronizedOutputTest extends TestCase {
         append("\033[?2026habc");
         mSession.notifyScreenUpdate();
         assertEquals(0, mClient.textChanged);
+        assertNotSame(mEmulator, mEmulator.getRendererState());
 
         mSession.handleSynchronizedOutputTimeout();
         assertFalse(mEmulator.isSynchronizedOutputActive());
+        assertSame(mEmulator, mEmulator.getRendererState());
         assertEquals(1, mClient.textChanged);
+    }
+
+    public void testRendererRetainsCompletedVisibleScreenDuringFrame() {
+        append("old");
+        append("\033[?2026h");
+        TerminalRendererState completed = mEmulator.getRendererState();
+        assertNotSame(mEmulator, completed);
+        assertEquals("old", firstCompletedLine(completed));
+        assertEquals(0, completed.getScreen().getActiveTranscriptRows());
+        assertEquals(ROWS, completed.getScreen().mTotalRows);
+
+        append("\rNEW");
+        assertEquals("NEW", firstCompletedLine(mEmulator));
+        assertEquals("old", firstCompletedLine(mEmulator.getRendererState()));
+
+        append("\033[?2026l");
+        assertSame(mEmulator, mEmulator.getRendererState());
+        assertEquals("NEW", firstCompletedLine(mEmulator.getRendererState()));
+    }
+
+    public void testRepeatedSetRetainsOriginalCompletedSnapshot() {
+        append("old\033[?2026h");
+        TerminalRendererState completed = mEmulator.getRendererState();
+        append("\rNEW\033[?2026h");
+
+        assertSame(completed, mEmulator.getRendererState());
+        assertEquals("old", firstCompletedLine(completed));
+    }
+
+    public void testRendererSnapshotCopiesPaletteAndResetReleasesIt() {
+        append("\033[?2026h");
+        TerminalRendererState completed = mEmulator.getRendererState();
+        int completedColor = completed.getPalette()[0];
+        mEmulator.mColors.mCurrentColors[0] ^= 0x00ffffff;
+
+        assertEquals(completedColor, completed.getPalette()[0]);
+        assertTrue(completedColor != mEmulator.getPalette()[0]);
+        mEmulator.reset();
+        assertSame(mEmulator, mEmulator.getRendererState());
     }
 
     public void testVisualCallbacksAreDeferredWithText() {
@@ -89,6 +130,10 @@ public class SynchronizedOutputTest extends TestCase {
         assertFalse(mClient.lastCursorState);
         assertEquals(1, mClient.colorsChanged);
         assertEquals(1, mClient.textChanged);
+    }
+
+    private String firstCompletedLine(TerminalRendererState state) {
+        return state.getScreen().getSelectedText(0, 0, COLUMNS - 1, 0);
     }
 
     private void append(String text) {

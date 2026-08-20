@@ -29,12 +29,32 @@ public final class TerminalBuffer {
      *                   the top of the screen.
      */
     public TerminalBuffer(int columns, int totalRows, int screenRows) {
+        this(columns, totalRows, screenRows, true);
+    }
+
+    private TerminalBuffer(int columns, int totalRows, int screenRows, boolean initializeVisibleRows) {
         mColumns = columns;
         mTotalRows = totalRows;
         mScreenRows = screenRows;
         mLines = new TerminalRow[totalRows];
 
-        blockSet(0, 0, columns, screenRows, ' ', TextStyle.NORMAL);
+        if (initializeVisibleRows)
+            blockSet(0, 0, columns, screenRows, ' ', TextStyle.NORMAL);
+    }
+
+    /**
+     * Deep-copy only the currently visible rows for a bounded presentation snapshot.
+     * Transcript rows are intentionally excluded so every synchronized frame costs O(columns *
+     * screenRows), independent of configured scrollback size.
+     */
+    TerminalBuffer snapshotVisibleScreen() {
+        TerminalBuffer snapshot = new TerminalBuffer(mColumns, mScreenRows, mScreenRows, false);
+        for (int row = 0; row < mScreenRows; row++) {
+            TerminalRow source = mLines[externalToInternalRow(row)];
+            snapshot.mLines[row] = source == null
+                ? new TerminalRow(mColumns, TextStyle.NORMAL) : new TerminalRow(source);
+        }
+        return snapshot;
     }
 
     public String getTranscriptText() {
