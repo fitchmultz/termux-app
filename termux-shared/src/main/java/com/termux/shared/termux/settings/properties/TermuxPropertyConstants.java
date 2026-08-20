@@ -82,7 +82,7 @@ import java.util.Set;
  *      - Add `KEY_DISABLE_FILE_SHARE_RECEIVER` and `KEY_DISABLE_FILE_VIEW_RECEIVER`.
  *
  * - 0.19.0 (2026-08-20)
- *      - Add `KEY_SHOW_TERMINAL_TOOLBAR_TEXT_INPUT`.
+ *      - Add `KEY_SHOW_TERMINAL_TOOLBAR_TEXT_INPUT` and `KEY_TERMINAL_SESSION_DRAWER_POSITION`.
  */
 
 /**
@@ -313,6 +313,19 @@ public final class TermuxPropertyConstants {
     public static final String IVALUE_BACK_KEY_BEHAVIOUR_ESCAPE = "escape";
     public static final String DEFAULT_IVALUE_BACK_KEY_BEHAVIOUR = IVALUE_BACK_KEY_BEHAVIOUR_BACK;
 
+    /** Defines which logical side contains the terminal session drawer. */
+    public static final String KEY_TERMINAL_SESSION_DRAWER_POSITION = "terminal-session-drawer-position";
+    public static final String IVALUE_TERMINAL_SESSION_DRAWER_POSITION_START = "start";
+    public static final String IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END = "end";
+    public static final String DEFAULT_IVALUE_TERMINAL_SESSION_DRAWER_POSITION = IVALUE_TERMINAL_SESSION_DRAWER_POSITION_START;
+
+    /** Defines the bidirectional map for terminal session drawer positions. */
+    public static final ImmutableBiMap<String, String> MAP_TERMINAL_SESSION_DRAWER_POSITIONS =
+        new ImmutableBiMap.Builder<String, String>()
+            .put(IVALUE_TERMINAL_SESSION_DRAWER_POSITION_START, IVALUE_TERMINAL_SESSION_DRAWER_POSITION_START)
+            .put(IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END, IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END)
+            .build();
+
     /** Defines the bidirectional map for back key behaviour values and their internal values */
     public static final ImmutableBiMap<String, String> MAP_BACK_KEY_BEHAVIOUR =
         new ImmutableBiMap.Builder<String, String>()
@@ -437,6 +450,7 @@ public final class TermuxPropertyConstants {
         KEY_EXTRA_KEYS_STYLE,
         KEY_NIGHT_MODE,
         KEY_SOFT_KEYBOARD_TOGGLE_BEHAVIOUR,
+        KEY_TERMINAL_SESSION_DRAWER_POSITION,
         KEY_VOLUME_KEYS_BEHAVIOUR
     ));
 

@@ -1,6 +1,5 @@
 package com.termux.app;
 
-import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
@@ -51,6 +50,7 @@ import com.termux.shared.termux.interact.TextInputDialogUtils;
 import com.termux.shared.logger.Logger;
 import com.termux.shared.termux.TermuxUtils;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
+import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.termux.shared.theme.NightMode;
 import com.termux.shared.view.ViewUtils;
@@ -62,6 +62,7 @@ import com.termux.view.TerminalViewClient;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.viewpager.widget.ViewPager;
 
@@ -498,6 +499,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void setTermuxSessionsListView() {
+        View terminalSessionsDrawer = findViewById(R.id.terminal_sessions_drawer);
+        DrawerLayout.LayoutParams drawerLayoutParams = (DrawerLayout.LayoutParams) terminalSessionsDrawer.getLayoutParams();
+        drawerLayoutParams.gravity = getTerminalSessionDrawerGravity();
+        terminalSessionsDrawer.setLayoutParams(drawerLayoutParams);
+
         ListView termuxSessionsListView = findViewById(R.id.terminal_sessions_list);
         mTermuxSessionListViewController = new TermuxSessionsListViewController(this, mTermuxService.getTermuxSessions());
         termuxSessionsListView.setAdapter(mTermuxSessionListViewController);
@@ -613,10 +619,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
 
 
-    @SuppressLint("RtlHardcoded")
     @Override
     public void onBackPressed() {
-        if (getDrawer().isDrawerOpen(Gravity.LEFT)) {
+        if (getDrawer().isDrawerOpen(getTerminalSessionDrawerGravity())) {
             getDrawer().closeDrawers();
         } else {
             finishActivityIfNotFinishing();
@@ -850,6 +855,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     public DrawerLayout getDrawer() {
         return (DrawerLayout) findViewById(R.id.drawer_layout);
+    }
+
+    public int getTerminalSessionDrawerGravity() {
+        return TermuxPropertyConstants.IVALUE_TERMINAL_SESSION_DRAWER_POSITION_END.equals(
+            mProperties.getTerminalSessionDrawerPosition()) ? GravityCompat.END : GravityCompat.START;
     }
 
 

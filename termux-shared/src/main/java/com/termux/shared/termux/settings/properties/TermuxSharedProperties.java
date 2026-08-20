@@ -298,6 +298,8 @@ public abstract class TermuxSharedProperties {
                 return (String) getNightModeInternalPropertyValueFromValue(value);
             case TermuxPropertyConstants.KEY_SOFT_KEYBOARD_TOGGLE_BEHAVIOUR:
                 return (String) getSoftKeyboardToggleBehaviourInternalPropertyValueFromValue(value);
+            case TermuxPropertyConstants.KEY_TERMINAL_SESSION_DRAWER_POSITION:
+                return (String) getTerminalSessionDrawerPositionInternalPropertyValueFromValue(value);
             case TermuxPropertyConstants.KEY_VOLUME_KEYS_BEHAVIOUR:
                 return (String) getVolumeKeysBehaviourInternalPropertyValueFromValue(value);
 
@@ -560,6 +562,15 @@ public abstract class TermuxSharedProperties {
         return (String) SharedProperties.getDefaultIfNotInMap(TermuxPropertyConstants.KEY_SOFT_KEYBOARD_TOGGLE_BEHAVIOUR, TermuxPropertyConstants.MAP_SOFT_KEYBOARD_TOGGLE_BEHAVIOUR, SharedProperties.toLowerCase(value), TermuxPropertyConstants.DEFAULT_IVALUE_SOFT_KEYBOARD_TOGGLE_BEHAVIOUR, true, LOG_TAG);
     }
 
+    /** Return a validated logical side for the terminal session drawer. */
+    public static String getTerminalSessionDrawerPositionInternalPropertyValueFromValue(String value) {
+        return (String) SharedProperties.getDefaultIfNotInMap(
+            TermuxPropertyConstants.KEY_TERMINAL_SESSION_DRAWER_POSITION,
+            TermuxPropertyConstants.MAP_TERMINAL_SESSION_DRAWER_POSITIONS,
+            SharedProperties.toLowerCase(value),
+            TermuxPropertyConstants.DEFAULT_IVALUE_TERMINAL_SESSION_DRAWER_POSITION, true, LOG_TAG);
+    }
+
     /**
      * Returns the value itself if it is not {@code null}, otherwise returns {@link TermuxPropertyConstants#DEFAULT_IVALUE_VOLUME_KEYS_BEHAVIOUR}.
      *
@@ -668,6 +679,10 @@ public abstract class TermuxSharedProperties {
 
     public String getDefaultWorkingDirectory() {
         return (String) getInternalPropertyValue(TermuxPropertyConstants.KEY_DEFAULT_WORKING_DIRECTORY, true);
+    }
+
+    public String getTerminalSessionDrawerPosition() {
+        return (String) getInternalPropertyValue(TermuxPropertyConstants.KEY_TERMINAL_SESSION_DRAWER_POSITION, true);
     }
 
     public String getNightMode() {
