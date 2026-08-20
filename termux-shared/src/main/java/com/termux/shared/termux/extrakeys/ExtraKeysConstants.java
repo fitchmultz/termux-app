@@ -9,6 +9,13 @@ import java.util.Map;
 
 public class ExtraKeysConstants {
 
+    /** Termux-specific action names shared by configuration, display, dispatch, and tests. */
+    public static final String ACTION_KEYBOARD = "KEYBOARD";
+    public static final String ACTION_DRAWER = "DRAWER";
+    public static final String ACTION_PASTE = "PASTE";
+    public static final String ACTION_SCROLL = "SCROLL";
+    public static final String ACTION_TEXTBAR = "TEXTBAR";
+
     /** Defines the repetitive keys that can be passed to {@link ExtraKeysView#setRepetitiveKeys(List)}. */
     public static List<String> PRIMARY_REPETITIVE_KEYS = Arrays.asList(
         "UP", "DOWN", "LEFT", "RIGHT",
@@ -90,11 +97,11 @@ public class ExtraKeysConstants {
             put("TAB", "↹"); // U+21B9 ↹ LEFTWARDS ARROW TO BAR OVER RIGHTWARDS ARROW TO BAR
             put("BKSP", "⌫"); // U+232B ⌫ ERASE TO THE LEFT sometimes seen and easy to understand
             put("DEL", "⌦"); // U+2326 ⌦ ERASE TO THE RIGHT not well known but easy to understand
-            put("DRAWER", "☰"); // U+2630 ☰ TRIGRAM FOR HEAVEN not well known but easy to understand
-            put("KEYBOARD", "⌨"); // U+2328 ⌨ KEYBOARD not well known but easy to understand
-            put("PASTE", "⎘"); // U+2398
-            put("SCROLL", "⇳"); // U+21F3
-            put("TEXTBAR", "▤"); // U+25A4
+            put(ACTION_DRAWER, "☰"); // U+2630 ☰ TRIGRAM FOR HEAVEN not well known but easy to understand
+            put(ACTION_KEYBOARD, "⌨"); // U+2328 ⌨ KEYBOARD not well known but easy to understand
+            put(ACTION_PASTE, "⎘"); // U+2398
+            put(ACTION_SCROLL, "⇳"); // U+21F3
+            put(ACTION_TEXTBAR, "▤"); // U+25A4
         }};
 
         public static final ExtraKeyDisplayMap LESS_KNOWN_CHARACTERS_DISPLAY = new ExtraKeyDisplayMap() {{

@@ -81,22 +81,22 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
 
     @Override
     public void onTerminalExtraKeyButtonClick(View view, String key, boolean ctrlDown, boolean altDown, boolean shiftDown, boolean fnDown) {
-        if ("KEYBOARD".equals(key)) {
+        if (ExtraKeysConstants.ACTION_KEYBOARD.equals(key)) {
             if(mTermuxTerminalViewClient != null)
                 mTermuxTerminalViewClient.onToggleSoftKeyboardRequest();
-        } else if ("DRAWER".equals(key)) {
+        } else if (ExtraKeysConstants.ACTION_DRAWER.equals(key)) {
             DrawerLayout drawerLayout = mTermuxTerminalViewClient.getActivity().getDrawer();
             int drawerGravity = mActivity.getTerminalSessionDrawerGravity();
             if (drawerLayout.isDrawerOpen(drawerGravity))
                 drawerLayout.closeDrawer(drawerGravity);
             else
                 drawerLayout.openDrawer(drawerGravity);
-        } else if ("PASTE".equals(key)) {
+        } else if (ExtraKeysConstants.ACTION_PASTE.equals(key)) {
             if(mTermuxTerminalSessionActivityClient != null)
                 mTermuxTerminalSessionActivityClient.onPasteTextFromClipboard(null);
-        } else if ("TEXTBAR".equals(key)) {
+        } else if (ExtraKeysConstants.ACTION_TEXTBAR.equals(key)) {
             mActivity.toggleTerminalToolbarTextInput();
-        } else if ("SCROLL".equals(key)) {
+        } else if (ExtraKeysConstants.ACTION_SCROLL.equals(key)) {
             TerminalView terminalView = mTermuxTerminalViewClient.getActivity().getTerminalView();
             if (terminalView != null && terminalView.mEmulator != null)
                 terminalView.mEmulator.toggleAutoScrollDisabled();

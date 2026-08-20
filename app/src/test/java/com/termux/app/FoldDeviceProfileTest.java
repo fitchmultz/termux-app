@@ -27,8 +27,8 @@ public class FoldDeviceProfileTest {
         assertEquals(2, matrix.length);
         assertEquals(6, matrix[0].length);
         assertEquals(6, matrix[1].length);
-        assertEquals("DRAWER", matrix[0][5].getKey());
-        assertEquals("KEYBOARD", matrix[1][5].getKey());
-        assertEquals("TEXTBAR", matrix[1][5].getPopup().getKey());
+        assertEquals(ExtraKeysConstants.ACTION_DRAWER, matrix[0][5].getKey());
+        assertEquals(ExtraKeysConstants.ACTION_KEYBOARD, matrix[1][5].getKey());
+        assertEquals(ExtraKeysConstants.ACTION_TEXTBAR, matrix[1][5].getPopup().getKey());
     }
 }

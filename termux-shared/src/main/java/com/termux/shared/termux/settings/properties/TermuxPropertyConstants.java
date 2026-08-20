@@ -7,6 +7,7 @@ import com.termux.shared.file.FileUtils;
 import com.termux.shared.file.filesystem.FileType;
 import com.termux.shared.settings.properties.SharedProperties;
 import com.termux.shared.termux.TermuxConstants;
+import com.termux.shared.termux.extrakeys.ExtraKeysConstants;
 import com.termux.shared.logger.Logger;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.view.TerminalView;
@@ -348,7 +349,12 @@ public final class TermuxPropertyConstants {
     /** Defines the key for extra keys */
     public static final String KEY_EXTRA_KEYS =  "extra-keys"; // Default: "extra-keys"
     //public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[[ESC, TAB, CTRL, ALT, {key: '-', popup: '|'}, DOWN, UP]]"; // Single row
-    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[[ESC, TAB, {key: CTRL, popup: {macro: \"CTRL ALT UP\", display: PREV}}, {key: ALT, popup: {macro: \"CTRL ALT DOWN\", display: NEXT}}, {macro: \"CTRL ALT DOWN\", display: NEXT}, DRAWER], [HOME, LEFT, {key: DOWN, popup: PGDN}, {key: UP, popup: PGUP}, RIGHT, {key: KEYBOARD, popup: TEXTBAR}]]";
+    public static final String DEFAULT_IVALUE_EXTRA_KEYS =
+        "[[ESC, TAB, {key: CTRL, popup: {macro: \"CTRL ALT UP\", display: PREV}}, " +
+        "{key: ALT, popup: {macro: \"CTRL ALT DOWN\", display: NEXT}}, " +
+        "{macro: \"CTRL ALT DOWN\", display: NEXT}, " + ExtraKeysConstants.ACTION_DRAWER +
+        "], [HOME, LEFT, {key: DOWN, popup: PGDN}, {key: UP, popup: PGUP}, RIGHT, " +
+        "{key: " + ExtraKeysConstants.ACTION_KEYBOARD + ", popup: " + ExtraKeysConstants.ACTION_TEXTBAR + "}]]";
 
     /** Defines the key for extra keys style */
     public static final String KEY_EXTRA_KEYS_STYLE =  "extra-keys-style"; // Default: "extra-keys-style"
