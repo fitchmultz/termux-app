@@ -36,7 +36,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Defines one immutable root Gradle profile for version, label, bootstrap variant, and ABI filters across modules.
 - Extends property schemas and tests so keys, accepted values, defaults, parsers, and UI consumers cannot silently drift.
-- Tests the Fold extra-key grammar, storage policy, drawer enum/default, simultaneous-input defaults, and synchronized-output behavior.
+- Tests the Fold extra-key grammar, storage policy, drawer enum/default, simultaneous-input defaults, synchronized-output behavior, and bounded large OSC 52 clipboard writes.
 - Uses `fold/main` as the GitHub default; `master` remains an audited reference point, not an automatic synchronization target.
 - Treats this as a permanent personal appliance fork. Upstream PRs and wholesale rebases/syncs are not goals; relevant security or compatibility fixes are selectively reviewed and cherry-picked.
 - Keeps one read-only `Fold checks` workflow for wrapper validation, full unit tests, packaged metadata/ABI/signature checks, and two reproducible unsigned builds. Inherited artifact/release/dependency/JitPack workflows remain disabled.
@@ -44,3 +44,4 @@ This is the canonical concise inventory of intentional differences from the audi
 ## In development, not yet merged into `fold/main`
 
 - `fold/synchronized-output-snapshot` / `0.119.0-fold.2` retains a bounded immutable copy of the last completed visible terminal frame while mode 2026 is active. This addresses Samsung portrait Pop-up View forcing `onDraw()` between PTY chunks; physical portrait/landscape validation is still required.
+- `fold/clipboard-osc52` / `0.119.0-fold.3` raises only OSC 52's parser bound to 512 KiB, enough for roughly 384 KiB of UTF-8 clipboard text while staying below Android's Binder transaction limit. Other OSC and device-control strings retain the upstream 8 KiB bound.

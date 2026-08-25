@@ -91,8 +91,9 @@ public final class TerminalEmulator implements TerminalRendererState {
     /** The number of parameter arguments including colon separated sub-parameters. */
     private static final int MAX_ESCAPE_PARAMETERS = 32;
 
-    /** Needs to be large enough to contain reasonable OSC 52 pastes. */
     private static final int MAX_OSC_STRING_LENGTH = 8192;
+    /** Keeps large clipboard writes below Android's Binder transaction limit after Base64 decoding. */
+    private static final int MAX_OSC_52_STRING_LENGTH = 512 * 1024;
 
     /** DECSET 1 - application cursor keys. */
     private static final int DECSET_BIT_APPLICATION_CURSOR_KEYS = 1;
@@ -2362,7 +2363,8 @@ public final class TerminalEmulator implements TerminalRendererState {
     }
 
     private void collectOSCArgs(int b) {
-        if (mOSCOrDeviceControlArgs.length() < MAX_OSC_STRING_LENGTH) {
+        int maxLength = mOSCOrDeviceControlArgs.indexOf("52;") == 0 ? MAX_OSC_52_STRING_LENGTH : MAX_OSC_STRING_LENGTH;
+        if (mOSCOrDeviceControlArgs.length() < maxLength) {
             mOSCOrDeviceControlArgs.appendCodePoint(b);
             continueSequence(mEscapeState);
         } else {
