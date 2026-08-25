@@ -58,6 +58,16 @@ public final class TerminalRow {
         clear(style);
     }
 
+    /** Deep-copy a row for an immutable presentation snapshot. */
+    TerminalRow(TerminalRow source) {
+        mColumns = source.mColumns;
+        mText = Arrays.copyOf(source.mText, source.mText.length);
+        mSpaceUsed = source.mSpaceUsed;
+        mLineWrap = source.mLineWrap;
+        mStyle = Arrays.copyOf(source.mStyle, source.mStyle.length);
+        mHasNonOneWidthOrSurrogateChars = source.mHasNonOneWidthOrSurrogateChars;
+    }
+
     /** NOTE: The sourceX2 is exclusive. */
     public void copyInterval(TerminalRow line, int sourceX1, int sourceX2, int destinationX) {
         mHasNonOneWidthOrSurrogateChars |= line.mHasNonOneWidthOrSurrogateChars;

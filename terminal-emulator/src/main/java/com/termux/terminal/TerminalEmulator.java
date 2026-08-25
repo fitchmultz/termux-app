@@ -26,7 +26,7 @@ import java.util.Stack;
  * html - document for konsole - accessible!</li>
  * </ul>
  */
-public final class TerminalEmulator {
+public final class TerminalEmulator implements TerminalRendererState {
 
     /** Log unknown or unimplemented escape sequences received from the shell process. */
     private static final boolean LOG_ESCAPE_SEQUENCES = false;
@@ -91,8 +91,9 @@ public final class TerminalEmulator {
     /** The number of parameter arguments including colon separated sub-parameters. */
     private static final int MAX_ESCAPE_PARAMETERS = 32;
 
-    /** Needs to be large enough to contain reasonable OSC 52 pastes. */
     private static final int MAX_OSC_STRING_LENGTH = 8192;
+    /** Keeps large clipboard writes below Android's Binder transaction limit after Base64 decoding. */
+    private static final int MAX_OSC_52_STRING_LENGTH = 512 * 1024;
 
     /** DECSET 1 - application cursor keys. */
     private static final int DECSET_BIT_APPLICATION_CURSOR_KEYS = 1;
@@ -215,6 +216,9 @@ public final class TerminalEmulator {
 
     /** A cursor visibility callback received inside a synchronized frame and deferred until its end. */
     private boolean mSynchronizedOutputCursorStateChanged;
+
+    /** Last completed visible state retained while synchronized output mutates the live emulator. */
+    private TerminalRendererState mSynchronizedOutputRendererState;
 
     /**
      * If insert mode (as opposed to replace mode) is active. In insert mode new characters are inserted, pushing
@@ -354,8 +358,35 @@ public final class TerminalEmulator {
         setCursorBlinkState(true);
     }
 
+    @Override
     public TerminalBuffer getScreen() {
         return mScreen;
+    }
+
+    @Override
+    public int getRows() {
+        return mRows;
+    }
+
+    @Override
+    public int getColumns() {
+        return mColumns;
+    }
+
+    @Override
+    public int[] getPalette() {
+        return mColors.mCurrentColors;
+    }
+
+    /** State a renderer must use; immutable while a synchronized frame is in progress. */
+    public TerminalRendererState getRendererState() {
+        return isSynchronizedOutputActive()
+            ? Objects.requireNonNull(mSynchronizedOutputRendererState, "active synchronized output requires a completed-screen snapshot")
+            : this;
+    }
+
+    private void captureSynchronizedOutputRendererState() {
+        mSynchronizedOutputRendererState = new CompletedScreenSnapshot(this);
     }
 
     /** Whether DEC private mode 2026 is currently deferring screen presentation. */
@@ -370,6 +401,7 @@ public final class TerminalEmulator {
     void finishSynchronizedOutput() {
         if (!isSynchronizedOutputActive()) return;
         setDecsetinternalBit(DECSET_BIT_SYNCHRONIZED_OUTPUT, false);
+        mSynchronizedOutputRendererState = null;
         dispatchDeferredCursorStateChange();
     }
 
@@ -453,15 +485,18 @@ public final class TerminalEmulator {
         mCursorRow = cursor[1];
     }
 
+    @Override
     public int getCursorRow() {
         return mCursorRow;
     }
 
+    @Override
     public int getCursorCol() {
         return mCursorCol;
     }
 
     /** Get the terminal cursor style. It will be one of {@link #TERMINAL_CURSOR_STYLES_LIST} */
+    @Override
     public int getCursorStyle() {
         return mCursorStyle;
     }
@@ -479,6 +514,7 @@ public final class TerminalEmulator {
             mCursorStyle = cursorStyle;
     }
 
+    @Override
     public boolean isReverseVideo() {
         return isDecsetInternalBitSet(DECSET_BIT_REVERSE_VIDEO);
     }
@@ -488,6 +524,7 @@ public final class TerminalEmulator {
     public boolean isCursorEnabled() {
         return isDecsetInternalBitSet(DECSET_BIT_CURSOR_ENABLED);
     }
+    @Override
     public boolean shouldCursorBeVisible() {
         if (!isCursorEnabled())
             return false;
@@ -1216,6 +1253,8 @@ public final class TerminalEmulator {
     }
 
     public void doDecSetOrReset(boolean setting, int externalBit) {
+        if (externalBit == 2026 && setting && !isSynchronizedOutputActive())
+            captureSynchronizedOutputRendererState();
         int internalBit = mapDecSetBitToInternalBit(externalBit);
         if (internalBit != -1) {
             setDecsetinternalBit(internalBit, setting);
@@ -1276,7 +1315,10 @@ public final class TerminalEmulator {
             case 1034: // Interpret "meta" key, sets eighth bit.
                 break;
             case 2026: // Synchronized output. Present the completed frame when reset.
-                if (!setting) dispatchDeferredCursorStateChange();
+                if (!setting) {
+                    mSynchronizedOutputRendererState = null;
+                    dispatchDeferredCursorStateChange();
+                }
                 break;
             case 1048: // Set: Save cursor as in DECSC. Reset: Restore cursor as in DECRC.
                 if (setting)
@@ -2321,7 +2363,8 @@ public final class TerminalEmulator {
     }
 
     private void collectOSCArgs(int b) {
-        if (mOSCOrDeviceControlArgs.length() < MAX_OSC_STRING_LENGTH) {
+        int maxLength = mOSCOrDeviceControlArgs.indexOf("52;") == 0 ? MAX_OSC_52_STRING_LENGTH : MAX_OSC_STRING_LENGTH;
+        if (mOSCOrDeviceControlArgs.length() < maxLength) {
             mOSCOrDeviceControlArgs.appendCodePoint(b);
             continueSequence(mEscapeState);
         } else {
@@ -2593,6 +2636,7 @@ public final class TerminalEmulator {
         mSavedStateMain.mSavedCursorRow = mSavedStateMain.mSavedCursorCol = mSavedStateMain.mSavedEffect = mSavedStateMain.mSavedDecFlags = 0;
         mSavedStateAlt.mSavedCursorRow = mSavedStateAlt.mSavedCursorCol = mSavedStateAlt.mSavedEffect = mSavedStateAlt.mSavedDecFlags = 0;
         mSynchronizedOutputCursorStateChanged = false;
+        mSynchronizedOutputRendererState = null;
         mCurrentDecSetFlags = 0;
         // Initial wrap-around is not accurate but makes terminal more useful, especially on a small screen:
         setDecsetinternalBit(DECSET_BIT_AUTOWRAP, true);
@@ -2636,6 +2680,58 @@ public final class TerminalEmulator {
         if (bracketed) mSession.write("\033[200~");
         mSession.write(text);
         if (bracketed) mSession.write("\033[201~");
+    }
+
+    /** Immutable, visible-row-only presentation retained during one synchronized frame. */
+    private static final class CompletedScreenSnapshot implements TerminalRendererState {
+        private final int mRows;
+        private final int mColumns;
+        private final int mCursorRow;
+        private final int mCursorCol;
+        private final int mCursorStyle;
+        private final boolean mReverseVideo;
+        private final boolean mCursorVisible;
+        private final TerminalBuffer mScreen;
+        private final int[] mPalette;
+
+        CompletedScreenSnapshot(TerminalEmulator emulator) {
+            mRows = emulator.mRows;
+            mColumns = emulator.mColumns;
+            mCursorRow = emulator.mCursorRow;
+            mCursorCol = emulator.mCursorCol;
+            mCursorStyle = emulator.mCursorStyle;
+            mReverseVideo = emulator.isReverseVideo();
+            mCursorVisible = emulator.shouldCursorBeVisible();
+            mScreen = emulator.mScreen.snapshotVisibleScreen();
+            mPalette = Arrays.copyOf(emulator.mColors.mCurrentColors, emulator.mColors.mCurrentColors.length);
+        }
+
+        @Override
+        public int getRows() { return mRows; }
+
+        @Override
+        public int getColumns() { return mColumns; }
+
+        @Override
+        public int getCursorRow() { return mCursorRow; }
+
+        @Override
+        public int getCursorCol() { return mCursorCol; }
+
+        @Override
+        public int getCursorStyle() { return mCursorStyle; }
+
+        @Override
+        public boolean isReverseVideo() { return mReverseVideo; }
+
+        @Override
+        public boolean shouldCursorBeVisible() { return mCursorVisible; }
+
+        @Override
+        public TerminalBuffer getScreen() { return mScreen; }
+
+        @Override
+        public int[] getPalette() { return mPalette; }
     }
 
     /** http://www.vt100.net/docs/vt510-rm/DECSC */

@@ -142,6 +142,14 @@ public class OperatingSystemControlTest extends TerminalTestCase {
 		enterString("\033]52;c;" + Base64.encodeToString("Hello, world".getBytes(), 0) + "\007");
 	}
 
+	public void testLargeClipboardSequenceIsConsumed() {
+		withTerminalSized(10, 2);
+		StringBuilder sequence = new StringBuilder("\033]52;c;");
+		for (int i = 0; i < 16 * 1024; i++) sequence.append('!');
+		enterString(sequence.append('\007').toString());
+		assertLinesAre("          ", "          ");
+	}
+
 	public void testResettingTerminalResetsColor() throws Exception {
 		// "OSC 4; $INDEX; $COLORSPEC BEL" => Change color $INDEX to the color specified by $COLORSPEC.
 		withTerminalSized(4, 4).enterString("\033]4;5;#00FF00\007");
