@@ -712,7 +712,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 onResetTerminalSession(session);
                 return true;
             case CONTEXT_MENU_KILL_PROCESS_ID:
-                showKillSessionDialog(session);
+                mTermuxTerminalSessionActivityClient.confirmSessionExit(session);
                 return true;
             case CONTEXT_MENU_STYLING_ID:
                 showStylingDialog();
@@ -739,20 +739,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         super.onContextMenuClosed(menu);
         // onContextMenuClosed() is triggered twice if back button is pressed to dismiss instead of tap for some reason
         mTerminalView.onContextMenuClosed(menu);
-    }
-
-    private void showKillSessionDialog(TerminalSession session) {
-        if (session == null) return;
-
-        final AlertDialog.Builder b = new AlertDialog.Builder(this);
-        b.setIcon(android.R.drawable.ic_dialog_alert);
-        b.setMessage(R.string.title_confirm_kill_process);
-        b.setPositiveButton(android.R.string.yes, (dialog, id) -> {
-            dialog.dismiss();
-            session.finishIfRunning();
-        });
-        b.setNegativeButton(android.R.string.no, null);
-        b.show();
     }
 
     private void onResetTerminalSession(TerminalSession session) {

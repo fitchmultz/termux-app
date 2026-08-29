@@ -46,6 +46,8 @@
     <string name="title_max_terminals_reached">Max terminals reached</string>
     <string name="msg_max_terminals_reached">Close down existing ones before creating new.</string>
 
+    <string name="action_rename_session">Rename session</string>
+    <string name="action_exit_session">Exit session</string>
     <string name="title_rename_session">Set session name</string>
     <string name="action_rename_session_confirm">Set</string>
     <string name="title_create_named_session">New named session</string>

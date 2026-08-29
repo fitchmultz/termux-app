@@ -340,6 +340,17 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             setCurrentSession(termuxSession.getTerminalSession());
     }
 
+    public void confirmSessionExit(TerminalSession session) {
+        if (session == null) return;
+
+        new AlertDialog.Builder(mActivity)
+            .setIcon(android.R.drawable.ic_dialog_alert)
+            .setMessage(R.string.title_confirm_kill_process)
+            .setPositiveButton(android.R.string.yes, (dialog, id) -> session.finishIfRunning())
+            .setNegativeButton(android.R.string.no, null)
+            .show();
+    }
+
     @SuppressLint("InflateParams")
     public void renameSession(final TerminalSession sessionToRename) {
         if (sessionToRename == null) return;

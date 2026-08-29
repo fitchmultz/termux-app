@@ -2,6 +2,10 @@
 
 This is the canonical concise inventory of intentional differences from the audited Termux upstream base. Update it in the same commit whenever a fix, feature, default, release constraint, or operational policy changes.
 
+## Unreleased
+
+- Long-pressing a session row opens actions to rename it or exit it through the existing confirmation dialog.
+
 ## Scope and release profile
 
 - Targets only the owner's Samsung `SM-F976U1`, Android 17, ARM64, Samsung Keyboard, and Fold/Pop-up View workflows.
