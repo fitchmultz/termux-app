@@ -1,6 +1,6 @@
 ext.foldProfile = [
-    versionName: "0.119.0-fold.4",
-    versionCode: 2026082904,
+    versionName: "0.119.0-fold.5",
+    versionCode: 2026090305,
     applicationLabel: "Termux Fold",
     packageVariant: "apt-android-7",
     supportedAbis: ["arm64-v8a"].asImmutable()
