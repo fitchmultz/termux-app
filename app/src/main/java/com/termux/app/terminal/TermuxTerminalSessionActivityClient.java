@@ -35,7 +35,9 @@ import com.termux.terminal.TextStyle;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.util.HashSet;
 import java.util.Properties;
+import java.util.Set;
 
 /** The {@link TerminalSessionClient} implementation that may require an {@link Activity} for its interface methods. */
 public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionClientBase {
@@ -43,6 +45,8 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     private final TermuxActivity mActivity;
 
     private static final int MAX_SESSIONS = 8;
+
+    private final Set<TerminalSession> mSessionsPendingExit = new HashSet<>();
 
     private SoundPool mBellSoundPool;
 
@@ -137,6 +141,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     @Override
     public void onSessionFinished(@NonNull TerminalSession finishedSession) {
+        boolean sessionExitRequested = mSessionsPendingExit.remove(finishedSession);
         TermuxService service = mActivity.getTermuxService();
 
         if (service == null || service.wantsToStop()) {
@@ -165,19 +170,17 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
                 mActivity.showToast(toToastTitle(finishedSession) + " - exited", true);
         }
 
-        if (mActivity.getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK)) {
-            // On Android TV devices we need to use older behaviour because we may
-            // not be able to have multiple launcher icons.
-            if (service.getTermuxSessionsSize() > 1 || isPluginExecutionCommandWithPendingResult) {
-                removeFinishedSession(finishedSession);
-            }
-        } else {
-            // Once we have a separate launcher icon for the failsafe session, it
-            // should be safe to auto-close session on exit code '0' or '130'.
-            if (finishedSession.getExitStatus() == 0 || finishedSession.getExitStatus() == 130 || isPluginExecutionCommandWithPendingResult) {
-                removeFinishedSession(finishedSession);
-            }
-        }
+        if (shouldRemoveFinishedSession(sessionExitRequested,
+            mActivity.getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK),
+            service.getTermuxSessionsSize(), finishedSession.getExitStatus(), isPluginExecutionCommandWithPendingResult))
+            removeFinishedSession(finishedSession);
+    }
+
+    static boolean shouldRemoveFinishedSession(boolean sessionExitRequested, boolean isLeanback,
+                                               int sessionCount, int exitStatus, boolean pluginResultPending) {
+        if (sessionExitRequested || pluginResultPending) return true;
+        if (isLeanback) return sessionCount > 1;
+        return exitStatus == 0 || exitStatus == 130;
     }
 
     @Override
@@ -341,14 +344,36 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     }
 
     public void confirmSessionExit(TerminalSession session) {
+        confirmSessionExit(session, true);
+    }
+
+    public void confirmKillProcess(TerminalSession session) {
+        confirmSessionExit(session, false);
+    }
+
+    private void confirmSessionExit(TerminalSession session, boolean removeAfterExit) {
         if (session == null) return;
 
         new AlertDialog.Builder(mActivity)
             .setIcon(android.R.drawable.ic_dialog_alert)
             .setMessage(R.string.title_confirm_kill_process)
-            .setPositiveButton(android.R.string.yes, (dialog, id) -> session.finishIfRunning())
+            .setPositiveButton(android.R.string.yes, (dialog, id) -> {
+                if (removeAfterExit)
+                    exitSession(session);
+                else
+                    session.finishIfRunning();
+            })
             .setNegativeButton(android.R.string.no, null)
             .show();
+    }
+
+    private void exitSession(TerminalSession session) {
+        if (session.isRunning()) {
+            mSessionsPendingExit.add(session);
+            session.finishIfRunning();
+        } else {
+            removeFinishedSession(session);
+        }
     }
 
     @SuppressLint("InflateParams")

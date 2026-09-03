@@ -712,7 +712,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 onResetTerminalSession(session);
                 return true;
             case CONTEXT_MENU_KILL_PROCESS_ID:
-                mTermuxTerminalSessionActivityClient.confirmSessionExit(session);
+                mTermuxTerminalSessionActivityClient.confirmKillProcess(session);
                 return true;
             case CONTEXT_MENU_STYLING_ID:
                 showStylingDialog();

@@ -13,6 +13,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Removes a session from the drawer after its confirmed long-press exit, while retaining unexpectedly failed sessions for inspection.
 - Preserves the Android 11+ all-files/storage-permission setup path used by the previously installed F-Droid beta.
 - Implements DEC synchronized output mode 2026, including DECSET/DECRST, DECRQM, deferred text/color/cursor presentation, reset/process cleanup, and cursor-blink suppression.
 - Adds a two-second synchronized-output watchdog so a malformed or terminated application cannot freeze rendering indefinitely.
