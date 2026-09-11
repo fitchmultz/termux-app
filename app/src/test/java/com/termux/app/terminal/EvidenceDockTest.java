@@ -112,6 +112,36 @@ public class EvidenceDockTest {
     }
 
     @Test
+    public void otherPaneColorUpdatesCannotExposeAnUnfinishedSynchronizedFrame() {
+        TermuxActivity activity = Robolectric.buildActivity(TermuxActivity.class).get();
+        activity.setTheme(R.style.Theme_TermuxActivity_DayNight_NoActionBar);
+        activity.setContentView(R.layout.activity_termux);
+        TerminalPaneLayout panes = activity.findViewById(R.id.terminal_panes);
+        ReflectionHelpers.setField(activity, "mTerminalPanes", panes);
+        ReflectionHelpers.setField(activity, "mIsVisible", true);
+        for (TerminalView terminal : panes.getTerminals()) {
+            terminal.setTerminalViewClient(new TermuxTerminalViewClientBase());
+            panes.setFontSize(terminal, 16);
+        }
+        TerminalSession a = session("Agent"), b = session("Tests");
+        panes.showSession(a);
+        panes.openBeside(b);
+        int background = com.termux.terminal.TextStyle.COLOR_INDEX_BACKGROUND;
+        int original = a.getEmulator().mColors.mCurrentColors[background];
+        byte[] unfinished = "\033[?2026h\033]11;#123456\007".getBytes(StandardCharsets.UTF_8);
+        a.getEmulator().append(unfinished, unfinished.length);
+        assertTrue(a.getEmulator().isSynchronizedOutputActive());
+        assertNotEquals(original, a.getEmulator().mColors.mCurrentColors[background]);
+        TermuxTerminalSessionActivityClient client = new TermuxTerminalSessionActivityClient(activity);
+        client.onColorsChanged(b);
+        assertEquals(original, ((android.graphics.drawable.ColorDrawable) panes.getTerminals()[0].getBackground()).getColor());
+        byte[] complete = "\033[?2026l".getBytes(StandardCharsets.UTF_8);
+        a.getEmulator().append(complete, complete.length);
+        client.onColorsChanged(a);
+        assertEquals(a.getEmulator().mColors.mCurrentColors[background], ((android.graphics.drawable.ColorDrawable) panes.getTerminals()[0].getBackground()).getColor());
+    }
+
+    @Test
     public void staleActivitySaveCannotOverwriteAnImportResult() {
         TermuxActivity activity = Robolectric.buildActivity(TermuxActivity.class).get();
         activity.setTheme(R.style.Theme_TermuxActivity_DayNight_NoActionBar);

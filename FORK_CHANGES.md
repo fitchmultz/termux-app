@@ -46,6 +46,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Contracts, tests, and repository policy
 
+- Retains the unused Fold 6 tag after cancelling publication before signing to fix a cross-pane synchronized-background regression; release tags are not rewritten.
+
 - Defines one immutable root Gradle profile for version, label, bootstrap variant, and ABI filters across modules.
 - Extends property schemas and tests so keys, accepted values, defaults, parsers, and UI consumers cannot silently drift.
 - Tests the Fold extra-key grammar, storage policy, drawer enum/default, simultaneous-input defaults, synchronized-output behavior, and bounded large OSC 52 clipboard writes.
