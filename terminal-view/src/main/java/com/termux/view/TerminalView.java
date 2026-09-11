@@ -290,7 +290,7 @@ public final class TerminalView extends View {
     public boolean attachSession(TerminalSession session) {
         if (session == mTermSession) return false;
         stopTextSelectionMode();
-        mScroller.abortAnimation();
+        cancelPendingInputGesture();
         setTerminalCursorBlinkerState(false, true);
         mTopRow = 0;
 
@@ -305,6 +305,15 @@ public final class TerminalView extends View {
         invalidate();
 
         return true;
+    }
+
+    /** A delayed tap in an old pane must not steal focus after the destination changes. */
+    public void cancelPendingInputGesture() {
+        long now = android.os.SystemClock.uptimeMillis();
+        MotionEvent cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0, 0, 0);
+        mGestureRecognizer.onTouchEvent(cancel);
+        cancel.recycle();
+        mScroller.abortAnimation();
     }
 
     @Override

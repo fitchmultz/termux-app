@@ -562,7 +562,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         for (TerminalView view : mActivity.getTerminalViews()) {
             TerminalSession session = view.getCurrentSession();
             if (session != null && session.getEmulator() != null) {
-                int background = session.getEmulator().mColors.mCurrentColors[TextStyle.COLOR_INDEX_BACKGROUND];
+                int background = session.getEmulator().getRendererState().getPalette()[TextStyle.COLOR_INDEX_BACKGROUND];
                 view.setBackgroundColor(background);
                 if (view == mActivity.getTerminalView()) mActivity.getWindow().getDecorView().setBackgroundColor(background);
             }

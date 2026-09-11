@@ -109,13 +109,15 @@ public final class TerminalPaneLayout extends LinearLayout {
 
     private void activate(int index, boolean focus) {
         boolean changed = index != active;
+        boolean moveFocus = focus || (changed && terminals[active].hasFocus());
         if (changed) {
+            terminals[active].cancelPendingInputGesture();
             terminals[active].stopTextSelectionMode();
             active = index;
         }
         updateLayout();
         if (changed && onActiveChanged != null) onActiveChanged.accept(terminals[active]);
-        if (focus) terminals[active].requestFocus();
+        if (moveFocus) terminals[active].requestFocus();
     }
 
     public boolean showSession(TerminalSession session) {

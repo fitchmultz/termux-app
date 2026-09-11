@@ -118,10 +118,33 @@ public class TerminalPaneLayoutTest {
         assertSame(b, panes.getTerminals()[1].getCurrentSession());
         panes.showSession(b);
         assertSame(b, panes.getActiveTerminal().getCurrentSession());
+        assertTrue("Selecting an existing pane must move keyboard focus", panes.getActiveTerminal().hasFocus());
         assertSame(a, first.getCurrentSession());
         panes.setFontSize(panes.getActiveTerminal(), 24);
         assertEquals(16, panes.getFontSize(first));
         assertEquals(24, panes.getFontSize(panes.getActiveTerminal()));
+        activity.finish();
+    }
+
+    @Test
+    public void delayedTapCannotStealFocusFromTheNewPane() {
+        Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
+        TerminalPaneLayout panes = layout(activity);
+        panes.showSession(session("Agent"));
+        panes.openBeside(session("Tests"));
+        size(panes, 900, 1000);
+        TerminalView first = panes.getTerminals()[0], second = panes.getTerminals()[1];
+        long time = android.os.SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, 10, 10, 0);
+        MotionEvent up = MotionEvent.obtain(time, time + 1, MotionEvent.ACTION_UP, 10, 10, 0);
+        first.dispatchTouchEvent(down);
+        first.dispatchTouchEvent(up);
+        second.dispatchTouchEvent(down);
+        down.recycle();
+        up.recycle();
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(350));
+        assertSame(second, panes.getActiveTerminal());
+        assertTrue("An older pane's delayed click must not regain keyboard focus", second.hasFocus());
         activity.finish();
     }
 

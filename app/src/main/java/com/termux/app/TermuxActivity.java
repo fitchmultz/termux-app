@@ -412,7 +412,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         Bundle workspace = mSavedWorkbench != null ? mSavedWorkbench : mTermuxService.mWorkbenchState;
         if (workspace != null) {
             mTerminalPanes.restoreState(workspace.getBundle("panes"), mTermuxService::getTerminalSessionForHandle);
-            mEvidenceDock.restoreState(workspace);
+            if (mSavedWorkbench == null) mEvidenceDock.restoreState(workspace);
         }
         mSavedWorkbench = null;
 
@@ -429,7 +429,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                             launchFailsafe = intent.getExtras().getBoolean(TERMUX_ACTIVITY.EXTRA_FAILSAFE_SESSION, false);
                         }
                         mTermuxTerminalSessionActivityClient.addNewSession(launchFailsafe, null);
-                        mEvidenceDock.handleSharedIntent(intent);
+                        handleEvidenceIntent(intent);
                     } catch (WindowManager.BadTokenException e) {
                         // Activity finished - ignore.
                     }
@@ -449,7 +449,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             } else if (getCurrentSession() == null) {
                 mTermuxTerminalSessionActivityClient.setCurrentSession(mTermuxTerminalSessionActivityClient.getCurrentStoredSessionOrLast());
             }
-            mEvidenceDock.handleSharedIntent(intent);
+            handleEvidenceIntent(intent);
         }
         mEvidenceDock.setSession(getCurrentSession());
 
@@ -795,13 +795,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         }
     }
     private void toggleKeepScreenOn() {
-        if (mTerminalView.getKeepScreenOn()) {
-            mTerminalView.setKeepScreenOn(false);
-            mPreferences.setKeepScreenOn(false);
-        } else {
-            mTerminalView.setKeepScreenOn(true);
-            mPreferences.setKeepScreenOn(true);
-        }
+        boolean keepScreenOn = !mPreferences.shouldKeepScreenOn();
+        for (TerminalView terminal : getTerminalViews()) terminal.setKeepScreenOn(keepScreenOn);
+        mPreferences.setKeepScreenOn(keepScreenOn);
     }
 
 
@@ -1023,8 +1019,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (mTermuxService == null) { setIntent(intent); return; }
-        if (mEvidenceDock != null) mEvidenceDock.handleSharedIntent(intent);
+        if (mEvidenceDock != null) mEvidenceDock.handleNewSharedIntent(intent);
+        else setIntent(intent);
+    }
+
+    private void handleEvidenceIntent(Intent intent) {
+        if (mIsActivityRecreated) mEvidenceDock.handleSharedIntent(intent);
+        else mEvidenceDock.handleNewSharedIntent(intent);
+        mEvidenceDock.handleSharedIntent(null);
     }
 
     private void splitWithNewSession() {
