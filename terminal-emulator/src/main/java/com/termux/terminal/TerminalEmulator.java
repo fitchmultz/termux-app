@@ -2190,7 +2190,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                     String clipboardText = new String(Base64.decode(textParameter.substring(startIndex), 0), StandardCharsets.UTF_8);
                     mSession.onCopyTextToClipboard(clipboardText);
                 } catch (Exception e) {
-                    Logger.logError(mClient, LOG_TAG, "OSC Manipulate selection, invalid string '" + textParameter + "");
+                    Logger.logError(mClient, LOG_TAG, "OSC 52: invalid clipboard payload");
                 }
                 break;
             case 104:
@@ -2666,6 +2666,10 @@ public final class TerminalEmulator implements TerminalRendererState {
         if (!Objects.equals(oldTitle, newTitle)) {
             mSession.titleChanged(oldTitle, newTitle);
         }
+    }
+
+    public boolean isBracketedPasteModeEnabled() {
+        return isDecsetInternalBitSet(DECSET_BIT_BRACKETED_PASTE_MODE);
     }
 
     /** If DECSET 2004 is set, prefix paste with "\033[200~" and suffix with "\033[201~". */

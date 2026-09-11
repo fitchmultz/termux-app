@@ -75,6 +75,19 @@
         </activity>
 
         <activity-alias
+            android:name=".app.EvidenceShareActivity"
+            android:exported="true"
+            android:label="@string/evidence_dock"
+            android:targetActivity=".app.TermuxActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
             android:name=".HomeActivity"
             android:exported="true"
             android:targetActivity=".app.TermuxActivity">

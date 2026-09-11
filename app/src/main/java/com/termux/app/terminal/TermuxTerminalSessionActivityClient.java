@@ -31,6 +31,7 @@ import com.termux.terminal.TerminalColors;
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
 import com.termux.terminal.TextStyle;
+import com.termux.view.TerminalView;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -80,7 +81,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
         // The current terminal session may have changed while being away, force
         // a refresh of the displayed terminal.
-        mActivity.getTerminalView().onScreenUpdated();
+        for (TerminalView view : mActivity.getTerminalViews()) view.onScreenUpdated();
     }
 
     /**
@@ -122,14 +123,16 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     public void onTextChanged(@NonNull TerminalSession changedSession) {
         if (!mActivity.isVisible()) return;
 
-        if (mActivity.getCurrentSession() == changedSession) mActivity.getTerminalView().onScreenUpdated();
+        for (TerminalView view : mActivity.getTerminalViews()) {
+            if (view.getCurrentSession() == changedSession) view.onScreenUpdated();
+        }
     }
 
     @Override
     public void onTitleChanged(@NonNull TerminalSession updatedSession) {
         if (!mActivity.isVisible()) return;
 
-        if (updatedSession != mActivity.getCurrentSession()) {
+        if (!mActivity.isSessionVisible(updatedSession)) {
             // Only show toast for other sessions than the current one, since the user
             // probably consciously caused the title change to change in the current session
             // and don't want an annoying toast for that.
@@ -163,7 +166,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
                 Logger.logVerbose(LOG_TAG, "The \"" + finishedSession.mSessionName + "\" session will be force finished automatically since result in pending.");
         }
 
-        if (mActivity.isVisible() && finishedSession != mActivity.getCurrentSession()) {
+        if (mActivity.isVisible() && !mActivity.isSessionVisible(finishedSession)) {
             // Show toast for non-current sessions that exit.
             // Verify that session was not removed before we got told about it finishing:
             if (index >= 0)
@@ -195,8 +198,9 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         if (!mActivity.isVisible()) return;
 
         String text = ShareUtils.getTextStringFromClipboardIfSet(mActivity, true);
-        if (text != null)
-            mActivity.getTerminalView().mEmulator.paste(text);
+        TerminalSession target = session == null ? mActivity.getCurrentSession() : session;
+        if (text != null && target != null && target.isRunning() && target.getEmulator() != null)
+            target.getEmulator().paste(text);
     }
 
     @Override
@@ -220,8 +224,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     @Override
     public void onColorsChanged(@NonNull TerminalSession changedSession) {
-        if (mActivity.getCurrentSession() == changedSession)
-            updateBackgroundColor();
+        updateBackgroundColor();
     }
 
     @Override
@@ -234,7 +237,8 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
         // If cursor is to enabled now, then start cursor blinking if blinking is enabled
         // otherwise stop cursor blinking
-        mActivity.getTerminalView().setTerminalCursorBlinkerState(enabled, false);
+        // The emulator callback has no session parameter. Reconcile each view with its own emulator.
+        mActivity.getTermuxTerminalViewClient().setTerminalCursorBlinkerState(mActivity.isVisible());
     }
 
     @Override
@@ -296,7 +300,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     public void setCurrentSession(TerminalSession session) {
         if (session == null) return;
 
-        if (mActivity.getTerminalView().attachSession(session)) {
+        if (mActivity.getTerminalPanes().showSession(session)) {
             // notify about switched session if not already displaying the session
             notifyOfSessionChange();
         }
@@ -472,13 +476,14 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         if (service == null) return;
 
         int index = service.removeTermuxSession(finishedSession);
+        mActivity.getTerminalPanes().removeSession(finishedSession);
 
         int size = service.getTermuxSessionsSize();
         if (size == 0) {
             // There are no sessions to show, so finish the activity.
             mActivity.finishActivityIfNotFinishing();
-        } else {
-            if (index >= size) {
+        } else if (mActivity.getCurrentSession() == null) {
+            if (index >= size || index < 0) {
                 index = size - 1;
             }
             TermuxSession termuxSession = service.getTermuxSession(index);
@@ -540,14 +545,13 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             }
 
             TerminalColors.COLOR_SCHEME.updateWith(props);
-            TerminalSession session = mActivity.getCurrentSession();
-            if (session != null && session.getEmulator() != null) {
-                session.getEmulator().mColors.reset();
+            final Typeface newTypeface = (fontFile.exists() && fontFile.length() > 0) ? Typeface.createFromFile(fontFile) : Typeface.MONOSPACE;
+            for (TerminalView view : mActivity.getTerminalViews()) {
+                TerminalSession session = view.getCurrentSession();
+                if (session != null && session.getEmulator() != null) session.getEmulator().mColors.reset();
+                view.setTypeface(newTypeface);
             }
             updateBackgroundColor();
-
-            final Typeface newTypeface = (fontFile.exists() && fontFile.length() > 0) ? Typeface.createFromFile(fontFile) : Typeface.MONOSPACE;
-            mActivity.getTerminalView().setTypeface(newTypeface);
         } catch (Exception e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Error in checkForFontAndColors()", e);
         }
@@ -555,9 +559,13 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     public void updateBackgroundColor() {
         if (!mActivity.isVisible()) return;
-        TerminalSession session = mActivity.getCurrentSession();
-        if (session != null && session.getEmulator() != null) {
-            mActivity.getWindow().getDecorView().setBackgroundColor(session.getEmulator().mColors.mCurrentColors[TextStyle.COLOR_INDEX_BACKGROUND]);
+        for (TerminalView view : mActivity.getTerminalViews()) {
+            TerminalSession session = view.getCurrentSession();
+            if (session != null && session.getEmulator() != null) {
+                int background = session.getEmulator().mColors.mCurrentColors[TextStyle.COLOR_INDEX_BACKGROUND];
+                view.setBackgroundColor(background);
+                if (view == mActivity.getTerminalView()) mActivity.getWindow().getDecorView().setBackgroundColor(background);
+            }
         }
     }
 

@@ -289,6 +289,9 @@ public final class TerminalView extends View {
      */
     public boolean attachSession(TerminalSession session) {
         if (session == mTermSession) return false;
+        stopTextSelectionMode();
+        mScroller.abortAnimation();
+        setTerminalCursorBlinkerState(false, true);
         mTopRow = 0;
 
         mTermSession = session;
@@ -298,7 +301,8 @@ public final class TerminalView extends View {
         updateSize();
 
         // Wait with enabling the scrollbar until we have a terminal to get scroll position from.
-        setVerticalScrollBarEnabled(true);
+        setVerticalScrollBarEnabled(session != null);
+        invalidate();
 
         return true;
     }

@@ -27,6 +27,7 @@ import com.termux.shared.theme.ThemeUtils;
 import com.termux.terminal.TerminalSession;
 
 import java.util.List;
+import java.util.ArrayList;
 
 public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession> implements AdapterView.OnItemClickListener, AdapterView.OnItemLongClickListener {
 
@@ -105,14 +106,17 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
         TerminalSession selectedSession = getItem(position).getTerminalSession();
         if (selectedSession == null) return true;
 
-        new AlertDialog.Builder(mActivity).setItems(new CharSequence[]{
-            mActivity.getString(R.string.action_rename_session),
-            mActivity.getString(R.string.action_exit_session)
-        }, (dialog, which) -> {
+        List<CharSequence> actions = new ArrayList<>();
+        actions.add(mActivity.getString(R.string.action_rename_session));
+        actions.add(mActivity.getString(R.string.action_exit_session));
+        if (selectedSession != mActivity.getCurrentSession()) actions.add(mActivity.getString(R.string.split_beside));
+        new AlertDialog.Builder(mActivity).setItems(actions.toArray(new CharSequence[0]), (dialog, which) -> {
             if (which == 0)
                 mActivity.getTermuxTerminalSessionClient().renameSession(selectedSession);
-            else
+            else if (which == 1)
                 mActivity.getTermuxTerminalSessionClient().confirmSessionExit(selectedSession);
+            else
+                mActivity.openSessionBeside(selectedSession);
         }).show();
         return true;
     }

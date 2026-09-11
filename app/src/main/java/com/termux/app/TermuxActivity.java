@@ -22,12 +22,17 @@ import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ListView;
+import android.widget.LinearLayout;
+import android.widget.PopupMenu;
+import android.widget.SeekBar;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import com.termux.R;
 import com.termux.app.api.file.FileReceiverActivity;
 import com.termux.app.terminal.TermuxActivityRootView;
+import com.termux.app.terminal.TerminalPaneLayout;
+import com.termux.app.terminal.EvidenceDock;
 import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
 import com.termux.app.terminal.io.TermuxTerminalExtraKeys;
 import com.termux.shared.activities.ReportActivity;
@@ -91,6 +96,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      * The {@link TerminalView} shown in  {@link TermuxActivity} that displays the terminal.
      */
     TerminalView mTerminalView;
+    private TerminalPaneLayout mTerminalPanes;
+    private EvidenceDock mEvidenceDock;
+    private Bundle mSavedWorkbench;
 
     /**
      *  The {@link TerminalViewClient} interface implementation to allow for communication between
@@ -181,6 +189,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_SELECT_URL_ID = 0;
     private static final int CONTEXT_MENU_SHARE_TRANSCRIPT_ID = 1;
     private static final int CONTEXT_MENU_SHARE_SELECTED_TEXT = 10;
+    private static final int CONTEXT_MENU_STAGE_EVIDENCE = 12;
     private static final int CONTEXT_MENU_AUTOFILL_USERNAME = 11;
     private static final int CONTEXT_MENU_AUTOFILL_PASSWORD = 2;
     private static final int CONTEXT_MENU_RESET_TERMINAL_ID = 3;
@@ -244,9 +253,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         }
 
+        mSavedWorkbench = savedInstanceState == null ? null : savedInstanceState.getBundle("workbench");
         setTermuxTerminalViewAndClients();
 
         setTerminalToolbarView(savedInstanceState);
+        mEvidenceDock = new EvidenceDock(this);
+        if (mSavedWorkbench != null) mEvidenceDock.restoreState(mSavedWorkbench);
+        findViewById(R.id.evidence_dock_toggle).setOnClickListener(v -> toggleTerminalToolbarTextInput());
+        findViewById(R.id.terminal_pane_options).setOnClickListener(this::showPaneOptions);
 
         setSettingsButtonView();
 
@@ -254,7 +268,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setToggleKeyboardView();
 
-        registerForContextMenu(mTerminalView);
+        for (TerminalView terminal : getTerminalViews()) registerForContextMenu(terminal);
 
         FileReceiverActivity.updateFileReceiverActivityComponentsState(this);
 
@@ -291,6 +305,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mIsInvalidState) return;
 
         mIsVisible = true;
+        if (mEvidenceDock != null) mEvidenceDock.onStart();
 
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.onStart();
@@ -334,6 +349,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mIsInvalidState) return;
 
         mIsVisible = false;
+        if (mTermuxService != null) mTermuxService.mWorkbenchState = saveWorkbench();
+        if (mEvidenceDock != null) mEvidenceDock.onStop();
 
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.onStop();
@@ -354,6 +371,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         Logger.logDebug(LOG_TAG, "onDestroy");
 
         if (mIsInvalidState) return;
+        if (mEvidenceDock != null) mEvidenceDock.onStop();
 
         if (mTermuxService != null) {
             // Do not leave service and session clients with references to activity.
@@ -374,6 +392,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         super.onSaveInstanceState(savedInstanceState);
         saveTerminalToolbarTextInput(savedInstanceState);
+        savedInstanceState.putBundle("workbench", saveWorkbench());
         savedInstanceState.putBoolean(ARG_ACTIVITY_RECREATED, true);
     }
 
@@ -393,6 +412,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mTermuxService = ((TermuxService.LocalBinder) service).service;
 
         setTermuxSessionsListView();
+        Bundle workspace = mSavedWorkbench != null ? mSavedWorkbench : mTermuxService.mWorkbenchState;
+        if (workspace != null) {
+            mTerminalPanes.restoreState(workspace.getBundle("panes"), mTermuxService::getTerminalSessionForHandle);
+            mEvidenceDock.restoreState(workspace);
+        }
+        mSavedWorkbench = null;
 
         final Intent intent = getIntent();
         setIntent(null);
@@ -407,6 +432,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                             launchFailsafe = intent.getExtras().getBoolean(TERMUX_ACTIVITY.EXTRA_FAILSAFE_SESSION, false);
                         }
                         mTermuxTerminalSessionActivityClient.addNewSession(launchFailsafe, null);
+                        mEvidenceDock.handleSharedIntent(intent);
                     } catch (WindowManager.BadTokenException e) {
                         // Activity finished - ignore.
                     }
@@ -423,10 +449,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 // Android 7.1 app shortcut from res/xml/shortcuts.xml.
                 boolean isFailSafe = intent.getBooleanExtra(TERMUX_ACTIVITY.EXTRA_FAILSAFE_SESSION, false);
                 mTermuxTerminalSessionActivityClient.addNewSession(isFailSafe, null);
-            } else {
+            } else if (getCurrentSession() == null) {
                 mTermuxTerminalSessionActivityClient.setCurrentSession(mTermuxTerminalSessionActivityClient.getCurrentStoredSessionOrLast());
             }
+            mEvidenceDock.handleSharedIntent(intent);
         }
+        mEvidenceDock.setSession(getCurrentSession());
 
         // Update the {@link TerminalSession} and {@link TerminalEmulator} clients.
         mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
@@ -490,8 +518,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mTermuxTerminalViewClient = new TermuxTerminalViewClient(this, mTermuxTerminalSessionActivityClient);
 
         // Set termux terminal view
-        mTerminalView = findViewById(R.id.terminal_view);
-        mTerminalView.setTerminalViewClient(mTermuxTerminalViewClient);
+        mTerminalPanes = findViewById(R.id.terminal_panes);
+        mTerminalView = mTerminalPanes.getActiveTerminal();
+        for (TerminalView terminal : getTerminalViews()) terminal.setTerminalViewClient(mTermuxTerminalViewClient);
+        mTerminalPanes.setOnActiveChanged(this::onTerminalPaneChanged);
 
         if (mTermuxTerminalViewClient != null)
             mTermuxTerminalViewClient.onCreate();
@@ -531,15 +561,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             savedTextInput = savedInstanceState.getString(ARG_TERMINAL_TOOLBAR_TEXT_INPUT);
 
         mUseStackedTerminalToolbarTextInput = mProperties.shouldShowTerminalToolbarTextInput();
-        boolean showStackedTextInput = mUseStackedTerminalToolbarTextInput;
+        boolean showStackedTextInput = false;
         if (mUseStackedTerminalToolbarTextInput && savedInstanceState != null &&
             savedInstanceState.containsKey(ARG_TERMINAL_TOOLBAR_TEXT_INPUT_VISIBLE))
             showStackedTextInput = savedInstanceState.getBoolean(ARG_TERMINAL_TOOLBAR_TEXT_INPUT_VISIBLE);
         View stackedTextInputRow = findViewById(R.id.terminal_toolbar_stacked_text_input_row);
         stackedTextInputRow.setVisibility(showStackedTextInput ? View.VISIBLE : View.GONE);
         EditText stackedTextInput = findViewById(R.id.terminal_toolbar_stacked_text_input);
-        TerminalToolbarViewPager.setupTextInput(this, stackedTextInput,
-            mUseStackedTerminalToolbarTextInput ? savedTextInput : null);
+        // EvidenceDock owns the multiline field; the pager field remains the legacy fallback.
+        if (mUseStackedTerminalToolbarTextInput && savedTextInput != null) stackedTextInput.setText(savedTextInput);
 
         setTerminalToolbarHeight();
         terminalToolbarViewPager.setAdapter(new TerminalToolbarViewPager.PageAdapter(
@@ -558,12 +588,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             (mTermuxTerminalExtraKeys.getExtraKeysInfo() == null ? 0 : mTermuxTerminalExtraKeys.getExtraKeysInfo().getMatrix().length);
         terminalToolbarViewPager.setLayoutParams(pagerLayoutParams);
 
-        View stackedTextInput = findViewById(R.id.terminal_toolbar_stacked_text_input);
-        if (stackedTextInput != null) {
-            ViewGroup.LayoutParams textInputLayoutParams = stackedTextInput.getLayoutParams();
-            textInputLayoutParams.height = rowHeight;
-            stackedTextInput.setLayoutParams(textInputLayoutParams);
-        }
     }
 
     public void toggleTerminalToolbar() {
@@ -634,6 +658,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     public void onBackPressed() {
         if (getDrawer().isDrawerOpen(getTerminalSessionDrawerGravity())) {
             getDrawer().closeDrawers();
+        } else if (isTerminalToolbarTextInputStackedVisible()) {
+            toggleTerminalToolbarTextInput();
         } else {
             finishActivityIfNotFinishing();
         }
@@ -659,6 +685,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     @Override
     public void onCreateContextMenu(ContextMenu menu, View v, ContextMenuInfo menuInfo) {
+        if (v instanceof TerminalView) mTerminalPanes.activate((TerminalView) v);
         TerminalSession currentSession = getCurrentSession();
         if (currentSession == null) return;
 
@@ -666,8 +693,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         menu.add(Menu.NONE, CONTEXT_MENU_SELECT_URL_ID, Menu.NONE, R.string.action_select_url);
         menu.add(Menu.NONE, CONTEXT_MENU_SHARE_TRANSCRIPT_ID, Menu.NONE, R.string.action_share_transcript);
-        if (!DataUtils.isNullOrEmpty(mTerminalView.getStoredSelectedText()))
+        if (!DataUtils.isNullOrEmpty(mTerminalView.getStoredSelectedText())) {
             menu.add(Menu.NONE, CONTEXT_MENU_SHARE_SELECTED_TEXT, Menu.NONE, R.string.action_share_selected_text);
+            menu.add(Menu.NONE, CONTEXT_MENU_STAGE_EVIDENCE, Menu.NONE, R.string.evidence_selection);
+        }
         if (autoFillEnabled)
             menu.add(Menu.NONE, CONTEXT_MENU_AUTOFILL_USERNAME, Menu.NONE, R.string.action_autofill_username);
         if (autoFillEnabled)
@@ -701,6 +730,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 return true;
             case CONTEXT_MENU_SHARE_SELECTED_TEXT:
                 mTermuxTerminalViewClient.shareSelectedText();
+                return true;
+            case CONTEXT_MENU_STAGE_EVIDENCE:
+                mEvidenceDock.stageSelection(mTerminalView.getStoredSelectedText());
                 return true;
             case CONTEXT_MENU_AUTOFILL_USERNAME:
                 mTerminalView.requestAutoFillUsername();
@@ -809,6 +841,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (mEvidenceDock != null && mEvidenceDock.onActivityResult(requestCode, resultCode, data)) return;
         Logger.logVerbose(LOG_TAG, "onActivityResult: requestCode: " + requestCode + ", resultCode: "  + resultCode + ", data: "  + IntentUtils.getIntentString(data));
         if (requestCode == PermissionUtils.REQUEST_GRANT_STORAGE_PERMISSION) {
             requestStoragePermission(true);
@@ -873,13 +906,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     public void toggleTerminalToolbarTextInput() {
-        if (!mUseStackedTerminalToolbarTextInput) return;
         View stackedTextInputRow = findViewById(R.id.terminal_toolbar_stacked_text_input_row);
         if (stackedTextInputRow == null) return;
 
         boolean showNow = stackedTextInputRow.getVisibility() != View.VISIBLE;
         stackedTextInputRow.setVisibility(showNow ? View.VISIBLE : View.GONE);
         if (showNow) {
+            getTerminalToolbarContainer().setVisibility(View.VISIBLE);
+            if (mEvidenceDock != null) mEvidenceDock.setSession(getCurrentSession());
             EditText textInputView = findViewById(R.id.terminal_toolbar_stacked_text_input);
             if (textInputView != null) textInputView.requestFocus();
         } else if (mTerminalView != null) {
@@ -889,17 +923,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private boolean isTerminalToolbarTextInputStackedVisible() {
         View stackedTextInputRow = findViewById(R.id.terminal_toolbar_stacked_text_input_row);
-        return mUseStackedTerminalToolbarTextInput && stackedTextInputRow != null &&
+        return stackedTextInputRow != null &&
             stackedTextInputRow.getVisibility() == View.VISIBLE;
     }
 
     private EditText getTerminalToolbarTextInputView() {
-        if (mUseStackedTerminalToolbarTextInput)
+        if (mUseStackedTerminalToolbarTextInput || isTerminalToolbarTextInputStackedVisible())
             return findViewById(R.id.terminal_toolbar_stacked_text_input);
         return findViewById(R.id.terminal_toolbar_text_input);
     }
 
     public boolean isTerminalViewSelected() {
+        if (getTerminalToolbarViewPager() == null) return true;
         if (isTerminalToolbarTextInputStackedVisible()) {
             EditText textInputView = getTerminalToolbarTextInputView();
             return textInputView == null || !textInputView.hasFocus();
@@ -917,7 +952,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
 
     public void termuxSessionListNotifyUpdated() {
-        mTermuxSessionListViewController.notifyDataSetChanged();
+        if (mTermuxSessionListViewController != null) mTermuxSessionListViewController.notifyDataSetChanged();
+        if (mTerminalPanes != null) mTerminalPanes.refreshTitles();
+        if (mEvidenceDock != null) mEvidenceDock.refreshTarget();
     }
 
     public boolean isVisible() {
@@ -939,7 +976,104 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     public TerminalView getTerminalView() {
-        return mTerminalView;
+        return mTerminalPanes == null ? mTerminalView : mTerminalPanes.getActiveTerminal();
+    }
+
+    public TerminalView[] getTerminalViews() { return mTerminalPanes.getTerminals(); }
+
+    public View getTerminalInputView() {
+        EditText input = getTerminalToolbarTextInputView();
+        return input != null && input.hasFocus() ? input : getTerminalView();
+    }
+
+    public boolean isSessionVisible(TerminalSession session) {
+        for (TerminalView view : getTerminalViews()) {
+            if (view.isShown() && view.getCurrentSession() == session) return true;
+        }
+        return false;
+    }
+    public TerminalPaneLayout getTerminalPanes() { return mTerminalPanes; }
+
+    public void showEvidenceDock() {
+        getTerminalToolbarContainer().setVisibility(View.VISIBLE);
+        findViewById(R.id.terminal_toolbar_stacked_text_input_row).setVisibility(View.VISIBLE);
+    }
+
+    private void onTerminalPaneChanged(TerminalView terminal) {
+        mTerminalView = terminal;
+        if (mTermuxTerminalExtraKeys != null) mTermuxTerminalExtraKeys.setTerminalView(terminal);
+        if (mEvidenceDock != null) mEvidenceDock.setSession(terminal.getCurrentSession());
+        if (mTermuxTerminalSessionActivityClient != null) {
+            mTermuxTerminalSessionActivityClient.setCurrentStoredSession();
+            mTermuxTerminalSessionActivityClient.updateBackgroundColor();
+            mTermuxTerminalSessionActivityClient.checkAndScrollToSession(terminal.getCurrentSession());
+        }
+        if (mTermuxTerminalViewClient != null) mTermuxTerminalViewClient.setTerminalCursorBlinkerState(mIsVisible);
+    }
+
+    public void openSessionBeside(TerminalSession session) {
+        mTerminalPanes.openBeside(session);
+        getDrawer().closeDrawers();
+    }
+
+    private Bundle saveWorkbench() {
+        Bundle state = new Bundle();
+        if (mTerminalPanes != null) state.putBundle("panes", mTerminalPanes.saveState());
+        if (mEvidenceDock != null) mEvidenceDock.saveState(state);
+        return state;
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (mTermuxService == null) { setIntent(intent); return; }
+        if (mEvidenceDock != null) mEvidenceDock.handleSharedIntent(intent);
+    }
+
+    private void showPaneOptions(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.getMenu().add(Menu.NONE, 1, Menu.NONE, R.string.split_new);
+        if (mTerminalPanes.isPaired()) {
+            menu.getMenu().add(Menu.NONE, 2, Menu.NONE, R.string.split_horizontal);
+            menu.getMenu().add(Menu.NONE, 3, Menu.NONE, R.string.split_vertical);
+            menu.getMenu().add(Menu.NONE, 4, Menu.NONE, mTerminalPanes.isShowingBoth() ? R.string.split_maximize : R.string.split_restore);
+            menu.getMenu().add(Menu.NONE, 5, Menu.NONE, R.string.split_swap);
+            menu.getMenu().add(Menu.NONE, 6, Menu.NONE, R.string.split_resize);
+            menu.getMenu().add(Menu.NONE, 7, Menu.NONE, R.string.split_single);
+        }
+        menu.setOnMenuItemClickListener(item -> {
+            switch (item.getItemId()) {
+                case 1:
+                    TerminalSession previous = getCurrentSession();
+                    mTermuxTerminalSessionActivityClient.addNewSession(false, null);
+                    TerminalSession created = getCurrentSession();
+                    if (previous != null && previous != created) {
+                        mTermuxTerminalSessionActivityClient.setCurrentSession(previous);
+                        openSessionBeside(created);
+                    }
+                    break;
+                case 2: mTerminalPanes.setSplitOrientation(LinearLayout.HORIZONTAL); break;
+                case 3: mTerminalPanes.setSplitOrientation(LinearLayout.VERTICAL); break;
+                case 4: mTerminalPanes.toggleMaximize(); break;
+                case 5: mTerminalPanes.swap(); break;
+                case 6:
+                    SeekBar slider = new SeekBar(this);
+                    slider.setContentDescription(getString(R.string.split_resize));
+                    slider.setMax(50);
+                    slider.setProgress(Math.round(mTerminalPanes.getFraction() * 100) - 25);
+                    slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                        public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { if (fromUser) mTerminalPanes.setFraction((progress + 25) / 100f); }
+                        public void onStartTrackingTouch(SeekBar bar) {}
+                        public void onStopTrackingTouch(SeekBar bar) {}
+                    });
+                    new AlertDialog.Builder(this).setTitle(R.string.split_resize).setView(slider).setPositiveButton(android.R.string.ok, null).show();
+                    break;
+                case 7: mTerminalPanes.singlePane(); break;
+                default: return false;
+            }
+            return true;
+        });
+        menu.show();
     }
 
     public TermuxTerminalViewClient getTermuxTerminalViewClient() {
@@ -952,8 +1086,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     @Nullable
     public TerminalSession getCurrentSession() {
-        if (mTerminalView != null)
-            return mTerminalView.getCurrentSession();
+        if (getTerminalView() != null)
+            return getTerminalView().getCurrentSession();
         else
             return null;
     }

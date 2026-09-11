@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Includes upstream `3b66f87`: rejects file-based RUN_COMMAND error results until the external-app policy has passed; Android's RUN_COMMAND permission remains required.
+
 - Removes a session from the drawer after its confirmed long-press exit, while retaining unexpectedly failed sessions for inspection.
 - Preserves the Android 11+ all-files/storage-permission setup path used by the previously installed F-Droid beta.
 - Implements DEC synchronized output mode 2026, including DECSET/DECRST, DECRQM, deferred text/color/cursor presentation, reset/process cleanup, and cursor-blink suppression.
@@ -22,6 +24,10 @@ This is the canonical concise inventory of intentional differences from the audi
 - Routes drawer layout, Back handling, hardware shortcuts, and the `DRAWER` extra key through one logical start/end position contract.
 
 ## Features
+
+- Adds native two-pane sessions with independent terminal views, active-pane input routing, draggable sizing, layout/swap/maximize controls, and compact-window collapse without ending the hidden session.
+- Adds a per-session Evidence Dock with native multiline composition, private file imports, Android share intake, saved-draft recovery, and explicit Insert versus confirmed Send. Imports never execute commands or upload content.
+- Rejects multiline insertion when the receiving program has not enabled bracketed paste, and omits clipboard payloads from OSC 52 error logs.
 
 - Long-pressing a session row opens actions to rename it or exit it through the existing confirmation dialog.
 
