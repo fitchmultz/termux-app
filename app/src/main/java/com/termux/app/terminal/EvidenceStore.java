@@ -48,10 +48,13 @@ public final class EvidenceStore {
         return draft;
     }
 
-    public boolean save(String handle) {
+    public boolean save(String handle) { return save(handle, false); }
+
+    private boolean save(String handle, boolean finishImport) {
         EvidenceDraft draft = get(handle);
         try {
             SharedPreferences.Editor edit = saved.edit();
+            if (finishImport) edit.remove("import_pending");
             if (draft.isEmpty()) edit.remove("draft:" + handle);
             else edit.putString("draft:" + handle, draft.toJson());
             if (edit.commit()) return true;
@@ -73,6 +76,7 @@ public final class EvidenceStore {
 
     public void importEvidence(String handle, String label, String text, ArrayList<Uri> files) {
         if (importing) { notifyResult(R.string.evidence_import_busy); return; }
+        if (text.isEmpty() && files.isEmpty()) { notifyResult(R.string.evidence_empty); return; }
         EvidenceDraft target = get(handle);
         String combined = target.text.isEmpty() ? text : text.isEmpty() ? target.text : target.text + "\n\n" + text;
         if (combined.length() > EvidenceDraft.MAX_TEXT || target.files.size() + files.size() > EvidenceDraft.MAX_FILES) {
@@ -102,9 +106,11 @@ public final class EvidenceStore {
                     target.text = combined;
                     target.label = label;
                     for (File file : imported) target.files.add(file.getAbsolutePath());
-                    if (save(handle)) notice = context.getString(R.string.evidence_imported, label);
-                } else notice = context.getString(R.string.evidence_import_failed);
-                saved.edit().remove("import_pending").apply();
+                    if (save(handle, true)) notice = context.getString(R.string.evidence_imported, label);
+                } else {
+                    saved.edit().remove("import_pending").commit();
+                    notice = context.getString(R.string.evidence_import_failed);
+                }
                 if (listener != null) listener.run();
             });
         }, "TermuxEvidenceImport").start();

@@ -7,6 +7,8 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputFilter;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.text.TextUtils;
 import android.view.View;
 import android.widget.Button;
@@ -38,6 +40,7 @@ public final class EvidenceDock {
     private final Runnable storeChanged = this::refreshFromStore;
     private TerminalSession session;
     private String pickerTarget, pickerLabel;
+    private boolean binding;
 
     public EvidenceDock(TermuxActivity activity) {
         this.activity = activity;
@@ -50,6 +53,13 @@ public final class EvidenceDock {
             message(R.string.evidence_limits);
             return dest.subSequence(dstart, dend);
         }});
+        editor.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence text, int start, int count, int after) {}
+            public void onTextChanged(CharSequence text, int start, int before, int count) {
+                if (!binding && session != null) draft(session.mHandle).text = text.toString();
+            }
+            public void afterTextChanged(Editable text) {}
+        });
         activity.findViewById(R.id.evidence_add_files).setOnClickListener(v -> pickFiles());
         activity.findViewById(R.id.evidence_insert).setOnClickListener(v -> insert(false));
         activity.findViewById(R.id.evidence_send).setOnClickListener(v -> insert(true));
@@ -61,10 +71,17 @@ public final class EvidenceDock {
     private EvidenceDraft draft(String handle) { return store.get(handle); }
 
     public void onStart() { store.listen(storeChanged); refreshFromStore(); }
-    public void onStop() { saveDraft(); store.unlisten(storeChanged); }
+    public void onStop() { saveDraft(); dispose(); }
+    public void dispose() { store.unlisten(storeChanged); }
+
+    private void bindText(String text) {
+        binding = true;
+        try { editor.setText(text); }
+        finally { binding = false; }
+    }
 
     private void refreshFromStore() {
-        if (session != null) editor.setText(draft(session.mHandle).text);
+        if (session != null) bindText(draft(session.mHandle).text);
         refreshTarget();
         refreshAttachments();
         String notice = store.takeNotice();
@@ -77,7 +94,7 @@ public final class EvidenceDock {
         editor.clearComposingText();
         saveDraft();
         session = target;
-        editor.setText(session == null ? "" : draft(session.mHandle).text);
+        bindText(session == null ? "" : draft(session.mHandle).text);
         refreshTarget();
         refreshAttachments();
     }
@@ -103,7 +120,6 @@ public final class EvidenceDock {
     public void saveDraft() {
         if (session == null) return;
         EvidenceDraft draft = draft(session.mHandle);
-        draft.text = editor.getText().toString();
         draft.label = label(session);
         if (!store.save(session.mHandle)) message(R.string.evidence_save_failed);
     }

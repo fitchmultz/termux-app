@@ -1,16 +1,20 @@
 package com.termux.app.terminal;
 
 import android.content.Context;
+import android.app.AlertDialog;
 import android.graphics.Color;
 import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.Gravity;
+import android.view.Menu;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.ImageButton;
+import android.widget.PopupMenu;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import com.termux.R;
@@ -176,6 +180,44 @@ public final class TerminalPaneLayout extends LinearLayout {
         addView(divider);
         addView(panes[reversed ? 0 : 1]);
         updateLayout();
+    }
+
+    public void showOptions(View anchor, Runnable newSplit) {
+        PopupMenu menu = new PopupMenu(getContext(), anchor);
+        menu.getMenu().add(Menu.NONE, 1, Menu.NONE, R.string.split_new);
+        if (paired) {
+            menu.getMenu().add(Menu.NONE, 2, Menu.NONE, R.string.split_horizontal);
+            menu.getMenu().add(Menu.NONE, 3, Menu.NONE, R.string.split_vertical);
+            menu.getMenu().add(Menu.NONE, 4, Menu.NONE, isShowingBoth() ? R.string.split_maximize : R.string.split_restore);
+            menu.getMenu().add(Menu.NONE, 5, Menu.NONE, R.string.split_swap);
+            menu.getMenu().add(Menu.NONE, 6, Menu.NONE, R.string.split_resize);
+            menu.getMenu().add(Menu.NONE, 7, Menu.NONE, R.string.split_single);
+        }
+        menu.setOnMenuItemClickListener(item -> {
+            switch (item.getItemId()) {
+                case 1: newSplit.run(); break;
+                case 2: setSplitOrientation(HORIZONTAL); break;
+                case 3: setSplitOrientation(VERTICAL); break;
+                case 4: toggleMaximize(); break;
+                case 5: swap(); break;
+                case 6:
+                    SeekBar slider = new SeekBar(getContext());
+                    slider.setContentDescription(getContext().getString(R.string.split_resize));
+                    slider.setMax(50);
+                    slider.setProgress(Math.round(fraction * 100) - 25);
+                    slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                        public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { if (fromUser) setFraction((progress + 25) / 100f); }
+                        public void onStartTrackingTouch(SeekBar bar) {}
+                        public void onStopTrackingTouch(SeekBar bar) {}
+                    });
+                    new AlertDialog.Builder(getContext()).setTitle(R.string.split_resize).setView(slider).setPositiveButton(android.R.string.ok, null).show();
+                    break;
+                case 7: singlePane(); break;
+                default: return false;
+            }
+            return true;
+        });
+        menu.show();
     }
 
     public void setFraction(float value) {

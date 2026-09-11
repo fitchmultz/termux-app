@@ -22,9 +22,6 @@ import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ListView;
-import android.widget.LinearLayout;
-import android.widget.PopupMenu;
-import android.widget.SeekBar;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
 
@@ -260,7 +257,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mEvidenceDock = new EvidenceDock(this);
         if (mSavedWorkbench != null) mEvidenceDock.restoreState(mSavedWorkbench);
         findViewById(R.id.evidence_dock_toggle).setOnClickListener(v -> toggleTerminalToolbarTextInput());
-        findViewById(R.id.terminal_pane_options).setOnClickListener(this::showPaneOptions);
+        findViewById(R.id.terminal_pane_options).setOnClickListener(v -> mTerminalPanes.showOptions(v, this::splitWithNewSession));
 
         setSettingsButtonView();
 
@@ -371,7 +368,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         Logger.logDebug(LOG_TAG, "onDestroy");
 
         if (mIsInvalidState) return;
-        if (mEvidenceDock != null) mEvidenceDock.onStop();
+        if (mEvidenceDock != null) mEvidenceDock.dispose();
 
         if (mTermuxService != null) {
             // Do not leave service and session clients with references to activity.
@@ -608,7 +605,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (savedInstanceState == null) return;
 
         final EditText textInputView = getTerminalToolbarTextInputView();
-        if (textInputView != null) {
+        if (textInputView != null && !mUseStackedTerminalToolbarTextInput && !isTerminalToolbarTextInputStackedVisible()) {
             String textInput = textInputView.getText().toString();
             if (!textInput.isEmpty()) savedInstanceState.putString(ARG_TERMINAL_TOOLBAR_TEXT_INPUT, textInput);
         }
@@ -1030,50 +1027,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mEvidenceDock != null) mEvidenceDock.handleSharedIntent(intent);
     }
 
-    private void showPaneOptions(View anchor) {
-        PopupMenu menu = new PopupMenu(this, anchor);
-        menu.getMenu().add(Menu.NONE, 1, Menu.NONE, R.string.split_new);
-        if (mTerminalPanes.isPaired()) {
-            menu.getMenu().add(Menu.NONE, 2, Menu.NONE, R.string.split_horizontal);
-            menu.getMenu().add(Menu.NONE, 3, Menu.NONE, R.string.split_vertical);
-            menu.getMenu().add(Menu.NONE, 4, Menu.NONE, mTerminalPanes.isShowingBoth() ? R.string.split_maximize : R.string.split_restore);
-            menu.getMenu().add(Menu.NONE, 5, Menu.NONE, R.string.split_swap);
-            menu.getMenu().add(Menu.NONE, 6, Menu.NONE, R.string.split_resize);
-            menu.getMenu().add(Menu.NONE, 7, Menu.NONE, R.string.split_single);
+    private void splitWithNewSession() {
+        TerminalSession previous = getCurrentSession();
+        mTermuxTerminalSessionActivityClient.addNewSession(false, null);
+        TerminalSession created = getCurrentSession();
+        if (previous != null && previous != created) {
+            mTermuxTerminalSessionActivityClient.setCurrentSession(previous);
+            openSessionBeside(created);
         }
-        menu.setOnMenuItemClickListener(item -> {
-            switch (item.getItemId()) {
-                case 1:
-                    TerminalSession previous = getCurrentSession();
-                    mTermuxTerminalSessionActivityClient.addNewSession(false, null);
-                    TerminalSession created = getCurrentSession();
-                    if (previous != null && previous != created) {
-                        mTermuxTerminalSessionActivityClient.setCurrentSession(previous);
-                        openSessionBeside(created);
-                    }
-                    break;
-                case 2: mTerminalPanes.setSplitOrientation(LinearLayout.HORIZONTAL); break;
-                case 3: mTerminalPanes.setSplitOrientation(LinearLayout.VERTICAL); break;
-                case 4: mTerminalPanes.toggleMaximize(); break;
-                case 5: mTerminalPanes.swap(); break;
-                case 6:
-                    SeekBar slider = new SeekBar(this);
-                    slider.setContentDescription(getString(R.string.split_resize));
-                    slider.setMax(50);
-                    slider.setProgress(Math.round(mTerminalPanes.getFraction() * 100) - 25);
-                    slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                        public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { if (fromUser) mTerminalPanes.setFraction((progress + 25) / 100f); }
-                        public void onStartTrackingTouch(SeekBar bar) {}
-                        public void onStopTrackingTouch(SeekBar bar) {}
-                    });
-                    new AlertDialog.Builder(this).setTitle(R.string.split_resize).setView(slider).setPositiveButton(android.R.string.ok, null).show();
-                    break;
-                case 7: mTerminalPanes.singlePane(); break;
-                default: return false;
-            }
-            return true;
-        });
-        menu.show();
     }
 
     public TermuxTerminalViewClient getTermuxTerminalViewClient() {

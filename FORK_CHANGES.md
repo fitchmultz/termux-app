@@ -26,7 +26,7 @@ This is the canonical concise inventory of intentional differences from the audi
 ## Features
 
 - Adds native two-pane sessions with independent terminal views, active-pane input routing, draggable sizing, layout/swap/maximize controls, and compact-window collapse without ending the hidden session.
-- Adds a per-session Evidence Dock with native multiline composition, private file imports, Android share intake, saved-draft recovery, and explicit Insert versus confirmed Send. Imports never execute commands or upload content.
+- Adds a per-session Evidence Dock with native multiline composition, private file imports, Android share intake, saved-draft recovery, and explicit Insert versus confirmed Send. App-owned import state survives activity replacement; draft persistence and completion are committed together. Imports never execute commands or upload content.
 - Rejects multiline insertion when the receiving program has not enabled bracketed paste, and omits clipboard payloads from OSC 52 error logs.
 
 - Long-pressing a session row opens actions to rename it or exit it through the existing confirmation dialog.
@@ -40,7 +40,7 @@ This is the canonical concise inventory of intentional differences from the audi
 ## Opinionated defaults
 
 - Enables Samsung character-based terminal input for immediate command typing.
-- Enables the simultaneous toolbar text field and places the session drawer at logical `end` (right in this profile).
+- Makes the Evidence Dock available alongside extra keys, initially collapsed, and places the session drawer at logical `end` (right in this profile).
 - Uses two rows of six controls: `ESC`, `TAB`, `CTRL/PREV`, `ALT/NEXT`, `NEXT`, `DRAWER`; then `HOME`, `LEFT`, `DOWN/PGDN`, `UP/PGUP`, `RIGHT`, `KEYBOARD/TEXTBAR`.
 - Keeps explicit keyboard controls because full-screen TUIs such as Pi use terminal mouse tracking and consume terminal taps.
 
@@ -51,5 +51,5 @@ This is the canonical concise inventory of intentional differences from the audi
 - Tests the Fold extra-key grammar, storage policy, drawer enum/default, simultaneous-input defaults, synchronized-output behavior, and bounded large OSC 52 clipboard writes.
 - Uses `fold/main` as the GitHub default; `master` remains an audited reference point, not an automatic synchronization target.
 - Treats this as a permanent personal appliance fork. Upstream PRs and wholesale rebases/syncs are not goals; relevant security or compatibility fixes are selectively reviewed and cherry-picked.
-- Keeps `Fold checks` read-only for wrapper validation, full unit tests, packaged metadata/ABI/signature checks, and two reproducible unsigned builds.
+- Keeps `Fold checks` read-only for wrapper validation, full unit tests, packaged metadata/ABI/signature checks, and two reproducible unsigned builds. Synthetic workbench render images and unit-test reports are retained briefly as CI artifacts; no private terminal contents are captured.
 - Provides a manually dispatched `Fold signed release` workflow: an unprivileged job builds twice, then a fresh environment-scoped job (with no reviewer/wait gate) signs and verifies; public Release publication is a separate explicit boolean gate and includes only the signed APK/checksum/provenance. Inherited upstream artifact/release/dependency/JitPack workflows remain disabled.

@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.UUID;
 
 public final class EvidenceFiles {
     public static final long MAX_FILE_BYTES = 32L * 1024 * 1024;
@@ -34,21 +35,25 @@ public final class EvidenceFiles {
     static File copy(InputStream input, String name, File directory) throws IOException {
         name = name.replaceAll("[^A-Za-z0-9._-]", "_");
         if (name.length() > 80) name = name.substring(name.length() - 80);
-        File file = File.createTempFile("evidence-", "-" + name, directory);
+        File file = new File(directory, "evidence-" + UUID.randomUUID() + "-" + name);
+        File staging = File.createTempFile("import-", ".partial", directory);
         boolean complete = false;
-        try (FileOutputStream output = new FileOutputStream(file)) {
-            byte[] buffer = new byte[8192];
-            long total = 0;
-            int read;
-            while ((read = input.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_FILE_BYTES || Thread.currentThread().isInterrupted()) throw new IOException("Attachment exceeds limit or import cancelled");
-                output.write(buffer, 0, read);
+        try {
+            try (FileOutputStream output = new FileOutputStream(staging)) {
+                byte[] buffer = new byte[8192];
+                long total = 0;
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    total += read;
+                    if (total > MAX_FILE_BYTES || Thread.currentThread().isInterrupted()) throw new IOException("Attachment exceeds limit or import cancelled");
+                    output.write(buffer, 0, read);
+                }
             }
+            if (!staging.renameTo(file)) throw new IOException("Cannot publish imported file");
             complete = true;
             return file;
         } finally {
-            if (!complete) file.delete();
+            if (!complete) staging.delete();
         }
     }
 }

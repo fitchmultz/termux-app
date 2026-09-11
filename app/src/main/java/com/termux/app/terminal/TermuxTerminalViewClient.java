@@ -66,8 +66,6 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
     private boolean mShowSoftKeyboardIgnoreOnce;
     private boolean mShowSoftKeyboardWithDelayOnce;
 
-    private boolean mTerminalCursorBlinkerStateAlreadySet;
-
     private List<KeyboardShortcut> mSessionShortcuts;
 
     private static final String LOG_TAG = "TermuxTerminalViewClient";
@@ -114,15 +112,12 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
         // Show the soft keyboard if required
         setSoftKeyboardState(true, mActivity.isActivityRecreated());
 
-        mTerminalCursorBlinkerStateAlreadySet = false;
-
         if (mActivity.getTerminalView().mEmulator != null) {
             // Start terminal cursor blinking if enabled
             // If emulator is already set, then start blinker now, otherwise wait for onEmulatorSet()
             // event to start it. This is needed since onEmulatorSet() may not be called after
             // TermuxActivity is started after device display timeout with double tap and not power button.
             setTerminalCursorBlinkerState(true);
-            mTerminalCursorBlinkerStateAlreadySet = true;
         }
     }
 
@@ -157,18 +152,8 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
      */
     @Override
     public void onEmulatorSet() {
-        if (!mTerminalCursorBlinkerStateAlreadySet) {
-            // Start terminal cursor blinking if enabled
-            // We need to wait for the first session to be attached that's set in
-            // TermuxActivity.onServiceConnected() and then the multiple calls to TerminalView.updateSize()
-            // where the final one eventually sets the mEmulator when width/height is not 0. Otherwise
-            // blinker will not start again if TermuxActivity is started again after exiting it with
-            // double back press. Check TerminalView.setTerminalCursorBlinkerState().
-            setTerminalCursorBlinkerState(true);
-            mTerminalCursorBlinkerStateAlreadySet = true;
-        }
+        setTerminalCursorBlinkerState(mActivity.isVisible());
     }
-
 
 
     @Override
