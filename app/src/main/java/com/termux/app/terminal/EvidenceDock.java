@@ -41,6 +41,9 @@ public final class EvidenceDock {
     private TerminalSession session;
     private String pickerTarget, pickerLabel;
     private boolean binding;
+    private boolean shareHandled;
+    private Intent pendingShare;
+    private AlertDialog shareDialog;
 
     public EvidenceDock(TermuxActivity activity) {
         this.activity = activity;
@@ -72,7 +75,10 @@ public final class EvidenceDock {
 
     public void onStart() { store.listen(storeChanged); refreshFromStore(); }
     public void onStop() { saveDraft(); dispose(); }
-    public void dispose() { store.unlisten(storeChanged); }
+    public void dispose() {
+        store.unlisten(storeChanged);
+        if (shareDialog != null) { shareDialog.dismiss(); shareDialog = null; }
+    }
 
     private void bindText(String text) {
         binding = true;
@@ -185,9 +191,20 @@ public final class EvidenceDock {
         return true;
     }
 
-    public void handleSharedIntent(Intent intent) {
+    public void handleNewSharedIntent(Intent intent) {
         if (intent == null || !(Intent.ACTION_SEND.equals(intent.getAction()) || Intent.ACTION_SEND_MULTIPLE.equals(intent.getAction()))) return;
-        if (activity.getTermuxService() == null) { message(R.string.evidence_no_session); return; }
+        if (pendingShare != null) { message(R.string.evidence_import_busy); return; }
+        shareHandled = false;
+        handleSharedIntent(intent);
+    }
+
+    private void finishSharedIntent() { pendingShare = null; shareHandled = true; }
+
+    public void handleSharedIntent(Intent intent) {
+        if (pendingShare != null) intent = pendingShare;
+        else if (shareHandled) return;
+        if (intent == null || !(Intent.ACTION_SEND.equals(intent.getAction()) || Intent.ACTION_SEND_MULTIPLE.equals(intent.getAction()))) return;
+        if (shareDialog != null && shareDialog.isShowing()) return;
         if (store.isImporting()) { message(R.string.evidence_import_busy); return; }
         final String text;
         final ArrayList<Uri> files;
@@ -195,9 +212,12 @@ public final class EvidenceDock {
             CharSequence shared = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
             text = shared == null ? "" : shared.toString();
             files = uris(intent);
-        } catch (RuntimeException e) { message(R.string.evidence_import_failed); return; }
-        if (text.length() > EvidenceDraft.MAX_TEXT || files.size() > EvidenceDraft.MAX_FILES) { message(R.string.evidence_limits); return; }
-        if (text.isEmpty() && files.isEmpty()) { message(R.string.evidence_empty); return; }
+        } catch (RuntimeException e) { finishSharedIntent(); message(R.string.evidence_import_failed); return; }
+        if (text.length() > EvidenceDraft.MAX_TEXT || files.size() > EvidenceDraft.MAX_FILES) { finishSharedIntent(); message(R.string.evidence_limits); return; }
+        if (text.isEmpty() && files.isEmpty()) { finishSharedIntent(); message(R.string.evidence_empty); return; }
+        pendingShare = new Intent(Intent.ACTION_SEND_MULTIPLE).putExtra(Intent.EXTRA_TEXT, text)
+            .putParcelableArrayListExtra(Intent.EXTRA_STREAM, files);
+        if (activity.getTermuxService() == null) return;
         List<TerminalSession> targets = new ArrayList<>();
         List<String> labels = new ArrayList<>();
         for (TermuxSession candidate : activity.getTermuxService().getTermuxSessions()) {
@@ -206,13 +226,15 @@ public final class EvidenceDock {
             labels.add(label(candidate.getTerminalSession()));
         }
         if (targets.isEmpty()) { message(R.string.evidence_no_session); return; }
-        new AlertDialog.Builder(activity).setTitle(R.string.evidence_choose_target).setItems(labels.toArray(new String[0]), (dialog, which) -> {
+        shareDialog = new AlertDialog.Builder(activity).setTitle(R.string.evidence_choose_target).setItems(labels.toArray(new String[0]), (dialog, which) -> {
+            finishSharedIntent();
             TerminalSession target = targets.get(which);
             activity.getTermuxTerminalSessionClient().setCurrentSession(target);
             activity.showEvidenceDock();
             saveDraft();
             store.importEvidence(target.mHandle, label(target), text, files);
-        }).setNegativeButton(android.R.string.cancel, null).show();
+        }).setNegativeButton(android.R.string.cancel, (dialog, which) -> finishSharedIntent())
+            .setOnCancelListener(dialog -> finishSharedIntent()).show();
     }
 
     static ArrayList<Uri> uris(Intent intent) {
@@ -318,12 +340,16 @@ public final class EvidenceDock {
 
     public void saveState(Bundle state) {
         saveDraft();
+        state.putBoolean("evidence_share_handled", shareHandled);
+        state.putParcelable("evidence_pending_share", pendingShare);
         state.putString("evidence_picker_target", pickerTarget);
         state.putString("evidence_picker_label", pickerLabel);
         state.putBoolean("evidence_visible", activity.findViewById(R.id.terminal_toolbar_stacked_text_input_row).getVisibility() == View.VISIBLE);
     }
 
     public void restoreState(Bundle state) {
+        shareHandled = state.getBoolean("evidence_share_handled");
+        pendingShare = state.getParcelable("evidence_pending_share");
         pickerTarget = state.getString("evidence_picker_target");
         pickerLabel = state.getString("evidence_picker_label");
         if (state.getBoolean("evidence_visible")) activity.showEvidenceDock();

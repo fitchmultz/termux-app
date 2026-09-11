@@ -112,6 +112,57 @@ public class EvidenceDockTest {
     }
 
     @Test
+    public void pendingSharesSurviveRecreationButConsumedSharesAreNotReplayed() {
+        TermuxActivity activity = Robolectric.buildActivity(TermuxActivity.class).get();
+        activity.setTheme(R.style.Theme_TermuxActivity_DayNight_NoActionBar);
+        activity.setContentView(R.layout.activity_termux);
+        EvidenceDock dock = new EvidenceDock(activity);
+        android.content.Intent share = new android.content.Intent(android.content.Intent.ACTION_SEND)
+            .putExtra(android.content.Intent.EXTRA_TEXT, "shared note");
+        dock.handleNewSharedIntent(share);
+        Bundle state = new Bundle();
+        dock.saveState(state);
+        assertNotNull(state.getParcelable("evidence_pending_share"));
+        EvidenceDock restored = new EvidenceDock(activity);
+        restored.restoreState(state);
+        Bundle restoredState = new Bundle();
+        restored.saveState(restoredState);
+        android.content.Intent pending = restoredState.getParcelable("evidence_pending_share");
+        assertEquals("shared note", pending.getStringExtra(android.content.Intent.EXTRA_TEXT));
+        ReflectionHelpers.callInstanceMethod(restored, "finishSharedIntent");
+        restored.saveState(restoredState);
+        EvidenceDock completed = new EvidenceDock(activity);
+        completed.restoreState(restoredState);
+        completed.handleSharedIntent(share);
+        Bundle completedState = new Bundle();
+        completed.saveState(completedState);
+        assertTrue(completedState.getBoolean("evidence_share_handled"));
+        assertNull(completedState.getParcelable("evidence_pending_share"));
+        dock.dispose();
+        restored.dispose();
+        completed.dispose();
+    }
+
+    @Test
+    public void screenAwakeToggleAppliesToBothViews() {
+        TermuxActivity activity = Robolectric.buildActivity(TermuxActivity.class).get();
+        activity.setTheme(R.style.Theme_TermuxActivity_DayNight_NoActionBar);
+        activity.setContentView(R.layout.activity_termux);
+        TerminalPaneLayout panes = activity.findViewById(R.id.terminal_panes);
+        ReflectionHelpers.setField(activity, "mTerminalPanes", panes);
+        ReflectionHelpers.setField(activity, "mTerminalView", panes.getActiveTerminal());
+        com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences preferences =
+            com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences.build(activity);
+        assertNotNull(preferences);
+        ReflectionHelpers.setField(activity, "mPreferences", preferences);
+        preferences.setKeepScreenOn(true);
+        for (TerminalView terminal : panes.getTerminals()) terminal.setKeepScreenOn(true);
+        ReflectionHelpers.callInstanceMethod(activity, "toggleKeepScreenOn");
+        for (TerminalView terminal : panes.getTerminals()) assertFalse(terminal.getKeepScreenOn());
+        assertFalse(preferences.shouldKeepScreenOn());
+    }
+
+    @Test
     public void otherPaneColorUpdatesCannotExposeAnUnfinishedSynchronizedFrame() {
         TermuxActivity activity = Robolectric.buildActivity(TermuxActivity.class).get();
         activity.setTheme(R.style.Theme_TermuxActivity_DayNight_NoActionBar);
