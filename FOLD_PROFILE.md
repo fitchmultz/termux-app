@@ -17,7 +17,7 @@ See [FORK_CHANGES.md](FORK_CHANGES.md) for the canonical concise list of shipped
 
 The integrated Fold profile:
 
-- identifies itself as `Termux Fold` version `0.119.0-fold.5` with monotonic version code `2026090305`;
+- identifies itself as `Termux Fold` version `0.119.0-fold.6` with monotonic version code `2026091106`;
 - builds and packages only `arm64-v8a` with the Android 7 bootstrap variant;
 - enables Samsung character-based terminal input;
 - offers a collapsible native multiline Evidence Dock above the extra keys, with per-session drafts and private file staging;

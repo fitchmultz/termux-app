@@ -304,6 +304,14 @@ public final class EvidenceDock {
                     current.files.addAll(recovered.files);
                     saveDraft();
                     refreshAttachments();
+                }).setNeutralButton(R.string.evidence_delete_saved, (confirm, index) -> {
+                    new AlertDialog.Builder(activity).setMessage(activity.getString(R.string.evidence_delete_saved_confirm, draft(handle).label))
+                        .setPositiveButton(R.string.evidence_delete_saved, (deletion, button) -> {
+                            if (store.isImporting()) { message(R.string.evidence_import_busy); return; }
+                            draft(handle).text = "";
+                            draft(handle).files.clear();
+                            if (!store.save(handle)) message(R.string.evidence_save_failed);
+                        }).setNegativeButton(android.R.string.cancel, null).show();
                 }).setNegativeButton(android.R.string.cancel, null).show();
         }).show();
     }

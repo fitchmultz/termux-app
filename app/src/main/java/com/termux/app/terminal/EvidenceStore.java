@@ -20,13 +20,19 @@ import java.util.Map;
 public final class EvidenceStore {
     private final Context context;
     private final SharedPreferences saved;
+    private final File directory;
     private final Map<String, EvidenceDraft> drafts = new LinkedHashMap<>();
     private Runnable listener;
     private boolean importing;
     private String notice;
 
     public EvidenceStore(Context context) {
+        this(context, new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".local/share/termux/evidence"));
+    }
+
+    EvidenceStore(Context context, File directory) {
         this.context = context.getApplicationContext();
+        this.directory = directory;
         saved = context.getSharedPreferences("evidence-drafts", Context.MODE_PRIVATE);
         if (saved.contains("import_pending")) {
             notice = context.getString(R.string.evidence_import_interrupted);
@@ -89,7 +95,6 @@ public final class EvidenceStore {
         if (!saved.edit().putBoolean("import_pending", true).commit()) { notifyResult(R.string.evidence_save_failed); return; }
         importing = true;
         if (listener != null) listener.run();
-        File directory = new File(TermuxConstants.TERMUX_HOME_DIR_PATH, ".local/share/termux/evidence");
         new Thread(() -> {
             ArrayList<File> imported = new ArrayList<>();
             boolean success = false;

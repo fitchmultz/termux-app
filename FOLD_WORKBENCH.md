@@ -29,7 +29,7 @@ The displayed target is a **Termux session**, not a Pi agent identity or an indi
 - **Insert** pastes the draft without an extra Enter. **Send ↵** explicitly confirms pasting and pressing Enter in the named session.
 - Both use the emulator's existing sanitization and bracketed-paste path. Multiline insertion is blocked if the receiving application has not enabled bracketed paste: otherwise an apparent paste can execute shell commands.
 - Draft text is limited to 16,384 characters. Oversized external evidence is rejected rather than silently truncated.
-- Drafts are stored in private app preferences at lifecycle/save boundaries, independent of Git and clipboard state. **More → Recover a saved draft** can copy an old session's draft into the current one after process death or an app update.
+- Drafts are stored in private app preferences at lifecycle/save boundaries, independent of Git and clipboard state. **More → Recover a saved draft** can copy an old session's draft into the current one after process death or an app update. Its confirmation also offers **Delete saved draft** for entries you no longer need.
 - Shared evidence never starts a model turn or runs a command by itself. Only the explicit Insert/Send controls write to a PTY.
 
 ## Validation boundary

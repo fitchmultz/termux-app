@@ -27,6 +27,8 @@
     <string name="evidence_selection">Stage selection in Dock</string>
     <string name="evidence_clear">Clear this draft</string>
     <string name="evidence_saved">Recover a saved draft</string>
+    <string name="evidence_delete_saved">Delete saved draft</string>
+    <string name="evidence_delete_saved_confirm">Delete the saved draft for %1$s? Imported files are kept.</string>
     <string name="evidence_no_saved">No saved drafts.</string>
     <string name="evidence_clear_confirm">Clear this draft? Imported files stay in private storage.</string>
     <string name="evidence_recover_confirm">Replace the current draft with this saved draft?</string>

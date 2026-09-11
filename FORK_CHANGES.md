@@ -6,7 +6,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Targets only the owner's Samsung `SM-F976U1`, Android 17, ARM64, Samsung Keyboard, and Fold/Pop-up View workflows.
 - Keeps package ID `com.termux` and prefix `/data/data/com.termux/files/usr`; this is an in-place fork, not a side-by-side package.
-- Uses label `Termux Fold`; shipped source is `0.119.0-fold.5` (`2026090305`) at tag `fold-v0.119.0-fold.5`.
+- Uses label `Termux Fold`; shipped source is `0.119.0-fold.6` (`2026091106`) at tag `fold-v0.119.0-fold.6`.
 - Packages only `arm64-v8a` with the `apt-android-7` bootstrap; split release APKs are disabled.
 - Retains target SDK 28 for direct execution of programs from the writable Termux prefix. Modern targets require routing execution through Android's system linker plus a separately patched package ecosystem; forced-linker tests currently break Node test workers and `age-keygen`. Android 17 may therefore show an old-app or **Install anyway** warning.
 - Uses a dedicated Android signing identity. Signing material must never be committed or made public, but protected GitHub Actions secrets and signed GitHub Releases are allowed when deliberately configured.
@@ -26,7 +26,7 @@ This is the canonical concise inventory of intentional differences from the audi
 ## Features
 
 - Adds native two-pane sessions with independent terminal views, active-pane input routing, draggable sizing, layout/swap/maximize controls, and compact-window collapse without ending the hidden session. Compact transitions are applied before measurement so the remaining pane fills the window.
-- Adds a per-session Evidence Dock with native multiline composition, private file imports, Android share intake, saved-draft recovery, and explicit Insert versus confirmed Send. App-owned import state survives activity replacement; draft persistence and completion are committed together. Imports never execute commands or upload content.
+- Adds a per-session Evidence Dock with native multiline composition, private file imports, Android share intake, saved-draft recovery, and explicit Insert versus confirmed Send. App-owned import state survives activity replacement; draft persistence and completion are committed together. Saved drafts can be explicitly recovered or deleted, and real-stream tests cover atomic import success/failure. Imports never execute commands or upload content.
 - Rejects multiline insertion when the receiving program has not enabled bracketed paste, and omits clipboard payloads from OSC 52 error logs.
 
 - Long-pressing a session row opens actions to rename it or exit it through the existing confirmation dialog.
