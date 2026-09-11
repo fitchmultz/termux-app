@@ -69,6 +69,7 @@ public final class TerminalPaneLayout extends LinearLayout {
             terminal.setFocusableInTouchMode(true);
             terminal.setDefaultFocusHighlightEnabled(false);
             terminal.setSaveEnabled(false);
+            terminal.setBackgroundColor(Color.BLACK);
             terminal.setOnTouchListener((v, event) -> {
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN) activate(index, true);
                 return false;
@@ -248,17 +249,19 @@ public final class TerminalPaneLayout extends LinearLayout {
     }
 
     @Override
-    protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
-        super.onSizeChanged(width, height, oldWidth, oldHeight);
-        boolean compact = width / getResources().getDisplayMetrics().density < 600;
-        if (compactState != null && compactState != compact) allowCompact = false;
-        compactState = compact;
-        updateLayout();
+    protected void onMeasure(int widthSpec, int heightSpec) {
+        boolean compact = MeasureSpec.getSize(widthSpec) / getResources().getDisplayMetrics().density < 600;
+        if (compactState == null || compactState != compact) {
+            if (compactState != null) allowCompact = false;
+            compactState = compact;
+            updateLayout();
+        }
+        super.onMeasure(widthSpec, heightSpec);
     }
 
     private void updateLayout() {
         if (divider == null) return;
-        boolean compact = getWidth() / getResources().getDisplayMetrics().density < 600;
+        boolean compact = compactState == null || compactState;
         boolean both = paired && !maximized && (!compact || allowCompact);
         boolean horizontal = getOrientation() == HORIZONTAL;
         divider.setVisibility(both ? VISIBLE : GONE);

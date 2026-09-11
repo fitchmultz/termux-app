@@ -103,7 +103,7 @@ public final class EvidenceDock {
         String name = target.mSessionName;
         if (TextUtils.isEmpty(name)) name = target.getTitle();
         int index = activity.getTermuxService() == null ? -1 : activity.getTermuxService().getIndexOfSession(target);
-        return "[" + (index + 1) + "] " + (TextUtils.isEmpty(name) ? activity.getString(R.string.split_session) : name);
+        return (index >= 0 ? "[" + (index + 1) + "] " : "") + (TextUtils.isEmpty(name) ? activity.getString(R.string.split_session) : name);
     }
 
     public void refreshTarget() {

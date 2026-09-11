@@ -50,10 +50,7 @@ public class TerminalPaneLayoutTest {
         return panes;
     }
 
-    private void size(View view, int width, int height) {
-        view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
-        view.layout(0, 0, width, height);
-        // A fold transition changes child visibility in onSizeChanged; finish its requested layout.
+    static void size(View view, int width, int height) {
         view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
         view.layout(0, 0, width, height);
     }
@@ -69,7 +66,7 @@ public class TerminalPaneLayoutTest {
         return session;
     }
 
-    private void capture(View view, String name) throws Exception {
+    static void capture(View view, String name) throws Exception {
         android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(view.getWidth(), view.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
         view.draw(new android.graphics.Canvas(bitmap));
         java.io.File directory = new java.io.File("build/reports/tests/workbench");
@@ -146,6 +143,7 @@ public class TerminalPaneLayoutTest {
         assertFalse(panes.isShowingBoth());
         assertSame(b, panes.getActiveTerminal().getCurrentSession());
         assertTrue(a.isRunning());
+        assertEquals(panes.getHeight(), ((View) panes.getActiveTerminal().getParent()).getHeight());
         capture(panes, "split-cover");
         size(panes, 900, 1000);
         assertTrue(panes.isShowingBoth());

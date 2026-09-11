@@ -152,6 +152,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
      */
     @Override
     public void onEmulatorSet() {
+        mTermuxTerminalSessionActivityClient.updateBackgroundColor();
         setTerminalCursorBlinkerState(mActivity.isVisible());
     }
 

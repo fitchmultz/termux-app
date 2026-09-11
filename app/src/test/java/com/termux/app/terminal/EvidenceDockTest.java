@@ -52,7 +52,7 @@ public class EvidenceDockTest {
     }
 
     @Test
-    public void draftsRoutePerSessionAndOnlyExplicitControlsWriteBracketedInput() {
+    public void draftsRoutePerSessionAndOnlyExplicitControlsWriteBracketedInput() throws Exception {
         // Attach real app views without starting Termux's process/service lifecycle.
         TermuxActivity activity = Robolectric.buildActivity(TermuxActivity.class).get();
         activity.setTheme(R.style.Theme_TermuxActivity_DayNight_NoActionBar);
@@ -87,11 +87,27 @@ public class EvidenceDockTest {
         assertEquals("draft A", editor.getText().toString());
         activity.findViewById(R.id.evidence_send).performClick();
         assertEquals("", input(a));
+        android.app.AlertDialog staleConfirmation = ShadowAlertDialog.getLatestAlertDialog();
+        panes.showSession(b);
+        staleConfirmation.getButton(DialogInterface.BUTTON_POSITIVE).performClick();
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        assertEquals("", input(a));
+        assertEquals("", input(b));
+        panes.showSession(a);
+        activity.findViewById(R.id.evidence_send).performClick();
         ShadowAlertDialog.getLatestAlertDialog().getButton(DialogInterface.BUTTON_POSITIVE).performClick();
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
         assertEquals("\033[200~draft A\033[201~\r", input(a));
         assertEquals("", input(b));
         panes.showSession(b);
         assertEquals("draft B", editor.getText().toString());
+        activity.showEvidenceDock();
+        panes.setSplitOrientation(android.widget.LinearLayout.HORIZONTAL);
+        android.view.View root = activity.findViewById(R.id.activity_termux_root_view);
+        TerminalPaneLayoutTest.size(root, 900, 1000);
+        TerminalPaneLayoutTest.capture(root, "evidence-wide");
+        TerminalPaneLayoutTest.size(root, 400, 900);
+        TerminalPaneLayoutTest.capture(root, "evidence-cover");
         dock.dispose();
     }
 
