@@ -44,6 +44,15 @@ jobs:
           java-version: '17'
       - name: Execute tests
         run: ./gradlew --no-daemon test
+      - name: Save synthetic workbench renders and test reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fold-test-reports
+          path: |
+            app/build/reports/tests/workbench/*.png
+            app/build/test-results/**/*.xml
+          retention-days: 3
 
   integration-apk-build:
     name: Integration APK compile check

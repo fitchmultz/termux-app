@@ -20,6 +20,12 @@ import com.termux.shared.termux.theme.TermuxThemeUtils;
 public class TermuxApplication extends Application {
 
     private static final String LOG_TAG = "TermuxApplication";
+    private com.termux.app.terminal.EvidenceStore mEvidenceStore;
+
+    public com.termux.app.terminal.EvidenceStore getEvidenceStore() {
+        if (mEvidenceStore == null) mEvidenceStore = new com.termux.app.terminal.EvidenceStore(this);
+        return mEvidenceStore;
+    }
 
     public void onCreate() {
         super.onCreate();

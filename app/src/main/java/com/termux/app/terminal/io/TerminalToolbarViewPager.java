@@ -84,8 +84,14 @@ public class TerminalToolbarViewPager {
             if (session != null) {
                 if (session.isRunning()) {
                     String textToSend = editText.getText().toString();
-                    if (textToSend.length() == 0) textToSend = "\r";
-                    session.write(textToSend);
+                    if (textToSend.length() == 0) session.write("\r");
+                    else if (session.getEmulator() != null) {
+                        if (com.termux.app.terminal.EvidenceDraft.needsBracketedPaste(textToSend) && !session.getEmulator().isBracketedPasteModeEnabled()) {
+                            activity.showToast(activity.getString(R.string.evidence_no_bracketed_paste), true);
+                            return true;
+                        }
+                        session.getEmulator().paste(textToSend);
+                    }
                 } else {
                     activity.getTermuxTerminalSessionClient().removeFinishedSession(session);
                 }

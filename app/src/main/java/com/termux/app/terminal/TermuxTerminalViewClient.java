@@ -41,6 +41,7 @@ import com.termux.shared.view.ViewUtils;
 import com.termux.terminal.KeyHandler;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalSession;
+import com.termux.view.TerminalView;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -65,8 +66,6 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
     private boolean mShowSoftKeyboardIgnoreOnce;
     private boolean mShowSoftKeyboardWithDelayOnce;
 
-    private boolean mTerminalCursorBlinkerStateAlreadySet;
-
     private List<KeyboardShortcut> mSessionShortcuts;
 
     private static final String LOG_TAG = "TermuxTerminalViewClient";
@@ -86,8 +85,10 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
     public void onCreate() {
         onReloadProperties();
 
-        mActivity.getTerminalView().setTextSize(mActivity.getPreferences().getFontSize());
-        mActivity.getTerminalView().setKeepScreenOn(mActivity.getPreferences().shouldKeepScreenOn());
+        for (TerminalView terminal : mActivity.getTerminalViews()) {
+            mActivity.getTerminalPanes().setFontSize(terminal, mActivity.getPreferences().getFontSize());
+            terminal.setKeepScreenOn(mActivity.getPreferences().shouldKeepScreenOn());
+        }
     }
 
     /**
@@ -97,7 +98,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
         // Set {@link TerminalView#TERMINAL_VIEW_KEY_LOGGING_ENABLED} value
         // Also required if user changed the preference from {@link TermuxSettings} activity and returns
         boolean isTerminalViewKeyLoggingEnabled = mActivity.getPreferences().isTerminalViewKeyLoggingEnabled();
-        mActivity.getTerminalView().setIsTerminalViewKeyLoggingEnabled(isTerminalViewKeyLoggingEnabled);
+        for (TerminalView terminal : mActivity.getTerminalViews()) terminal.setIsTerminalViewKeyLoggingEnabled(isTerminalViewKeyLoggingEnabled);
 
         // Piggyback on the terminal view key logging toggle for now, should add a separate toggle in future
         mActivity.getTermuxActivityRootView().setIsRootViewLoggingEnabled(isTerminalViewKeyLoggingEnabled);
@@ -111,15 +112,12 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
         // Show the soft keyboard if required
         setSoftKeyboardState(true, mActivity.isActivityRecreated());
 
-        mTerminalCursorBlinkerStateAlreadySet = false;
-
         if (mActivity.getTerminalView().mEmulator != null) {
             // Start terminal cursor blinking if enabled
             // If emulator is already set, then start blinker now, otherwise wait for onEmulatorSet()
             // event to start it. This is needed since onEmulatorSet() may not be called after
             // TermuxActivity is started after device display timeout with double tap and not power button.
             setTerminalCursorBlinkerState(true);
-            mTerminalCursorBlinkerStateAlreadySet = true;
         }
     }
 
@@ -154,18 +152,9 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
      */
     @Override
     public void onEmulatorSet() {
-        if (!mTerminalCursorBlinkerStateAlreadySet) {
-            // Start terminal cursor blinking if enabled
-            // We need to wait for the first session to be attached that's set in
-            // TermuxActivity.onServiceConnected() and then the multiple calls to TerminalView.updateSize()
-            // where the final one eventually sets the mEmulator when width/height is not 0. Otherwise
-            // blinker will not start again if TermuxActivity is started again after exiting it with
-            // double back press. Check TerminalView.setTerminalCursorBlinkerState().
-            setTerminalCursorBlinkerState(true);
-            mTerminalCursorBlinkerStateAlreadySet = true;
-        }
+        mTermuxTerminalSessionActivityClient.updateBackgroundColor();
+        setTerminalCursorBlinkerState(mActivity.isVisible());
     }
-
 
 
     @Override
@@ -182,7 +171,9 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
     @Override
     public void onSingleTapUp(MotionEvent e) {
-        TerminalEmulator term = mActivity.getCurrentSession().getEmulator();
+        TerminalSession session = mActivity.getCurrentSession();
+        if (session == null || session.getEmulator() == null) return;
+        TerminalEmulator term = session.getEmulator();
 
         if (mActivity.getProperties().shouldOpenTerminalTranscriptURLOnClick()) {
             int[] columnAndRow = mActivity.getTerminalView().getColumnAndRow(e, true);
@@ -198,7 +189,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
         if (!term.isMouseTrackingActive() && !e.isFromSource(InputDevice.SOURCE_MOUSE)) {
             if (!KeyboardUtils.areDisableSoftKeyboardFlagsSet(mActivity))
-                KeyboardUtils.showSoftKeyboard(mActivity, mActivity.getTerminalView());
+                KeyboardUtils.showSoftKeyboard(mActivity, mActivity.getTerminalInputView());
             else
                 Logger.logVerbose(LOG_TAG, "Not showing soft keyboard onSingleTapUp since its disabled");
         }
@@ -514,8 +505,10 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
 
     public void changeFontSize(boolean increase) {
+        TerminalView terminal = mActivity.getTerminalView();
+        mActivity.getPreferences().setFontSize(mActivity.getTerminalPanes().getFontSize(terminal));
         mActivity.getPreferences().changeFontSize(increase);
-        mActivity.getTerminalView().setTextSize(mActivity.getPreferences().getFontSize());
+        mActivity.getTerminalPanes().setFontSize(terminal, mActivity.getPreferences().getFontSize());
     }
 
 
@@ -545,7 +538,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
                     mActivity.getTerminalView().postDelayed(getShowSoftKeyboardRunnable(), 500);
                     mActivity.getTerminalView().requestFocus();
                 } else
-                    KeyboardUtils.showSoftKeyboard(mActivity, mActivity.getTerminalView());
+                    KeyboardUtils.showSoftKeyboard(mActivity, mActivity.getTerminalInputView());
             }
         }
         // If soft keyboard toggle behaviour is show/hide
@@ -606,27 +599,17 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
             }
         }
 
-        mActivity.getTerminalView().setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override
-            public void onFocusChange(View view, boolean hasFocus) {
-                // Force show soft keyboard if TerminalView or toolbar text input view has
-                // focus and close it if they don't
-                boolean textInputViewHasFocus = false;
-                final EditText textInputView =  mActivity.findViewById(R.id.terminal_toolbar_text_input);
-                if (textInputView != null) textInputViewHasFocus = textInputView.hasFocus();
-
-                if (hasFocus || textInputViewHasFocus) {
-                    if (mShowSoftKeyboardIgnoreOnce) {
-                        mShowSoftKeyboardIgnoreOnce = false; return;
-                    }
-                    Logger.logVerbose(LOG_TAG, "Showing soft keyboard on focus change");
-                } else {
-                    Logger.logVerbose(LOG_TAG, "Hiding soft keyboard on focus change");
-                }
-
-                KeyboardUtils.setSoftKeyboardVisibility(getShowSoftKeyboardRunnable(), mActivity, mActivity.getTerminalView(), hasFocus || textInputViewHasFocus);
-            }
-        });
+        for (TerminalView terminal : mActivity.getTerminalViews()) {
+            terminal.setOnFocusChangeListener((view, hasFocus) -> {
+                if (hasFocus) mActivity.getTerminalPanes().activate((TerminalView) view);
+                view.post(() -> {
+                    boolean inputFocused = mActivity.isTerminalToolbarTextInputViewSelected();
+                    for (TerminalView pane : mActivity.getTerminalViews()) inputFocused |= pane.hasFocus();
+                    if (inputFocused && mShowSoftKeyboardIgnoreOnce) { mShowSoftKeyboardIgnoreOnce = false; return; }
+                    KeyboardUtils.setSoftKeyboardVisibility(getShowSoftKeyboardRunnable(), mActivity, mActivity.getTerminalView(), inputFocused);
+                });
+            });
+        }
 
         // Do not force show soft keyboard if termux-reload-settings command was run with hardware keyboard
         // or soft keyboard is to be hidden or is disabled
@@ -637,15 +620,15 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
             // "Select URL" long press and returning to Termux app with back button. This
             // will also show keyboard even if it was closed before opening url. #2111
             Logger.logVerbose(LOG_TAG, "Requesting TerminalView focus and showing soft keyboard");
-            mActivity.getTerminalView().requestFocus();
-            mActivity.getTerminalView().postDelayed(getShowSoftKeyboardRunnable(), 300);
+            mActivity.getTerminalInputView().requestFocus();
+            mActivity.getTerminalInputView().postDelayed(getShowSoftKeyboardRunnable(), 300);
         }
     }
 
     private Runnable getShowSoftKeyboardRunnable() {
         if (mShowSoftKeyboardRunnable == null) {
             mShowSoftKeyboardRunnable = () -> {
-                KeyboardUtils.showSoftKeyboard(mActivity, mActivity.getTerminalView());
+                KeyboardUtils.showSoftKeyboard(mActivity, mActivity.getTerminalInputView());
             };
         }
         return mShowSoftKeyboardRunnable;
@@ -654,18 +637,11 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
 
     public void setTerminalCursorBlinkerState(boolean start) {
-        if (start) {
-            // If set/update the cursor blinking rate is successful, then enable cursor blinker
-            if (mActivity.getTerminalView().setTerminalCursorBlinkerRate(mActivity.getProperties().getTerminalCursorBlinkRate()))
-                mActivity.getTerminalView().setTerminalCursorBlinkerState(true, true);
-            else
-                Logger.logError(LOG_TAG,"Failed to start cursor blinker");
-        } else {
-            // Disable cursor blinker
-            mActivity.getTerminalView().setTerminalCursorBlinkerState(false, true);
+        for (TerminalView terminal : mActivity.getTerminalViews()) {
+            terminal.setTerminalCursorBlinkerRate(mActivity.getProperties().getTerminalCursorBlinkRate());
+            terminal.setTerminalCursorBlinkerState(start && terminal.isShown(), true);
         }
     }
-
 
 
     public void shareSessionTranscript() {

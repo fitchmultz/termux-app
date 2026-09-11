@@ -17,15 +17,17 @@ See [FORK_CHANGES.md](FORK_CHANGES.md) for the canonical concise list of shipped
 
 The integrated Fold profile:
 
-- identifies itself as `Termux Fold` version `0.119.0-fold.5` with monotonic version code `2026090305`;
+- identifies itself as `Termux Fold` version `0.119.0-fold.6` with monotonic version code `2026091106`;
 - builds and packages only `arm64-v8a` with the Android 7 bootstrap variant;
 - enables Samsung character-based terminal input;
-- shows a real Android toolbar text field simultaneously with extra keys;
+- offers a collapsible native multiline Evidence Dock above the extra keys, with per-session drafts and private file staging;
 - places the terminal-session drawer at the logical end/right edge;
 - provides two rows of Fold controls with session cycling, drawer, keyboard, `TEXTBAR`, navigation, PageUp, and PageDown;
 - advertises synchronized-output support to tmux once the terminal emulator implements DEC mode 2026.
 
 Properties remain available as recovery switches, but their defaults are the Fold choices rather than upstream's general-purpose choices. Release metadata is centralized in `app/build.gradle` and asserted by the read-only integration workflow so label/version drift fails CI.
+
+Native split-session controls, Evidence Dock behavior, limits, and physical acceptance checks are documented in [FOLD_WORKBENCH.md](FOLD_WORKBENCH.md).
 
 ## Shared contracts
 

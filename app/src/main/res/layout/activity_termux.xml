@@ -23,15 +23,37 @@
             android:layout_above="@+id/terminal_toolbar_container"
             android:layout_height="match_parent">
 
-            <com.termux.view.TerminalView
-                android:id="@+id/terminal_view"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:defaultFocusHighlightEnabled="false"
-                android:focusableInTouchMode="true"
-                android:scrollbarThumbVertical="@drawable/terminal_scroll_shape"
-                android:scrollbars="vertical"
-                tools:ignore="UnusedAttribute" />
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:gravity="end"
+                    android:background="#161B22">
+                    <Button
+                        android:id="@+id/evidence_dock_toggle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:text="@string/evidence_dock"
+                        android:textAllCaps="false" />
+                    <Button
+                        android:id="@+id/terminal_pane_options"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:text="@string/split_options"
+                        android:textAllCaps="false" />
+                </LinearLayout>
+
+                <com.termux.app.terminal.TerminalPaneLayout
+                    android:id="@+id/terminal_panes"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+            </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/terminal_sessions_drawer"
@@ -109,11 +131,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
-                <include
-                    android:id="@+id/terminal_toolbar_stacked_text_input"
-                    layout="@layout/view_terminal_toolbar_text_input"
-                    android:layout_width="match_parent"
-                    android:layout_height="37.5dp" />
+                <include layout="@layout/view_evidence_dock" />
 
             </FrameLayout>
 

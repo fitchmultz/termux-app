@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="terminal_view" type="id" />
+    <item name="terminal_view_secondary" type="id" />
+    <string name="split_options">Panes</string>
+    <string name="split_beside">Open beside current</string>
+    <string name="split_new">Split with a new session</string>
+    <string name="split_horizontal">Left / right</string>
+    <string name="split_vertical">Top / bottom</string>
+    <string name="split_maximize">Maximize active pane</string>
+    <string name="split_restore">Restore split</string>
+    <string name="split_swap">Swap panes</string>
+    <string name="split_single">Keep active pane only</string>
+    <string name="split_resize">Resize split</string>
+    <string name="split_divider_description">Drag to resize the panes. Panes menu also offers a resize slider.</string>
+    <string name="split_empty">No session</string>
+    <string name="split_session">Terminal session</string>
+    <string name="split_active_pane">Active pane: %1$s</string>
+    <string name="split_focus_pane">Focus pane: %1$s</string>
+    <string name="evidence_dock">Evidence Dock</string>
+    <string name="evidence_target">Draft for %1$s</string>
+    <string name="evidence_hint">Compose here. Nothing reaches the terminal until Insert or Send.</string>
+    <string name="evidence_files">Add files</string>
+    <string name="evidence_insert">Insert</string>
+    <string name="evidence_send">Send ↵</string>
+    <string name="evidence_more">More</string>
+    <string name="evidence_selection">Stage selection in Dock</string>
+    <string name="evidence_clear">Clear this draft</string>
+    <string name="evidence_saved">Recover a saved draft</string>
+    <string name="evidence_delete_saved">Delete saved draft</string>
+    <string name="evidence_delete_saved_confirm">Delete the saved draft for %1$s? Imported files are kept.</string>
+    <string name="evidence_no_saved">No saved drafts.</string>
+    <string name="evidence_clear_confirm">Clear this draft? Imported files stay in private storage.</string>
+    <string name="evidence_recover_confirm">Replace the current draft with this saved draft?</string>
+    <string name="evidence_remove">Remove from draft</string>
+    <string name="evidence_open">Open file</string>
+    <string name="evidence_choose_target">Stage evidence in which session?</string>
+    <string name="evidence_import_interrupted">An evidence import was interrupted. Your saved draft is unchanged; add the files again.</string>
+    <string name="evidence_import_busy">An evidence import is already running. Try sharing again when it finishes.</string>
+    <string name="evidence_importing">Importing files into private storage…</string>
+    <string name="evidence_imported">Evidence staged for %1$s. Nothing sent.</string>
+    <string name="evidence_import_failed">Could not import evidence. Check access and the 32 MiB per-file limit; nothing was sent.</string>
+    <string name="evidence_save_failed">Could not save this draft. Keep this screen open and copy the text before leaving.</string>
+    <string name="evidence_no_session">Choose a running terminal session first.</string>
+    <string name="evidence_limits">A draft holds up to 16,384 characters and 8 files. Nothing was added.</string>
+    <string name="evidence_no_bracketed_paste">This program has not enabled bracketed paste. Multiline insertion could execute commands, so it was blocked. Use a single line or enable bracketed paste in the receiving program.</string>
+    <string name="evidence_send_confirm">Paste this draft and press Enter in %1$s? This can execute commands or submit a prompt.</string>
+    <string name="evidence_empty">The draft is empty.</string>
+    <string name="evidence_file_note">Files are local paths, not uploads. The receiving program must support reading them.</string>
+    <string name="evidence_delivered">Draft inserted. Imported files remain in private storage.</string>
+    <string name="evidence_changed_target">The target changed or exited. Nothing was sent.</string>
+</resources>
