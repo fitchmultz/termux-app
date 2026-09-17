@@ -32,7 +32,8 @@ import static org.junit.Assert.*;
     qualifiers = "w900dp-h1000dp-mdpi", shadows = TerminalPaneLayoutTest.NoPty.class)
 public class FoldControlsTest {
     private TermuxActivity activity() {
-        TermuxActivity activity = Robolectric.buildActivity(TermuxActivity.class).get();
+        org.robolectric.android.controller.ActivityController<TermuxActivity> controller = Robolectric.buildActivity(TermuxActivity.class);
+        TermuxActivity activity = controller.get();
         activity.setTheme(R.style.Theme_TermuxActivity_DayNight_NoActionBar);
         activity.setContentView(R.layout.activity_termux);
         ReflectionHelpers.setField(activity, "mPreferences", TermuxAppSharedPreferences.build(activity));
@@ -40,6 +41,7 @@ public class FoldControlsTest {
         ReflectionHelpers.callInstanceMethod(activity, "setTermuxTerminalViewAndClients");
         ReflectionHelpers.callInstanceMethod(activity, "setTerminalToolbarView", ClassParameter.from(Bundle.class, null));
         activity.getTerminalToolbarContainer().setVisibility(View.VISIBLE);
+        controller.visible();
         return activity;
     }
 
@@ -108,10 +110,10 @@ public class FoldControlsTest {
         assertTrue(panes.isShowingBoth());
     }
 
-    @Test @Config(qualifiers = "w900dp-h1000dp-mdpi-notnight")
+    @Test @Config(qualifiers = "w900dp-h1000dp-notnight-mdpi")
     public void lightControlsStayReadableAndReflowWithoutLosingState() throws Exception { checkControls(); }
 
-    @Test @Config(qualifiers = "w900dp-h1000dp-mdpi-night")
+    @Test @Config(qualifiers = "w900dp-h1000dp-night-mdpi")
     public void darkControlsStayReadableAndReflowWithoutLosingState() throws Exception { checkControls(); }
 
     @Test
