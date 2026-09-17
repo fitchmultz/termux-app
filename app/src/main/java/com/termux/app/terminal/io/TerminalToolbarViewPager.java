@@ -1,5 +1,7 @@
 package com.termux.app.terminal.io;
 
+import android.content.Context;
+import android.util.AttributeSet;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,7 +16,30 @@ import com.termux.app.TermuxActivity;
 import com.termux.shared.termux.extrakeys.ExtraKeysView;
 import com.termux.terminal.TerminalSession;
 
-public class TerminalToolbarViewPager {
+public class TerminalToolbarViewPager extends ViewPager {
+
+    private int rowHeight;
+
+    public TerminalToolbarViewPager(Context context, AttributeSet attrs) {
+        super(context, attrs);
+    }
+
+    public void setRowHeight(int height) {
+        rowHeight = height;
+        requestLayout();
+    }
+
+    @Override
+    protected void onMeasure(int widthSpec, int heightSpec) {
+        // ViewPager populates its pages during measurement.
+        super.onMeasure(widthSpec, heightSpec);
+        ExtraKeysView keys = findViewById(R.id.terminal_toolbar_extra_keys);
+        if (keys == null || rowHeight == 0) return;
+        keys.fitRows(MeasureSpec.getSize(widthSpec));
+        int height = rowHeight * keys.getRowCount();
+        getLayoutParams().height = height;
+        super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
+    }
 
     public static class PageAdapter extends PagerAdapter {
 
@@ -47,6 +72,7 @@ public class TerminalToolbarViewPager {
                 layout = inflater.inflate(R.layout.view_terminal_toolbar_extra_keys, collection, false);
                 ExtraKeysView extraKeysView = (ExtraKeysView) layout;
                 extraKeysView.setExtraKeysViewClient(mActivity.getTermuxTerminalExtraKeys());
+                extraKeysView.setAdaptiveRows(mActivity.getTermuxTerminalExtraKeys().isAdaptiveLayout());
                 extraKeysView.setButtonTextAllCaps(mActivity.getProperties().shouldExtraKeysTextBeAllCaps());
                 mActivity.setExtraKeysView(extraKeysView);
                 extraKeysView.reload(mActivity.getTermuxTerminalExtraKeys().getExtraKeysInfo(),

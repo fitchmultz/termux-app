@@ -207,6 +207,9 @@ public final class ExtraKeysView extends GridLayout {
     protected Handler mHandler;
     protected SpecialButtonsLongHoldRunnable mSpecialButtonsLongHoldRunnable;
     protected int mLongPressCount;
+    private ExtraKeyButton[][] configuredButtons;
+    private boolean adaptiveRows;
+    private boolean singleRow;
 
 
     public ExtraKeysView(Context context, AttributeSet attrs) {
@@ -387,12 +390,18 @@ public final class ExtraKeysView extends GridLayout {
         if (extraKeysInfo == null)
             return;
 
+        stopScheduledExecutors();
+        if (mPopupWindow != null) dismissPopup();
+        singleRow = false;
+
         for(SpecialButtonState state : mSpecialButtons.values())
             state.buttons = new ArrayList<>();
 
         removeAllViews();
 
-        ExtraKeyButton[][] buttons = extraKeysInfo.getMatrix();
+        ExtraKeyButton[][] buttons = configuredButtons = extraKeysInfo.getMatrix();
+        setRowCount(UNDEFINED);
+        setColumnCount(UNDEFINED);
 
         setRowCount(buttons.length);
         setColumnCount(maximumLength(buttons));
@@ -487,6 +496,44 @@ public final class ExtraKeysView extends GridLayout {
     }
 
 
+
+    public void setAdaptiveRows(boolean adaptive) {
+        adaptiveRows = adaptive;
+        requestLayout();
+    }
+
+    /** Reposition existing buttons so latched modifiers and popup actions survive resizing. */
+    public void fitRows(int width) {
+        if (configuredButtons == null || configuredButtons.length < 2) return;
+        float density = getResources().getDisplayMetrics().density;
+        float cellWidth = 48 * density;
+        for (int i = 0; i < getChildCount(); i++) {
+            MaterialButton button = (MaterialButton) getChildAt(i);
+            CharSequence label = button.getTransformationMethod() == null ? button.getText()
+                : button.getTransformationMethod().getTransformation(button.getText(), button);
+            cellWidth = Math.max(cellWidth, button.getPaint().measureText(label.toString()) + 16 * density);
+        }
+        boolean fits = adaptiveRows && getChildCount() > 0 && width >= Math.ceil(cellWidth) * getChildCount();
+        if (fits == singleRow) return;
+        stopScheduledExecutors();
+        if (mPopupWindow != null) dismissPopup();
+        setRowCount(UNDEFINED);
+        setColumnCount(UNDEFINED);
+        int index = 0;
+        for (int row = 0; row < configuredButtons.length; row++) {
+            for (int col = 0; col < configuredButtons[row].length; col++) {
+                View button = getChildAt(index);
+                LayoutParams params = (LayoutParams) button.getLayoutParams();
+                params.rowSpec = GridLayout.spec(fits ? 0 : row, GridLayout.FILL, 1.f);
+                params.columnSpec = GridLayout.spec(fits ? index : col, GridLayout.FILL, 1.f);
+                button.setLayoutParams(params);
+                index++;
+            }
+        }
+        setRowCount(fits ? 1 : configuredButtons.length);
+        setColumnCount(fits ? getChildCount() : maximumLength(configuredButtons));
+        singleRow = fits;
+    }
 
     public void onExtraKeyButtonClick(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
         if (mExtraKeysViewClient != null)

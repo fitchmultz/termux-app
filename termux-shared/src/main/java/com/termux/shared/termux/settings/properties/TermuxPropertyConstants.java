@@ -353,7 +353,7 @@ public final class TermuxPropertyConstants {
         "[[ESC, TAB, {key: CTRL, popup: {macro: \"CTRL ALT UP\", display: PREV}}, " +
         "{key: ALT, popup: {macro: \"CTRL ALT DOWN\", display: NEXT}}, " +
         "{macro: \"CTRL ALT DOWN\", display: NEXT}, " + ExtraKeysConstants.ACTION_DRAWER +
-        "], [HOME, LEFT, {key: DOWN, popup: PGDN}, {key: UP, popup: PGUP}, RIGHT, " +
+        "], [HOME, LEFT, {key: UP, popup: PGUP}, {key: DOWN, popup: PGDN}, RIGHT, " +
         "{key: " + ExtraKeysConstants.ACTION_KEYBOARD + ", popup: " + ExtraKeysConstants.ACTION_TEXTBAR + "}]]";
 
     /** Defines the key for extra keys style */

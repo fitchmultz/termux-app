@@ -516,6 +516,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         // Set termux terminal view
         mTerminalPanes = findViewById(R.id.terminal_panes);
+        mTerminalPanes.setSinglePaneTitle(findViewById(R.id.terminal_session_title));
         mTerminalView = mTerminalPanes.getActiveTerminal();
         for (TerminalView terminal : getTerminalViews()) terminal.setTerminalViewClient(mTermuxTerminalViewClient);
         mTerminalPanes.setOnActiveChanged(this::onTerminalPaneChanged);
@@ -579,7 +580,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         final ViewPager terminalToolbarViewPager = getTerminalToolbarViewPager();
         if (terminalToolbarViewPager == null) return;
 
-        int rowHeight = Math.round(mTerminalToolbarDefaultHeight * mProperties.getTerminalToolbarHeightScaleFactor());
+        int rowHeight = Math.max(Math.round(48 * getResources().getDisplayMetrics().density),
+            Math.round(mTerminalToolbarDefaultHeight * mProperties.getTerminalToolbarHeightScaleFactor()));
+        ((TerminalToolbarViewPager) terminalToolbarViewPager).setRowHeight(rowHeight);
         ViewGroup.LayoutParams pagerLayoutParams = terminalToolbarViewPager.getLayoutParams();
         pagerLayoutParams.height = rowHeight *
             (mTermuxTerminalExtraKeys.getExtraKeysInfo() == null ? 0 : mTermuxTerminalExtraKeys.getExtraKeysInfo().getMatrix().length);
