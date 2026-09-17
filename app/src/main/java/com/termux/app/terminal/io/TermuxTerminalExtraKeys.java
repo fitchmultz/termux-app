@@ -16,11 +16,13 @@ import com.termux.shared.termux.settings.properties.TermuxSharedProperties;
 import com.termux.shared.termux.terminal.io.TerminalExtraKeys;
 import com.termux.view.TerminalView;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 
 public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
 
     private ExtraKeysInfo mExtraKeysInfo;
+    private boolean adaptiveLayout;
 
     final TermuxActivity mActivity;
     final TermuxTerminalViewClient mTermuxTerminalViewClient;
@@ -61,12 +63,15 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
             }
 
             mExtraKeysInfo = new ExtraKeysInfo(extrakeys, extraKeysStyle, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
+            adaptiveLayout = new JSONArray(extrakeys).toString().equals(
+                new JSONArray(TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS).toString());
         } catch (JSONException e) {
             Logger.showToast(mActivity, "Could not load and set the \"" + TermuxPropertyConstants.KEY_EXTRA_KEYS + "\" property from the properties file: " + e.toString(), true);
             Logger.logStackTraceWithMessage(LOG_TAG, "Could not load and set the \"" + TermuxPropertyConstants.KEY_EXTRA_KEYS + "\" property from the properties file: ", e);
 
             try {
                 mExtraKeysInfo = new ExtraKeysInfo(TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS, TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS_STYLE, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
+                adaptiveLayout = true;
             } catch (JSONException e2) {
                 Logger.showToast(mActivity, "Can't create default extra keys",true);
                 Logger.logStackTraceWithMessage(LOG_TAG, "Could create default extra keys: ", e);
@@ -74,6 +79,8 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
             }
         }
     }
+
+    public boolean isAdaptiveLayout() { return adaptiveLayout; }
 
     public ExtraKeysInfo getExtraKeysInfo() {
         return mExtraKeysInfo;

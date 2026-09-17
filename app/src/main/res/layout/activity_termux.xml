@@ -34,13 +34,29 @@
                     android:orientation="horizontal"
                     android:gravity="end"
                     android:background="#161B22">
-                    <Button
+                    <TextView
+                        android:id="@+id/terminal_session_title"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center_vertical"
+                        android:paddingHorizontal="10dp"
+                        android:textColor="?attr/extraKeysButtonTextColor"
+                        android:textSize="13sp"
+                        android:singleLine="true"
+                        android:ellipsize="end" />
+                    <com.google.android.material.button.MaterialButton
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:textColor="?attr/extraKeysButtonTextColor"
                         android:id="@+id/evidence_dock_toggle"
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
-                        android:text="@string/evidence_dock"
+                        android:text="@string/evidence_dock_short"
+                        android:contentDescription="@string/evidence_dock"
                         android:textAllCaps="false" />
-                    <Button
+                    <com.google.android.material.button.MaterialButton
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:textColor="?attr/extraKeysButtonTextColor"
                         android:id="@+id/terminal_pane_options"
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
@@ -135,10 +151,10 @@
 
             </FrameLayout>
 
-            <androidx.viewpager.widget.ViewPager
+            <com.termux.app.terminal.io.TerminalToolbarViewPager
                 android:id="@+id/terminal_toolbar_view_pager"
                 android:layout_width="match_parent"
-                android:layout_height="37.5dp" />
+                android:layout_height="48dp" />
 
         </LinearLayout>
 

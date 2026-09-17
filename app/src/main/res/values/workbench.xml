@@ -18,6 +18,7 @@
     <string name="split_active_pane">Active pane: %1$s</string>
     <string name="split_focus_pane">Focus pane: %1$s</string>
     <string name="evidence_dock">Evidence Dock</string>
+    <string name="evidence_dock_short">Dock</string>
     <string name="evidence_target">Draft for %1$s</string>
     <string name="evidence_hint">Compose here. Nothing reaches the terminal until Insert or Send.</string>
     <string name="evidence_files">Add files</string>

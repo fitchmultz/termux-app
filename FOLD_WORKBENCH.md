@@ -4,6 +4,7 @@
 
 No tmux is required. Each pane owns its terminal view, PTY size, scroll position, selection, and text size.
 
+- The shared header shows the session title alongside readable **Dock** and **Panes** actions. One visible pane needs no duplicate pane header; two visible panes retain their separate focus/maximize headers.
 - **Panes → Split with a new session** creates the second terminal.
 - To use an existing session, long-press its drawer row and choose **Open beside current**.
 - Tap a terminal or its header to select the destination for hardware input and extra keys. Keyboard session-switch shortcuts also move focus; delayed gestures from the previous pane are cancelled. The active pane has a teal border and a filled-circle header marker.
@@ -13,6 +14,12 @@ No tmux is required. Each pane owns its terminal view, PTY size, scroll position
 - On a wide-to-narrow window transition (below 600 dp), only the active pane is shown. Widening the window restores the pair. An explicit Restore split or Open beside action also permits splitting a narrow window.
 - Hiding, maximizing, swapping, or removing a pane from the layout does **not** exit its session. The existing confirmed **Exit session** action does.
 - Pairing, active pane, orientation, divider fraction, and pane font sizes survive activity recreation and leaving/reopening the activity while the service survives. This is not process resurrection after Android kills Termux.
+
+## Adaptive extra keys
+
+The default keys use two rows on narrow windows and a single row when all twelve labels fit with at least 48dp-wide targets. The decision uses measured window width and rendered label size, including font scaling, not the device model. Row height is at least 48dp. Up precedes Down, with PageUp/PageDown retained as their swipe-up actions. Button instances and latched modifiers survive reflow; user-defined matrices keep their configured rows.
+
+Check narrow → wide → narrow transitions with the keyboard open and closed on the Fold 8 and Ultra. Verify session identity, unsent drafts, focus, and popup actions remain unchanged. Synthetic render/unit evidence does not replace physical typing and touch checks.
 
 ## Evidence Dock
 

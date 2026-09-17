@@ -29,6 +29,8 @@ public final class TerminalPaneLayout extends LinearLayout {
     private final TerminalView[] terminals = new TerminalView[2];
     private final LinearLayout[] panes = new LinearLayout[2];
     private final TextView[] titles = new TextView[2];
+    private final View[] headers = new View[2];
+    private TextView singlePaneTitle;
     private final ImageButton[] zoom = new ImageButton[2];
     private final int[] fontSizes = new int[2];
     private final View divider;
@@ -56,6 +58,7 @@ public final class TerminalPaneLayout extends LinearLayout {
             title.setOnClickListener(v -> activate(index, true));
             title.setFocusable(true);
             LinearLayout header = new LinearLayout(context);
+            headers[i] = header;
             header.addView(title, new LayoutParams(0, dp(48), 1));
             ImageButton maximize = zoom[i] = new ImageButton(context);
             maximize.setImageResource(android.R.drawable.ic_menu_crop);
@@ -236,6 +239,11 @@ public final class TerminalPaneLayout extends LinearLayout {
 
     public int getFontSize(TerminalView terminal) { return fontSizes[terminal == terminals[0] ? 0 : 1]; }
 
+    public void setSinglePaneTitle(TextView title) {
+        singlePaneTitle = title;
+        refreshTitles();
+    }
+
     public void refreshTitles() {
         for (int i = 0; i < 2; i++) {
             TerminalSession session = terminals[i].getCurrentSession();
@@ -244,9 +252,14 @@ public final class TerminalPaneLayout extends LinearLayout {
             if (TextUtils.isEmpty(name)) name = getContext().getString(R.string.split_session);
             titles[i].setText((i == active ? "● " : "○ ") + (i == 0 ? "A · " : "B · ") + name);
             titles[i].setContentDescription(getContext().getString(i == active ? R.string.split_active_pane : R.string.split_focus_pane, name));
+            headers[i].setVisibility(singlePaneTitle == null || isShowingBoth() ? VISIBLE : GONE);
             zoom[i].setVisibility(paired ? VISIBLE : GONE);
             zoom[i].setContentDescription(getContext().getString(isShowingBoth() ? R.string.split_maximize : R.string.split_restore));
             panes[i].setBackgroundColor(i == active ? Color.rgb(0, 115, 125) : Color.rgb(32, 38, 45));
+        }
+        if (singlePaneTitle != null) {
+            singlePaneTitle.setText(isShowingBoth() ? getContext().getString(R.string.application_name) : titles[active].getText());
+            singlePaneTitle.setContentDescription(titles[active].getContentDescription());
         }
     }
 
