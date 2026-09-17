@@ -6,14 +6,14 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Prioritizes the owner's Z Fold 8 (`SM-F971U1`, Android 17), retains the Ultra (`SM-F976U1`) as a regression target, and welcomes other compatible devices without model-name gating. The signed APK remains ARM64-only.
 - Keeps package ID `com.termux` and prefix `/data/data/com.termux/files/usr`; this is an in-place fork, not a side-by-side package.
-- Uses label `Termux Fold`; the last published release is `0.119.0-fold.7`. The Fold 8 candidate is `0.119.0-fold.8` (`2026091708`); publication and physical validation are separate gates.
+- Uses label `Termux Fold`; the source release profile is `0.119.0-fold.8` (`2026091708`). Signed publication and physical validation remain separate gates.
 - Packages only `arm64-v8a` with the `apt-android-7` bootstrap; split release APKs are disabled.
 - Retains target SDK 28 for direct execution of programs from the writable Termux prefix. Modern targets require routing execution through Android's system linker plus a separately patched package ecosystem; forced-linker tests currently break Node test workers and `age-keygen`. Android 17 may therefore show an old-app or **Install anyway** warning.
 - Uses a dedicated Android signing identity. Signing material must never be committed or made public, but protected GitHub Actions secrets and signed GitHub Releases are allowed when deliberately configured.
 
 ## Fixes
 
-- Fold 8 candidate: makes Dock/Panes labels readable in both app themes, combines the single-visible-pane title with those actions, and preserves separate focus headers when both panes are visible.
+- Makes Dock/Panes labels readable in both app themes, combines the single-visible-pane title with those actions, and preserves separate focus headers when both panes are visible.
 
 - Includes upstream `3b66f87`: rejects file-based RUN_COMMAND error results until the external-app policy has passed; Android's RUN_COMMAND permission remains required.
 
@@ -43,7 +43,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Enables Samsung character-based terminal input for immediate command typing.
 - Makes the Evidence Dock available alongside extra keys, initially collapsed, and places the session drawer at logical `end` (right in this profile).
-- Fold 8 candidate: uses `ESC`, `TAB`, `CTRL/PREV`, `ALT/NEXT`, `NEXT`, `DRAWER`; then `HOME`, `LEFT`, `UP/PGUP`, `DOWN/PGDN`, `RIGHT`, `KEYBOARD/TEXTBAR`. The default matrix reflows to one row only when every label and at least 48dp per touch target fit. Custom matrices keep their configured rows; toolbar height respects a 48dp minimum. Reflow preserves the same button instances, modifiers, macros, and popups.
+- Uses `ESC`, `TAB`, `CTRL/PREV`, `ALT/NEXT`, `NEXT`, `DRAWER`; then `HOME`, `LEFT`, `UP/PGUP`, `DOWN/PGDN`, `RIGHT`, `KEYBOARD/TEXTBAR`. The default matrix reflows to one row only when every label and at least 48dp per touch target fit. Custom matrices keep their configured rows; toolbar height respects a 48dp minimum. Reflow preserves the same button instances, modifiers, macros, and popups.
 - Keeps explicit keyboard controls because full-screen TUIs such as Pi use terminal mouse tracking and consume terminal taps.
 
 ## Contracts, tests, and repository policy
