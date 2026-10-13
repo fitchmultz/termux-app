@@ -2,57 +2,25 @@ plugins {
     id "com.android.application"
 }
 
-ext {
-    // The packageVariant defines the bootstrap variant that will be included in the app APK.
-    // This must be supported by com.termux.shared.termux.TermuxBootstrap.PackageVariant or app will
-    // crash at startup.
-    // Bootstrap of a different variant must not be manually installed by the user after app installation
-    // by replacing $PREFIX since app code is dependant on the variant used to build the APK.
-    // This personal ARM64/Android 17 profile intentionally supports only "apt-android-7".
-    packageVariant = System.getenv("TERMUX_PACKAGE_VARIANT") ?: rootProject.ext.foldProfile.packageVariant
-}
+def profile = rootProject.ext.foldProfile
+ext.packageVariant = profile.packageVariant
 
 android {
-    namespace "com.termux"
-
-    compileSdkVersion project.properties.compileSdkVersion.toInteger()
-    ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
-    def appVersionName = System.getenv("TERMUX_APP_VERSION_NAME") ?: rootProject.ext.foldProfile.versionName
-    def appVersionCode = (System.getenv("TERMUX_APP_VERSION_CODE") ?: rootProject.ext.foldProfile.versionCode).toInteger()
-    def apkVersionTag = System.getenv("TERMUX_APK_VERSION_TAG") ?: ""
-    def splitAPKsForDebugBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS") ?: "1"
-    def splitAPKsForReleaseBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS") ?: "0" // F-Droid does not support split APKs #1904
-
-    dependencies {
-        implementation "androidx.annotation:annotation:1.9.0"
-        implementation "androidx.core:core:1.13.1"
-        implementation "androidx.drawerlayout:drawerlayout:1.2.0"
-        implementation "androidx.preference:preference:1.2.1"
-        implementation "androidx.viewpager:viewpager:1.0.0"
-        implementation "com.google.android.material:material:1.12.0"
-        implementation "com.google.guava:guava:24.1-jre"
-        implementation "io.noties.markwon:core:$markwonVersion"
-        implementation "io.noties.markwon:ext-strikethrough:$markwonVersion"
-        implementation "io.noties.markwon:linkify:$markwonVersion"
-        implementation "io.noties.markwon:recycler:$markwonVersion"
-        implementation 'com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava'
-
-        implementation project(":terminal-view")
-        implementation project(":termux-shared")
-    }
+    namespace = "com.termux"
+    compileSdk = providers.gradleProperty("compileSdkVersion").get().toInteger()
+    buildToolsVersion = providers.gradleProperty("buildToolsVersion").get()
+    ndkVersion = providers.gradleProperty("ndkVersion").get()
 
     defaultConfig {
-        minSdkVersion project.properties.minSdkVersion.toInteger()
-        targetSdkVersion project.properties.targetSdkVersion.toInteger()
-        versionCode appVersionCode
-        versionName appVersionName
-        validateVersionName(versionName)
-        resValue "string", "application_name", rootProject.ext.foldProfile.applicationLabel
-
-        buildConfigField "String", "TERMUX_PACKAGE_VARIANT", "\"" + project.ext.packageVariant + "\"" // Used by TermuxApplication class
+        minSdk = providers.gradleProperty("minSdkVersion").get().toInteger()
+        targetSdk = providers.gradleProperty("targetSdkVersion").get().toInteger()
+        versionCode = profile.versionCode
+        versionName = profile.versionName
+        resValue "string", "application_name", profile.applicationLabel
+        buildConfigField "String", "TERMUX_PACKAGE_VARIANT", "\"${project.ext.packageVariant}\""
 
         manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
-        manifestPlaceholders.TERMUX_APP_NAME = rootProject.ext.foldProfile.applicationLabel
+        manifestPlaceholders.TERMUX_APP_NAME = profile.applicationLabel
         manifestPlaceholders.TERMUX_API_APP_NAME = "Termux:API"
         manifestPlaceholders.TERMUX_BOOT_APP_NAME = "Termux:Boot"
         manifestPlaceholders.TERMUX_FLOAT_APP_NAME = "Termux:Float"
@@ -61,58 +29,44 @@ android {
         manifestPlaceholders.TERMUX_WIDGET_APP_NAME = "Termux:Widget"
 
         ndk {
-            abiFilters(*rootProject.ext.foldProfile.supportedAbis)
+            abiFilters.addAll(profile.supportedAbis)
         }
-
         externalNativeBuild {
             ndkBuild {
-                cFlags "-std=c11", "-Wall", "-Wextra", "-Werror", "-Os", "-fno-stack-protector", "-Wl,--gc-sections"
-            }
-        }
-
-        splits {
-            abi {
-                enable ((gradle.startParameter.taskNames.any { it.contains("Debug") } && splitAPKsForDebugBuilds == "1") ||
-                    (gradle.startParameter.taskNames.any { it.contains("Release") } && splitAPKsForReleaseBuilds == "1"))
-                reset ()
-                include(*rootProject.ext.foldProfile.supportedAbis)
-                universalApk true
+                cFlags.addAll(["-std=c11", "-Wall", "-Wextra", "-Werror", "-Os", "-fno-stack-protector", "-Wl,--gc-sections"])
             }
         }
     }
 
     signingConfigs {
         debug {
-            storeFile file('testkey_untrusted.jks')
-            keyAlias 'alias'
-            storePassword 'xrj45yWGLbsO7W0v'
-            keyPassword 'xrj45yWGLbsO7W0v'
+            storeFile = file('testkey_untrusted.jks')
+            keyAlias = 'alias'
+            storePassword = 'xrj45yWGLbsO7W0v'
+            keyPassword = 'xrj45yWGLbsO7W0v'
         }
     }
 
     buildTypes {
         release {
-            minifyEnabled true
-            shrinkResources false // Reproducible builds
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            minifyEnabled = true
+            shrinkResources = false // Reproducible builds
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
-
         debug {
-            signingConfig signingConfigs.debug
+            signingConfig = signingConfigs.debug
         }
     }
 
     compileOptions {
-        // Flag to enable support for the new language APIs
-        coreLibraryDesugaringEnabled true
-
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled = true
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 
     externalNativeBuild {
         ndkBuild {
-            path "src/main/cpp/Android.mk"
+            path = file("src/main/cpp/Android.mk")
         }
     }
 
@@ -129,123 +83,99 @@ android {
         }
     }
 
-    packagingOptions {
+    packaging {
         jniLibs {
-            useLegacyPackaging true
-        }
-    }
-
-    applicationVariants.all { variant ->
-        variant.outputs.all { output ->
-            if (variant.buildType.name == "debug") {
-                def abi = output.getFilter(com.android.build.OutputFile.ABI)
-                outputFileName = new File("termux-app_" + (apkVersionTag ? apkVersionTag : project.ext.packageVariant + "-" + "debug") + "_" + (abi ? abi : "universal") + ".apk")
-            } else if (variant.buildType.name == "release") {
-                def abi = output.getFilter(com.android.build.OutputFile.ABI)
-                outputFileName = new File("termux-app_" + (apkVersionTag ? apkVersionTag : project.ext.packageVariant + "-" + "release") + "_" + (abi ? abi : "universal") + ".apk")
-            }
+            useLegacyPackaging = true
         }
     }
 
     buildFeatures {
-        buildConfig true
+        buildConfig = true
+        resValues = true
     }
 }
 
 dependencies {
+    implementation "androidx.annotation:annotation:$annotationVersion"
+    implementation "androidx.core:core:$coreVersion"
+    implementation "androidx.drawerlayout:drawerlayout:1.2.0"
+    implementation "androidx.preference:preference:1.2.1"
+    implementation "androidx.viewpager:viewpager:1.1.0"
+    implementation "com.google.android.material:material:$materialVersion"
+    implementation project(":terminal-view")
+    implementation project(":termux-shared")
+
     testImplementation "junit:junit:4.13.2"
-    testImplementation "org.robolectric:robolectric:4.10"
-    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:1.1.5"
+    testImplementation "org.robolectric:robolectric:4.17"
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:$desugarVersion"
 }
 
-task versionName {
+tasks.register("versionName") {
     doLast {
         print android.defaultConfig.versionName
     }
 }
 
-task foldReleaseMetadata {
+tasks.register("foldReleaseMetadata") {
     doLast {
         println "versionName=${android.defaultConfig.versionName}"
         println "versionCode=${android.defaultConfig.versionCode}"
         println "applicationLabel=${android.defaultConfig.manifestPlaceholders.TERMUX_APP_NAME}"
-        println "packageVariant=${project.ext.packageVariant}"
-        println "supportedAbis=${rootProject.ext.foldProfile.supportedAbis.join(',')}"
+        println "packageVariant=${profile.packageVariant}"
+        println "supportedAbis=${profile.supportedAbis.join(',')}"
     }
 }
 
-def validateVersionName(String versionName) {
-    // https://semver.org/spec/v2.0.0.html#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
-    // ^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$
-    if (!java.util.regex.Pattern.matches("^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?\$", versionName))
-        throw new GradleException("The versionName '"  + versionName + "' is not a valid version as per semantic version '2.0.0' spec in the format 'major.minor.patch(-prerelease)(+buildmetadata)'. https://semver.org/spec/v2.0.0.html.")
+def sha256(File file) {
+    def digest = java.security.MessageDigest.getInstance("SHA-256")
+    file.withInputStream { input ->
+        byte[] buffer = new byte[8192]
+        int count
+        while ((count = input.read(buffer)) != -1) {
+            digest.update(buffer, 0, count)
+        }
+    }
+    return java.util.HexFormat.of().formatHex(digest.digest())
 }
 
 def downloadBootstrap(String arch, String expectedChecksum, String version) {
-    def digest = java.security.MessageDigest.getInstance("SHA-256")
+    def archive = file("src/main/cpp/bootstrap-${arch}.zip")
+    if (archive.exists() && sha256(archive) == expectedChecksum) return
 
-    def localUrl = "src/main/cpp/bootstrap-" + arch + ".zip"
-    def file = new File(projectDir, localUrl)
-    if (file.exists()) {
-        def buffer = new byte[8192]
-        def input = new FileInputStream(file)
-        while (true) {
-            def readBytes = input.read(buffer)
-            if (readBytes < 0) break
-            digest.update(buffer, 0, readBytes)
+    def remoteUrl = "https://github.com/termux/termux-packages/releases/download/bootstrap-${version}/bootstrap-${arch}.zip"
+    logger.quiet("Downloading ${remoteUrl} ...")
+    archive.parentFile.mkdirs()
+    def temporary = File.createTempFile("bootstrap-${arch}-", ".zip", archive.parentFile)
+    try {
+        def connection = new URL(remoteUrl).openConnection()
+        connection.connectTimeout = 30000
+        connection.readTimeout = 30000
+        connection.inputStream.withCloseable { input ->
+            temporary.withOutputStream { output -> output << input }
         }
-        def checksum = new BigInteger(1, digest.digest()).toString(16)
-        while (checksum.length() < 64) { checksum = "0" + checksum }
-        if (checksum == expectedChecksum) {
-            return
-        } else {
-            logger.quiet("Deleting old local file with wrong hash: " + localUrl + ": expected: " + expectedChecksum + ", actual: " + checksum)
-            file.delete()
+        def actualChecksum = sha256(temporary)
+        if (actualChecksum != expectedChecksum) {
+            throw new GradleException("Wrong checksum for ${remoteUrl}: expected: ${expectedChecksum}, actual: ${actualChecksum}")
         }
-    }
-
-    def remoteUrl = "https://github.com/termux/termux-packages/releases/download/bootstrap-" + version + "/bootstrap-" + arch + ".zip"
-    logger.quiet("Downloading " + remoteUrl + " ...")
-
-    file.parentFile.mkdirs()
-    def out = new BufferedOutputStream(new FileOutputStream(file))
-
-    def connection = new URL(remoteUrl).openConnection()
-    connection.setInstanceFollowRedirects(true)
-    def digestStream = new java.security.DigestInputStream(connection.inputStream, digest)
-    out << digestStream
-    out.close()
-
-    def checksum = new BigInteger(1, digest.digest()).toString(16)
-    while (checksum.length() < 64) { checksum = "0" + checksum }
-    if (checksum != expectedChecksum) {
-        file.delete()
-        throw new GradleException("Wrong checksum for " + remoteUrl + ": expected: " + expectedChecksum + ", actual: " + checksum)
+        java.nio.file.Files.move(temporary.toPath(), archive.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    } finally {
+        temporary.delete()
     }
 }
 
-clean {
+tasks.named("clean") {
     doLast {
-        def tree = fileTree(new File(projectDir, 'src/main/cpp'))
-        tree.include 'bootstrap-*.zip'
-        tree.each { it.delete() }
+        fileTree("src/main/cpp").matching { include 'bootstrap-*.zip' }.each { it.delete() }
     }
 }
 
-task downloadBootstraps() {
+def downloadBootstraps = tasks.register("downloadBootstraps") {
     doLast {
-        def packageVariant = project.ext.packageVariant
-        if (packageVariant == rootProject.ext.foldProfile.packageVariant) {
-            def version = "2026.02.12-r1" + "%2B" + "apt.android-7"
-            downloadBootstrap("aarch64", "ea2aeba8819e517db711f8c32369e89e7c52cee73e07930ff91185e1ab93f4f3", version)
-        } else {
-            throw new GradleException("Unsupported TERMUX_PACKAGE_VARIANT \"" + packageVariant + "\"")
-        }
+        downloadBootstrap("aarch64", "b7827bc99710293d0e871df8b96d9d3a8ab6b22ee4b4a6f3ac076754818990ab", "2026.10.11-r1%2Bapt.android-7")
     }
 }
 
-afterEvaluate {
-    android.applicationVariants.all { variant ->
-        variant.javaCompileProvider.get().dependsOn(downloadBootstraps)
-    }
+// Both native and Java compilation need the verified bootstrap archive.
+tasks.named("preBuild") {
+    dependsOn(downloadBootstraps)
 }

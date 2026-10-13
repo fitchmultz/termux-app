@@ -1,85 +1,48 @@
-apply plugin: 'com.android.library'
-apply plugin: 'maven-publish'
+plugins {
+    id 'com.android.library'
+}
 
 android {
-    namespace "com.termux.emulator"
-
-    compileSdkVersion project.properties.compileSdkVersion.toInteger()
-    ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
+    namespace = "com.termux.emulator"
+    compileSdk = providers.gradleProperty("compileSdkVersion").get().toInteger()
+    buildToolsVersion = providers.gradleProperty("buildToolsVersion").get()
+    ndkVersion = providers.gradleProperty("ndkVersion").get()
 
     defaultConfig {
-        minSdkVersion project.properties.minSdkVersion.toInteger()
-        targetSdkVersion project.properties.targetSdkVersion.toInteger()
-
+        minSdk = providers.gradleProperty("minSdkVersion").get().toInteger()
+        ndk {
+            abiFilters.addAll(rootProject.ext.foldProfile.supportedAbis)
+        }
         externalNativeBuild {
             ndkBuild {
-                cFlags "-std=c11", "-Wall", "-Wextra", "-Werror", "-Os", "-fno-stack-protector", "-Wl,--gc-sections"
+                cFlags.addAll(["-std=c11", "-Wall", "-Wextra", "-Werror", "-Os", "-fno-stack-protector", "-Wl,--gc-sections"])
             }
-        }
-
-        ndk {
-            abiFilters(*rootProject.ext.foldProfile.supportedAbis)
-        }
-    }
-
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
     externalNativeBuild {
         ndkBuild {
-            path "src/main/jni/Android.mk"
+            path = file("src/main/jni/Android.mk")
         }
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 
     testOptions {
         unitTests.returnDefaultValues = true
     }
-
-    publishing {
-        multipleVariants {
-            withSourcesJar()
-            withJavadocJar()
-            allVariants()
-        }
-    }
 }
 
-tasks.withType(Test) {
+tasks.withType(Test).configureEach {
     testLogging {
         events "started", "passed", "skipped", "failed"
     }
 }
 
 dependencies {
-    implementation "androidx.annotation:annotation:1.9.0"
+    implementation "androidx.annotation:annotation:$annotationVersion"
     testImplementation "junit:junit:4.13.2"
-}
-
-task sourceJar(type: Jar) {
-    from android.sourceSets.main.java.srcDirs
-    archiveClassifier = "sources"
-}
-
-afterEvaluate {
-    publishing {
-        publications {
-            // Creates a Maven publication called "release".
-            release(MavenPublication) {
-                from components.default
-                groupId = 'com.termux'
-                artifactId = 'terminal-emulator'
-                version = '0.118.0'
-                artifact(sourceJar)
-            }
-        }
-    }
 }

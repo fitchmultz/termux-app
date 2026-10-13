@@ -22,11 +22,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v5
+        uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
   unit-tests:
     name: Gradle unit tests
@@ -34,45 +34,44 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Setup Java 17
-        uses: actions/setup-java@v5
+      - name: Setup Java 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
+      - name: Install pinned Android SDK
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;30.0.16248370'
       - name: Execute tests
         run: ./gradlew --no-daemon test
       - name: Save synthetic workbench renders and test reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fold-test-reports
           path: |
             app/build/reports/tests/workbench/*.png
-            app/build/test-results/**/*.xml
+            **/build/test-results/**/*.xml
           retention-days: 3
 
   integration-apk-build:
     name: Integration APK compile check
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      TERMUX_APK_VERSION_TAG: fold-integration-ci
-      TERMUX_PACKAGE_VARIANT: apt-android-7
-      TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '0'
-      TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS: '0'
     steps:
       - name: Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Setup Java 17
-        uses: actions/setup-java@v5
+      - name: Setup Java 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
+      - name: Install pinned Android SDK
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;30.0.16248370'
       - name: Validate opinionated release metadata
         shell: bash
         run: |
@@ -105,6 +104,8 @@ jobs:
           badging="$("$build_tools/aapt" dump badging "$apk")"
           grep -F "package: name='com.termux' versionCode='$version_code' versionName='$version_name'" <<<"$badging"
           grep -Fx "application-label:'$application_label'" <<<"$badging"
+          grep -Fx "sdkVersion:'24'" <<<"$badging"
+          grep -Fx "targetSdkVersion:'28'" <<<"$badging"
           mapfile -t packaged_abis < <(unzip -Z1 "$apk" | awk -F/ '/^lib\// {print $2}' | sort -u)
           test "${#packaged_abis[@]}" -eq 1
           test "${packaged_abis[0]}" = 'arm64-v8a'
@@ -115,11 +116,7 @@ jobs:
           fi
           first_hash="$(sha256sum "$apk" | cut -d' ' -f1)"
 
-          # Run clean separately: the upstream clean task removes downloaded bootstrap archives.
           ./gradlew --no-daemon clean
-          # The upstream clean task deletes the embedded bootstrap archives, and the native build
-          # may run before Java compilation's implicit download dependency.
-          ./gradlew --no-daemon :app:downloadBootstraps
           ./gradlew --no-daemon :app:assembleRelease
           mapfile -t rebuilt_apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
           test "${#rebuilt_apks[@]}" -eq 1

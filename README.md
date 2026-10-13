@@ -1,4 +1,12 @@
-# Termux application
+# Termux Fold
+
+A personal ARM64 Termux fork for the Galaxy Z Fold8, with native panes, an Evidence Dock, and adaptive terminal controls. See [FOLD_PROFILE.md](FOLD_PROFILE.md), [FOLD_WORKBENCH.md](FOLD_WORKBENCH.md), and [FORK_CHANGES.md](FORK_CHANGES.md) for this fork's behavior and release constraints.
+
+Download only this fork's [Fold-signed releases](https://github.com/fitchmultz/termux-app/releases). Install as an **Update**, not by uninstalling: uninstalling deletes Termux's private files. The APK updates the app, not an existing package prefix; after installation, run `pkg update && pkg upgrade` to refresh your installed shell packages.
+
+## Upstream documentation (reference)
+
+The installation/signing and library-publication instructions below describe upstream Termux, not this fork.
 
 [![Build status](https://github.com/termux/termux-app/workflows/Build/badge.svg)](https://github.com/termux/termux-app/actions)
 [![Testing status](https://github.com/termux/termux-app/workflows/Unit%20tests/badge.svg)](https://github.com/termux/termux-app/actions)

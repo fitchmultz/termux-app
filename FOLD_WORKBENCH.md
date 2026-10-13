@@ -41,4 +41,6 @@ The displayed target is a **Termux session**, not a Pi agent identity or an indi
 
 ## Validation boundary
 
+The package refresh leaves window sizing to Android in split-screen and Samsung Pop-up View, clearing stale fullscreen keyboard margins when entering either mode. Check entering and leaving those modes with the keyboard already open: the terminal must fill its window without flickering, and fullscreen typing must still keep the controls above the keyboard.
+
 Automated checks exercise pane layout, focus/input routing, resize/maximize/recreation, draft isolation, bracketed insertion versus confirmed Send, rejected imports, and private copy limits. Hosted tests use synthetic terminal contents for render artifacts. Physical Fold checks remain necessary after installation: Samsung composition, cover/inner transitions, divider dragging, split-screen keyboard resizing, two live streams, and Android share/picker grants.
