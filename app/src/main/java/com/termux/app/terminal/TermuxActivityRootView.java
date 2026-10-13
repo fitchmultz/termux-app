@@ -103,6 +103,7 @@ public class TermuxActivityRootView extends LinearLayout implements ViewTreeObse
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        clearMultiWindowMargin();
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 
         if (marginBottom != null) {
@@ -116,9 +117,25 @@ public class TermuxActivityRootView extends LinearLayout implements ViewTreeObse
         }
     }
 
+    private boolean clearMultiWindowMargin() {
+        if (mActivity == null || !mActivity.isInMultiWindowMode()) return false;
+
+        // Split-screen and pop-up keyboards are managed outside this window.
+        // Fullscreen overlap predictions must not resize an independently sized window.
+        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) getLayoutParams();
+        if (params.bottomMargin != 0) {
+            params.bottomMargin = 0;
+            setLayoutParams(params);
+        }
+        marginBottom = null;
+        lastMarginBottom = null;
+        return true;
+    }
+
     @Override
     public void onGlobalLayout() {
         if (mActivity == null || !mActivity.isVisible()) return;
+        if (clearMultiWindowMargin()) return;
 
         View bottomSpaceView = mActivity.getTermuxActivityBottomSpaceView();
         if (bottomSpaceView == null) return;
