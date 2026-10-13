@@ -78,6 +78,8 @@ android {
         unitTests {
             includeAndroidResources = true
             all {
+                // Robolectric's Android 17 FileDescriptor bridge calls this JDK internal API.
+                jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
                 testLogging.exceptionFormat = "full"
             }
         }

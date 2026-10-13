@@ -241,11 +241,12 @@ jobs:
 
           verify_output="$("$build_tools/apksigner" verify --verbose --print-certs "$signed_apk")"
           grep -E '^Verified using v(1|2|3)([.]1)? scheme' <<<"$verify_output"
-          grep -E '^Signer #1 certificate SHA-256 digest:' <<<"$verify_output"
+          grep -Fx 'Number of signers: 1' <<<"$verify_output"
+          grep -E '^V3[.]0 Signer: certificate SHA-256 digest:' <<<"$verify_output"
           grep -Fq 'Verified using v1 scheme (JAR signing): true' <<<"$verify_output"
           grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' <<<"$verify_output"
           grep -Fq 'Verified using v3 scheme (APK Signature Scheme v3): true' <<<"$verify_output"
-          actual_certificate="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print toupper($2); exit}' <<<"$verify_output" | sed 's/../&:/g; s/:$//')"
+          actual_certificate="$(awk -F': ' '$1 == "V3.0 Signer" && $2 == "certificate SHA-256 digest" {print toupper($3)}' <<<"$verify_output" | sed 's/../&:/g; s/:$//')"
           test "$actual_certificate" = "$EXPECTED_CERTIFICATE_SHA256"
           echo 'signature schemes and certificate verified'
           "$build_tools/zipalign" -c -P 16 4 "$signed_apk"
