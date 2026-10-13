@@ -43,7 +43,9 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Install pinned Android SDK
-        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;30.0.16248370'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: 'platforms;android-37.0 build-tools;37.0.0 ndk;30.0.16248370'
       - name: Execute tests
         run: ./gradlew --no-daemon test
       - name: Save synthetic workbench renders and test reports
@@ -71,7 +73,9 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Install pinned Android SDK
-        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;30.0.16248370'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: 'platforms;android-37.0 build-tools;37.0.0 ndk;30.0.16248370'
       - name: Validate opinionated release metadata
         shell: bash
         run: |
