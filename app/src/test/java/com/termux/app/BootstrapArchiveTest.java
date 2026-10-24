@@ -42,8 +42,10 @@ public class BootstrapArchiveTest {
         File repository = temporary.newFolder("repository");
         ProcessBuilder git = new ProcessBuilder("git", "init", "--quiet", "--template=" +
             new File(root, "share/git-core/templates").getPath(), repository.getPath()).redirectErrorStream(true);
+        git.environment().keySet().removeIf(name -> name.startsWith("GIT_"));
         git.environment().put("HOME", temporary.newFolder("home").getPath());
         git.environment().put("GIT_CONFIG_NOSYSTEM", "1");
+        git.environment().put("GIT_CONFIG_GLOBAL", "/dev/null");
         Process process = git.start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         assertEquals(output, 0, process.waitFor());
