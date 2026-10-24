@@ -87,6 +87,7 @@ env:
     }
   LOCAL_REPOSITORY_INIT: |
     import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+    import org.gradle.api.attributes.Attribute
     // No user mavenLocal, remote fallback, or version substitution for these source-built modules.
     def modules = ['com.termux:termux-am-library:v2.0.0']
     if (System.getenv('COMPANION_CONSUMER') == 'api') {
@@ -106,23 +107,34 @@ env:
         root.tasks.register('companionSourceResolution') {
             doLast {
                 def project = root.project(System.getenv('COMPANION_CONSUMER') == 'api' ? ':app' : ':termux-shared')
-                def artifacts = project.configurations.getByName('releaseRuntimeClasspath').resolvedConfiguration.resolvedArtifacts
+                def configuration = project.configurations.getByName('releaseRuntimeClasspath')
+                def sourceComponent = { id ->
+                    id instanceof ModuleComponentIdentifier && id.group in ['com.termux', 'com.termux.termux-app']
+                }
+                // Check identities separately: an AAR view may omit components with no matching artifact.
+                def sourceGavs = configuration.incoming.resolutionResult.allComponents.collect { it.id }
+                    .findAll(sourceComponent).collect { id -> id.group + ':' + id.module + ':' + id.version }
+                if (sourceGavs.sort() != modules.sort()) throw new GradleException('Unexpected source dependency graph: ' + sourceGavs)
+                def artifactType = Attribute.of('artifactType', String)
+                def artifacts = configuration.incoming.artifactView { view ->
+                    view.attributes.attribute(artifactType, 'aar')
+                    view.componentFilter(sourceComponent)
+                }.artifacts.artifacts
                 def found = []
                 artifacts.each { artifact ->
-                    def id = artifact.moduleVersion.id
-                    if (artifact.id.componentIdentifier instanceof ModuleComponentIdentifier &&
-                        id.group in ['com.termux', 'com.termux.termux-app']) {
-                        def gav = id.group + ':' + id.name + ':' + id.version
-                        if (!(gav in modules) || artifact.extension != 'aar' || artifact.classifier != null) {
-                            throw new GradleException('Unexpected source module: ' + gav)
-                        }
-                        def input = new File(repo, id.group.replace('.', '/') + '/' + id.name + '/' + id.version +
-                            '/' + id.name + '-' + id.version + '.aar')
-                        def sha = { file -> java.security.MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString() }
-                        if (sha(artifact.file) != sha(input)) throw new GradleException('Source AAR hash mismatch: ' + gav)
-                        found += gav
-                        println('source_resolution=' + gav + ' sha256=' + sha(input))
+                    def id = artifact.id.componentIdentifier
+                    def gav = id.group + ':' + id.module + ':' + id.version
+                    // ResolvedArtifactResult has no public classifier field; require the unclassified raw filename.
+                    def filename = id.module + '-' + id.version + '.aar'
+                    if (!(gav in modules) || artifact.variant.attributes.getAttribute(artifactType) != 'aar' ||
+                        artifact.file.name != filename) {
+                        throw new GradleException('Unexpected source artifact: ' + gav + ' ' + artifact.file.name)
                     }
+                    def input = new File(repo, id.group.replace('.', '/') + '/' + id.module + '/' + id.version + '/' + filename)
+                    def sha = { file -> java.security.MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString() }
+                    if (sha(artifact.file) != sha(input)) throw new GradleException('Source AAR hash mismatch: ' + gav)
+                    found += gav
+                    println('source_resolution=' + gav + ' sha256=' + sha(input))
                 }
                 if (found.sort() != modules.sort()) throw new GradleException('Incomplete source dependency graph')
             }
