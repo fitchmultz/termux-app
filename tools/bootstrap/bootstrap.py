@@ -237,13 +237,17 @@ def check_debs(packages, files):
 
 def canonicalize(source, output):
     with zipfile.ZipFile(source) as archive, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as result:
-        for name in sorted(archive.namelist()):
-            data = archive.read(name)
+        require("EXECUTABLES.txt" not in archive.namelist(), "Reserved executable manifest already exists")
+        executables = {entry.filename for entry in archive.infolist()
+                       if not entry.is_dir() and entry.filename != "SYMLINKS.txt" and (entry.external_attr >> 16) & 0o111}
+        for name in sorted(archive.namelist() + ["EXECUTABLES.txt"]):
+            data = ("\n".join(sorted(executables)) + "\n").encode() if name == "EXECUTABLES.txt" else archive.read(name)
             if name == "SYMLINKS.txt" or (name.startswith("var/lib/dpkg/info/") and name.endswith(".md5sums")):
                 data = ("\n".join(sorted(data.decode().splitlines())) + "\n").encode()
             info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
             info.create_system = 3
-            info.external_attr = ((0o40700 if name.endswith("/") else 0o100600) << 16) | (0x10 if name.endswith("/") else 0)
+            mode = 0o40700 if name.endswith("/") else (0o100700 if name in executables else 0o100600)
+            info.external_attr = (mode << 16) | (0x10 if name.endswith("/") else 0)
             info.compress_type = zipfile.ZIP_DEFLATED
             result.writestr(info, data, compresslevel=9)
 
@@ -283,6 +287,14 @@ def verify(archive_path, lock):
         require(len(names) == len(set(names)), "Duplicate ZIP entries")
         for name in names:
             require(not name.startswith("/") and ".." not in PurePosixPath(name).parts, f"Unsafe ZIP path: {name}")
+        executable_lines = archive.read("EXECUTABLES.txt").decode().splitlines()
+        executables = set(executable_lines)
+        require(executable_lines == sorted(executables), "Invalid executable manifest order/duplicates")
+        require(all(name in names and not name.endswith("/") for name in executables), "Missing executable file")
+        for entry in archive.infolist():
+            if not entry.is_dir():
+                require(bool((entry.external_attr >> 16) & 0o111) == (entry.filename in executables),
+                        f"Executable metadata mismatch: {entry.filename}")
         links = {}
         for line in archive.read("SYMLINKS.txt").decode().splitlines():
             target, name = line.split("←")
@@ -303,6 +315,7 @@ def verify(archive_path, lock):
 
         for command in PROFILE["commands"]:
             require(resolve(f"bin/{command}") in names, f"Missing command: {command}")
+            require(resolve(f"bin/{command}") in executables, f"Command not executable: {command}")
         status = paragraphs(archive.read("var/lib/dpkg/status").decode())
         require(len(status) == len(lock['packages']) and
                 {r['Package']: (r['Version'], r['Architecture'], r['Status']) for r in status} ==
@@ -374,7 +387,7 @@ def build(args):
                        "LC_ALL": "C", "TZ": "UTC"}
         subprocess.run(["bash", str(work / "upstream/scripts/generate-bootstraps.sh"), "--pm", "apt",
                         "--architectures", "aarch64", "--add", ",".join(PROFILE["additional_packages"] + PROFILE["supplemental_packages"]),
-                        "--repository", repo.as_uri()], cwd=work, env=environment, check=True)
+                        "--repository", repo.as_uri()], cwd=work, env=environment, umask=0o077, check=True)
         canonical = work / "canonical.zip"
         canonicalize(work / "bootstrap-aarch64.zip", canonical)
         verify(canonical, lock)

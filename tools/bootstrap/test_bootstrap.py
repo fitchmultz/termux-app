@@ -84,22 +84,26 @@ class BootstrapRunnerTests(unittest.TestCase):
                         b.refresh(args)
                 self.assertEqual(lock.read_text(), "previous lock")
 
-    def test_canonical_archive_ignores_input_order_time_modes_and_symlink_order(self):
+    def test_canonical_archive_normalizes_order_time_and_modes_but_preserves_execute(self):
         with tempfile.TemporaryDirectory(dir=self.work) as directory:
             work = Path(directory)
-            for number, names in enumerate((("bin/tool", "SYMLINKS.txt"), ("SYMLINKS.txt", "bin/tool"))):
+            for number, names in enumerate((("bin/tool", "bin/plain", "SYMLINKS.txt"),
+                                             ("SYMLINKS.txt", "bin/plain", "bin/tool"))):
                 with zipfile.ZipFile(work / f"input{number}.zip", "w") as archive:
                     for name in names:
                         info = zipfile.ZipInfo(name, (2020 + number, 2, 3, 4, 5, 6))
-                        info.external_attr = (0o100700 + number) << 16
+                        info.external_attr = ((0o100600 if name == "bin/plain" else 0o100700) | (0o040 if number else 0)) << 16
                         links = "b←./b\na←./a\n" if number == 0 else "a←./a\nb←./b\n"
-                        data = b"payload" if name == "bin/tool" else links.encode()
+                        data = links.encode() if name == "SYMLINKS.txt" else b"payload"
                         archive.writestr(info, data)
                 b.canonicalize(work / f"input{number}.zip", work / f"output{number}.zip")
             self.assertEqual((work / "output0.zip").read_bytes(), (work / "output1.zip").read_bytes())
             with zipfile.ZipFile(work / "output0.zip") as archive:
                 self.assertEqual(archive.read("bin/tool"), b"payload")
                 self.assertEqual(archive.read("SYMLINKS.txt").decode(), "a←./a\nb←./b\n")
+                self.assertEqual(archive.read("EXECUTABLES.txt").decode(), "bin/tool\n")
+                self.assertEqual((archive.getinfo("bin/tool").external_attr >> 16) & 0o777, 0o700)
+                self.assertEqual((archive.getinfo("bin/plain").external_attr >> 16) & 0o777, 0o600)
 
     def test_control_symlinks_cannot_read_host_files(self):
         with tempfile.TemporaryDirectory(dir=self.work) as directory:

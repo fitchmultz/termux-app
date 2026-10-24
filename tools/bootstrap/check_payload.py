@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Negative controls against a real generated payload (no target execution)."""
 import argparse
+import copy
 from contextlib import redirect_stdout
 import io
 from pathlib import Path
@@ -32,11 +33,15 @@ def main():
                     if entry.filename == name and mutation is None:
                         continue
                     data = source.read(entry)
+                    if entry.filename == "EXECUTABLES.txt" and mutation is None:
+                        data = ("\n".join(line for line in data.decode().splitlines() if line != name) + "\n").encode()
                     if entry.filename == name and mutation == "wrong-arch":
                         data = data[:18] + b"\x3e\x00" + data[20:]  # EM_X86_64
                     elif entry.filename == name and mutation == "wrong-version":
                         data = data.replace(b"Version: ", b"Version: 9999.", 1)
-                    output.writestr(entry.filename, data)
+                    metadata = copy.copy(entry)
+                    metadata.compress_type = zipfile.ZIP_STORED
+                    output.writestr(metadata, data)
             try:
                 with redirect_stdout(io.StringIO()):
                     b.verify(destination, lock)

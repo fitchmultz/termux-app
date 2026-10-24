@@ -25,6 +25,12 @@ def main():
     prefix = work / "usr"
     with zipfile.ZipFile(args.archive) as archive:
         archive.extractall(prefix)
+        executables = set(archive.read("EXECUTABLES.txt").decode().splitlines())
+        for name in executables:
+            (prefix / name).chmod(0o700)
+        for entry in archive.infolist():
+            if not entry.is_dir() and entry.filename not in executables:
+                b.require(not os.access(prefix / entry.filename, os.X_OK), f"Unexpected execute permission: {entry.filename}")
         for line in archive.read("SYMLINKS.txt").decode().splitlines():
             target, name = line.split("←")
             destination = prefix / name.removeprefix("./")
@@ -34,10 +40,6 @@ def main():
             os.symlink(target, destination)
     for directory in ("home", "tmp"):
         (work / directory).mkdir()
-    for directory in ("bin", "libexec"):
-        for file in (prefix / directory).rglob("*"):
-            if file.is_file() and not file.is_symlink():
-                file.chmod(0o700)
     environment = {"HOME": str(work / "home"), "TMPDIR": str(work / "tmp"), "PATH": "/system/bin",
                    "LD_LIBRARY_PATH": str(prefix / "lib"), "LANG": "C.UTF-8", "GIT_CONFIG_NOSYSTEM": "1",
                    "GIT_TEMPLATE_DIR": str(prefix / "share/git-core/templates")}
@@ -60,6 +62,12 @@ def main():
     run("scp", "-h", expected=1)
     run("git", "init", "-q", work / "repository")
     b.require((work / "repository/.git/config").is_file(), "git init did not create a repository")
+    hooks = list((work / "repository/.git/hooks").glob("*.sample"))
+    b.require(hooks and all(os.access(hook, os.X_OK) for hook in hooks), "Generated Git hook samples lost execute permission")
+    for service in ("sshd", "ssh-agent"):
+        b.require(os.access(prefix / f"var/service/{service}/run", os.X_OK) and
+                  (prefix / f"var/service/{service}/down").is_file(), f"Service delivery/disabled state broken: {service}")
+    print(f"Verified {len(hooks)} generated Git hook samples executable; service scripts executable but disabled")
     b.require(run("jq", "-r", ".answer", stdin='{"answer":42}\n').strip() == "42", "jq processing failed")
     (work / "evidence.txt").write_text("default-tools-offline\n")
     b.require("default-tools-offline" in run("rg", "default-tools-offline", work / "evidence.txt"), "rg search failed")

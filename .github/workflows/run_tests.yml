@@ -126,6 +126,8 @@ jobs:
           grep -Fx 'packageVariant=apt-android-7' <<<"$metadata"
           grep -Fx 'supportedAbis=arm64-v8a' <<<"$metadata"
           grep -Fq "version \`$version_name\` with monotonic version code \`$version_code\`" FOLD_PROFILE.md
+      - name: Verify no-clean native bootstrap replacement
+        run: python3 tools/bootstrap/check_native_incremental.py "$ANDROID_HOME/ndk/30.0.16248370"
       - name: Compile debug APK without publishing artifacts
         run: ./gradlew --no-daemon :app:assembleDebug
       - name: Compile and verify reproducible unsigned release APK

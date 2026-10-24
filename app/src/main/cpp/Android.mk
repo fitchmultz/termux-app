@@ -7,3 +7,6 @@ $(error FOLD_BOOTSTRAP_DIR must point to the verified Gradle build-private boots
 endif
 LOCAL_ASFLAGS += '-DFOLD_BOOTSTRAP_ARCHIVE="$(FOLD_BOOTSTRAP_DIR)/bootstrap-aarch64.zip"'
 include $(BUILD_SHARED_LIBRARY)
+
+# Clang's depfile does not track .incbin inputs; rebuilding only the .so is too late.
+$(LOCAL_OBJS_DIR)/termux-bootstrap-zip.o: $(FOLD_BOOTSTRAP_DIR)/bootstrap-aarch64.zip

@@ -76,15 +76,28 @@ not a promise of a bundled language/toolchain runtime.
 - All generator source, HOME, TMPDIR, repository, unpacked native files, and
   partial archives stay under the requested build directory. No target binary,
   maintainer script, or second-stage script is executed by the build. Package
-  data paths, symlink ancestors, and control-archive entries are checked before upstream extraction. The
-  final ZIP is validated then atomically replaced; failures preserve the prior
+  data paths, symlink ancestors, and control-archive entries are checked before
+  upstream extraction. The final ZIP is validated then atomically replaced; failures preserve the prior
   output. Gradle revalidates cached inputs on every invocation, not just clean
   builds, and embeds only `app/build/bootstrap/bootstrap-aarch64.zip` via an
-  absolute assembler input path (stale source-tree ZIPs cannot shadow it). `clean` removes it with other build output.
+  absolute assembler input path (stale source-tree ZIPs cannot shadow it). The ZIP
+  is an explicit prerequisite of its assembly object: Clang's depfile omits
+  `.incbin` inputs, so tracking only the shared library can retain stale bytes
+  after a no-clean lock refresh. AGP already delegates incrementality to NDK;
+  no extra Gradle task hook is needed. `clean` removes build output normally.
 - ZIP member order, timestamps (1980-01-01), permissions, extra fields, comments,
   symlink-table order, and generated dpkg checksum-list order are canonicalized.
+  A fixed private umask preserves upstream owner-execute bits independently of
+  the caller's umask. `EXECUTABLES.txt` carries these bits through Java's
+  `ZipInputStream`, which cannot expose Unix ZIP attributes. The focused
+  `BootstrapArchive` staging extractor restores only listed regular files'
+  owner-execute bit before the existing installer creates symlinks/renames staging;
+  no broad `bin/` heuristic or per-package chmod list remains. Service scripts and
+  Git hook templates stay executable, ordinary files do not gain execute, and
+  `down` files still keep services disabled. Missing/unsafe executable metadata
+  fails before installation commits.
   DEFLATE level 9 keeps the whole-blob JNI/Java bootstrap allocation bounded:
-  this snapshot is 60,687,204 compressed bytes / 151,363,591 expanded bytes on
+  this snapshot is 60,690,486 compressed bytes / 151,375,877 expanded bytes on
   Python 3.14.8 + zlib 1.3.2. **Use the same Python/zlib toolchain for byte-for-byte
   reproduction**; the runner prints both versions. CI compares two independent
   generations, the second offline, as well as retaining the two unsigned APK
@@ -125,14 +138,16 @@ python3 tools/bootstrap/bootstrap.py build --offline --cache app/build/bootstrap
   --output app/build/bootstrap/second/bootstrap-aarch64.zip
 cmp app/build/bootstrap/{first,second}/bootstrap-aarch64.zip
 python3 tools/bootstrap/check_payload.py app/build/bootstrap/first/bootstrap-aarch64.zip
+python3 tools/bootstrap/check_native_incremental.py "$ANDROID_HOME/ndk/30.0.16248370"
 ./gradlew --no-daemon :app:assembleDebug
 ```
 
 On an Android ARM64 build host only, an optional native smoke check extracts the
 actual payload into a **new** private build directory and uses its own libraries,
 HOME and temporary directory. It runs version/help commands, Git initialization,
-JSON/search/filter operations, a local rsync copy, and a ZIP round trip; it never
-runs postinst, starts a service, connects to a network, or replaces a prefix:
+JSON/search/filter operations, a local rsync copy, and a ZIP round trip. It also
+checks generated Git hook samples' execute permissions, disabled service scripts,
+and non-executable file delivery. It never runs postinst, starts a service, connects to a network, or replaces a prefix:
 
 ```sh
 python3 tools/bootstrap/smoke_android.py app/build/bootstrap/first/bootstrap-aarch64.zip \
@@ -143,7 +158,13 @@ The runner tests reject tampered sources/packages, missing offline inputs,
 unsigned/changed release metadata, mismatched indices, incomplete dependencies,
 unsupported alternatives/version constraints, and wrong architectures. Real
 payload negative controls remove a command/library and alter ELF architecture or
-dpkg versions. They must fail for the intended contract. Fold checks retain
+dpkg versions. They must fail for the intended contract. The native gate invokes
+real NDK Make rules on two ZIP inputs without clean/source changes and compares
+actual embedded object bytes; on Termux it uses existing native CC/CXX/Python
+instead of attempting the SDK's x86_64 programs. The app's plain-JUnit extraction
+regressions run delivered scripts and a generated Git hook through the real
+production staging extractor, and check non-executable files, service-down state,
+and invalid metadata. Fold checks retain
 wrapper validation, full unit tests, debug compilation, packaged identity/API/ABI
 and unsigned-signature checks, and two clean reproducible unsigned APKs. Signed
 release verification/publication remains a separate explicitly dispatched flow.
