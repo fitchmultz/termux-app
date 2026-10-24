@@ -27,6 +27,7 @@ import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.Shadows;
+import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.Implementation;
@@ -127,7 +128,11 @@ public class TerminalPaneLayoutTest {
 
     /** Use the real session handler and activity client, replacing only native PTY I/O. */
     private TermuxActivity notificationActivity() {
-        TermuxActivity activity = Robolectric.buildActivity(TermuxActivity.class).get();
+        return notificationActivity(Robolectric.buildActivity(TermuxActivity.class));
+    }
+
+    private TermuxActivity notificationActivity(ActivityController<TermuxActivity> controller) {
+        TermuxActivity activity = controller.get();
         activity.setTheme(R.style.Theme_TermuxActivity_DayNight_NoActionBar);
         TerminalPaneLayout panes = layout(activity);
         ReflectionHelpers.setField(activity, "mTerminalPanes", panes);
@@ -398,6 +403,67 @@ public class TerminalPaneLayoutTest {
         assertEquals(-5, terminal.getTopRow());
         output(session, "next\r\n");
         assertEquals(-6, terminal.getTopRow());
+    }
+
+    private void assertForegroundSelectionAfterOutput(boolean scrollLocked, boolean selectOldest) {
+        ActivityController<TermuxActivity> controller = Robolectric.buildActivity(TermuxActivity.class);
+        TermuxActivity activity = notificationActivity(controller);
+        controller.visible();
+        size(activity.getTerminalPanes(), 900, 1000);
+        TerminalSession session = session("Agent");
+        session.updateTerminalSessionClient(activity.getTermuxTerminalSessionClient());
+        activity.getTerminalPanes().showSession(session);
+        output(session, lines(180));
+        TerminalView terminal = activity.getTerminalView();
+        int history = session.getEmulator().getScreen().getActiveTranscriptRows();
+        assertEquals("The transcript must be full before selection", 100 - session.getEmulator().mRows, history);
+        assertTrue(history > 3);
+        int top = selectOldest ? -history : -3;
+        terminal.setTopRow(top);
+        if (scrollLocked) scrollKey(activity).onTerminalExtraKeyButtonClick(null, "SCROLL", false, false, false, false);
+        long now = android.os.SystemClock.uptimeMillis();
+        MotionEvent press = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN,
+            6 * terminal.mRenderer.getFontWidth(), terminal.getPointY(top + 1) - 1, 0);
+        terminal.startTextSelectionMode(press);
+        press.recycle();
+        assertTrue("Enter selection through the real view/controller", terminal.isSelectingText());
+        String selected = terminal.getSelectedText();
+        assertNotNull(selected);
+        assertFalse(selected.isEmpty());
+        // Let the real selection controller's accidental-dismissal grace period expire.
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(350));
+
+        ReflectionHelpers.setField(activity, "mIsVisible", false);
+        output(session, "background\r\n");
+        assertTrue(terminal.isSelectingText());
+        assertEquals(top, terminal.getTopRow());
+        assertEquals(history, session.getEmulator().getScreen().getActiveTranscriptRows());
+        ReflectionHelpers.setField(activity, "mIsVisible", true);
+        activity.getTermuxTerminalSessionClient().onStart();
+        if (selectOldest) {
+            assertFalse("Evicted selection must be cancelled", terminal.isSelectingText());
+            assertEquals(scrollLocked ? -history : 0, terminal.getTopRow());
+        } else {
+            assertTrue(terminal.isSelectingText());
+            assertEquals(-4, terminal.getTopRow());
+            assertEquals("Retained selection must follow its text, not the viewport", selected, terminal.getSelectedText());
+        }
+        terminal.stopTextSelectionMode();
+    }
+
+    @Test
+    public void foregroundSelectionEvictionRecoversToBottom() {
+        assertForegroundSelectionAfterOutput(false, true);
+    }
+
+    @Test
+    public void foregroundSelectionEvictionRespectsScrollLock() {
+        assertForegroundSelectionAfterOutput(true, true);
+    }
+
+    @Test
+    public void foregroundRetainedSelectionStaysAnchored() {
+        assertForegroundSelectionAfterOutput(false, false);
     }
 
     @Test
