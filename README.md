@@ -4,7 +4,7 @@ A personal ARM64 Termux fork for the Galaxy Z Fold8, with native panes, an Evide
 
 Download only this fork's [Fold-signed releases](https://github.com/fitchmultz/termux-app/releases). Install as an **Update**, not by uninstalling: uninstalling deletes Termux's private files. The APK updates the app, not an existing package prefix; package upgrades remain an explicit `pkg update && pkg upgrade` choice.
 
-The [offline default-tools candidate](tools/bootstrap/README.md) adds Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, wget, zsh with completions, lsd, bat, git-delta, direnv, and git-lfs to fresh installations without a first-launch network install. Existing nonempty prefixes are never replaced or automatically upgraded. To add these tools explicitly to an existing installation, run `pkg update` then `pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs` and review the proposed changes. Bash remains the default; no aliases, shell hooks, direnv activation, or global Git configuration are added. Mise/Chezmoi, Node/Python versioned development environments, compilers, and Termux:API remain separate, opt-in installations.
+The [offline default-tools profile](tools/bootstrap/README.md) adds Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, wget, zsh with completions, lsd, bat, git-delta, direnv, and git-lfs to fresh installations without a first-launch network install. Existing nonempty prefixes are never replaced or automatically upgraded. To add these tools explicitly to an existing installation, run `pkg update` then `pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs` and review the proposed changes. Bash remains the default; no aliases, shell hooks, direnv activation, or global Git configuration are added. Mise/Chezmoi, Node/Python versioned development environments, compilers, and Termux:API remain separate, opt-in installations.
 
 ## Upstream documentation (reference)
 
@@ -72,7 +72,7 @@ The APK files of different sources are signed with different signature keys. The
 
 If you wish to install from a different source, then you must **uninstall any and all existing Termux or its plugin app APKs** from your device first, then install all new APKs from the same new source. Check [Uninstallation](#uninstallation) section for details. You may also want to consider [Backing up Termux](https://wiki.termux.dev/wiki/Backing_up_Termux) before the uninstallation so that you can restore it after re-installing from Termux different source.
 
-In the following upstream-reference paragraphs, *"bootstrap"* refers to the minimal packages shipped with upstream `termux-app` to start a working shell environment. Upstream zips are released [here](https://github.com/termux/termux-packages/releases); this fork's offline default-tools candidate instead [generates a locked ARM64 bootstrap](tools/bootstrap/README.md).
+In the following upstream-reference paragraphs, *"bootstrap"* refers to the minimal packages shipped with upstream `termux-app` to start a working shell environment. Upstream zips are released [here](https://github.com/termux/termux-packages/releases); this fork's offline default-tools profile instead [generates a locked ARM64 bootstrap](tools/bootstrap/README.md).
 
 ### F-Droid
 
