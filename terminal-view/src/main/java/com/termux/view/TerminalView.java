@@ -67,7 +67,7 @@ public final class TerminalView extends View {
     public static final int TERMINAL_CURSOR_BLINK_RATE_MAX = 2000;
 
     /** The top row of text to display. Ranges from -activeTranscriptRows to 0. */
-    int mTopRow;
+    private int mTopRow;
     int[] mDefaultSelectors = new int[]{-1,-1,-1,-1};
 
     float mScaleFactor = 1.f;
@@ -292,11 +292,11 @@ public final class TerminalView extends View {
         stopTextSelectionMode();
         cancelPendingInputGesture();
         setTerminalCursorBlinkerState(false, true);
-        mTopRow = 0;
-
         mTermSession = session;
         mEmulator = null;
         mCombiningAccent = 0;
+        // Do not overwrite either session's cached offset before updateSize() restores it.
+        setTopRow(0);
 
         updateSize();
 
@@ -469,9 +469,14 @@ public final class TerminalView extends View {
 
     public void onScreenUpdated(boolean skipScrolling) {
         if (mEmulator == null) return;
+        if (mEmulator.isSynchronizedOutputActive()) {
+            // Lifecycle refreshes may redraw the completed snapshot, but must not consume live state.
+            invalidate();
+            return;
+        }
 
         int rowsInHistory = mEmulator.getScreen().getActiveTranscriptRows();
-        if (mTopRow < -rowsInHistory) mTopRow = -rowsInHistory;
+        if (mTopRow < -rowsInHistory) setTopRow(-rowsInHistory);
 
         if (isSelectingText() || mEmulator.isAutoScrollDisabled()) {
 
@@ -480,16 +485,18 @@ public final class TerminalView extends View {
             if (-mTopRow + rowShift > rowsInHistory) {
                 // .. unless we're hitting the end of history transcript, in which
                 // case we abort text selection and scroll to end.
-                if (isSelectingText())
+                if (isSelectingText()) {
                     stopTextSelectionMode();
+                    skipScrolling = false;
+                }
 
                 if (mEmulator.isAutoScrollDisabled()) {
-                    mTopRow = -rowsInHistory;
+                    setTopRow(-rowsInHistory);
                     skipScrolling = true;
                 }
             } else {
                 skipScrolling = true;
-                mTopRow -= rowShift;
+                setTopRow(mTopRow - rowShift);
                 decrementYTextSelectionCursors(rowShift);
             }
         }
@@ -502,7 +509,7 @@ public final class TerminalView extends View {
                 // of one row at a time.
                 awakenScrollBars();
             }
-            mTopRow = 0;
+            setTopRow(0);
         }
 
         mEmulator.clearScrollCounter();
@@ -595,7 +602,7 @@ public final class TerminalView extends View {
                 // e.g. less, which shifts to the alt screen without mouse handling.
                 handleKeyCode(up ? KeyEvent.KEYCODE_DPAD_UP : KeyEvent.KEYCODE_DPAD_DOWN, 0);
             } else {
-                mTopRow = Math.min(0, Math.max(-(mEmulator.getScreen().getActiveTranscriptRows()), mTopRow + (up ? -1 : 1)));
+                setTopRow(Math.min(0, Math.max(-(mEmulator.getScreen().getActiveTranscriptRows()), mTopRow + (up ? -1 : 1))));
                 if (!awakenScrollBars()) invalidate();
             }
         }
@@ -1012,9 +1019,12 @@ public final class TerminalView extends View {
             if (mTerminalCursorBlinkerRunnable != null)
                 mTerminalCursorBlinkerRunnable.setEmulator(mEmulator);
 
-            mTopRow = 0;
+            // Reflow or history clearing may have removed rows since this view last displayed them.
+            int rowsInHistory = mEmulator.getScreen().getActiveTranscriptRows();
+            setTopRow(Math.min(0, Math.max(-rowsInHistory, mEmulator.getTopRow())));
             scrollTo(0, 0);
-            invalidate();
+            // Consume output accumulated while detached once, without following it to the bottom.
+            onScreenUpdated(true);
         }
     }
 
@@ -1067,8 +1077,9 @@ public final class TerminalView extends View {
         return mTopRow;
     }
 
-    public void setTopRow(int mTopRow) {
-        this.mTopRow = mTopRow;
+    public void setTopRow(int topRow) {
+        mTopRow = topRow;
+        if (mEmulator != null) mEmulator.setTopRow(topRow);
     }
 
 
