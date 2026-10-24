@@ -79,9 +79,8 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             termuxSessionListNotifyUpdated();
         }
 
-        // The current terminal session may have changed while being away, force
-        // a refresh of the displayed terminal.
-        for (TerminalView view : mActivity.getTerminalViews()) view.onScreenUpdated();
+        // Refresh the displayed terminals without treating foregrounding as new output.
+        for (TerminalView view : mActivity.getTerminalViews()) view.onScreenUpdated(true);
     }
 
     /**
