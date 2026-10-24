@@ -405,7 +405,7 @@ public class TerminalPaneLayoutTest {
         assertEquals(-6, terminal.getTopRow());
     }
 
-    private void assertForegroundSelectionAfterOutput(boolean scrollLocked, boolean selectOldest) {
+    private void assertForegroundSelectionAfterOutput(boolean scrollLocked, boolean selectOldest) throws InterruptedException {
         ActivityController<TermuxActivity> controller = Robolectric.buildActivity(TermuxActivity.class);
         TermuxActivity activity = notificationActivity(controller);
         controller.visible();
@@ -430,8 +430,8 @@ public class TerminalPaneLayoutTest {
         String selected = terminal.getSelectedText();
         assertNotNull(selected);
         assertFalse(selected.isEmpty());
-        // Let the real selection controller's accidental-dismissal grace period expire.
-        Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(350));
+        // The selection controller uses wall time, not Robolectric's virtual looper clock.
+        Thread.sleep(350);
 
         ReflectionHelpers.setField(activity, "mIsVisible", false);
         output(session, "background\r\n");
@@ -452,17 +452,17 @@ public class TerminalPaneLayoutTest {
     }
 
     @Test
-    public void foregroundSelectionEvictionRecoversToBottom() {
+    public void foregroundSelectionEvictionRecoversToBottom() throws InterruptedException {
         assertForegroundSelectionAfterOutput(false, true);
     }
 
     @Test
-    public void foregroundSelectionEvictionRespectsScrollLock() {
+    public void foregroundSelectionEvictionRespectsScrollLock() throws InterruptedException {
         assertForegroundSelectionAfterOutput(true, true);
     }
 
     @Test
-    public void foregroundRetainedSelectionStaysAnchored() {
+    public void foregroundRetainedSelectionStaysAnchored() throws InterruptedException {
         assertForegroundSelectionAfterOutput(false, false);
     }
 
