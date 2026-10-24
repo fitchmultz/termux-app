@@ -76,7 +76,7 @@ not a promise of a bundled language/toolchain runtime.
 - All generator source, HOME, TMPDIR, repository, unpacked native files, and
   partial archives stay under the requested build directory. No target binary,
   maintainer script, or second-stage script is executed by the build. Package
-  data paths and symlink ancestors are checked before upstream extraction. The
+  data paths, symlink ancestors, and control-archive entries are checked before upstream extraction. The
   final ZIP is validated then atomically replaced; failures preserve the prior
   output. Gradle revalidates cached inputs on every invocation, not just clean
   builds, and embeds only `app/build/bootstrap/bootstrap-aarch64.zip` via an

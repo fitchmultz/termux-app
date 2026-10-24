@@ -198,6 +198,14 @@ def check_debs(packages, files):
     """Check extraction paths before upstream tar runs; no target code is executed."""
     paths, links = set(), set()
     for record, deb in zip(packages, files):
+        with subprocess.Popen(["dpkg-deb", "--ctrl-tarfile", str(deb)], stdout=subprocess.PIPE) as process:
+            with tarfile.open(fileobj=process.stdout, mode="r|") as archive:
+                for member in archive:
+                    name = member.name.removeprefix("./")
+                    require((member.isdir() and name in ("", ".")) or
+                            (member.isfile() and "/" not in name and name not in ("", ".", "..")),
+                            f"Unsafe control archive entry: {member.name}")
+            require(process.wait() == 0, "dpkg-deb control inspection failed")
         metadata = subprocess.check_output(["dpkg-deb", "--field", str(deb)], text=True)
         actual = paragraphs(metadata)[0]
         for field in ("Package", "Version", "Architecture", "Depends", "Pre-Depends"):

@@ -1,8 +1,10 @@
 """Runner/security contracts; the real two-build payload gate lives in Fold checks."""
 import argparse
 import copy
+import io
 from pathlib import Path
 import subprocess
+import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -98,6 +100,27 @@ class BootstrapRunnerTests(unittest.TestCase):
             with zipfile.ZipFile(work / "output0.zip") as archive:
                 self.assertEqual(archive.read("bin/tool"), b"payload")
                 self.assertEqual(archive.read("SYMLINKS.txt").decode(), "a←./a\nb←./b\n")
+
+    def test_control_symlinks_cannot_read_host_files(self):
+        with tempfile.TemporaryDirectory(dir=self.work) as directory:
+            work = Path(directory)
+            (work / "debian-binary").write_text("2.0\n")
+            with tarfile.open(work / "control.tar.gz", "w:gz") as archive:
+                data = b"Package: fixture\nVersion: 1\nArchitecture: all\n"
+                member = tarfile.TarInfo("control")
+                member.size = len(data)
+                archive.addfile(member, io.BytesIO(data))
+                member = tarfile.TarInfo("postinst")
+                member.type = tarfile.SYMTYPE
+                member.linkname = str(work / "host-data")
+                archive.addfile(member)
+            (work / "host-data").write_text("not package data")
+            with tarfile.open(work / "data.tar.gz", "w:gz"):
+                pass
+            subprocess.run(["ar", "rc", "fixture.deb", "debian-binary", "control.tar.gz", "data.tar.gz"],
+                           cwd=work, check=True)
+            with self.assertRaisesRegex(ValueError, "Unsafe control archive entry"):
+                b.check_debs([{"Package": "fixture", "Version": "1", "Architecture": "all"}], [work / "fixture.deb"])
 
 
 if __name__ == "__main__":
