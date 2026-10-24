@@ -28,6 +28,35 @@ jobs:
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
+  bootstrap-validation:
+    name: Offline bootstrap validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install bootstrap build tools
+        run: sudo apt-get update && sudo apt-get install -y binutils curl dpkg gpgv gzip xz-utils zip jq python3
+      - name: Test runner failure paths and build twice without target execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tools/bootstrap -p 'test_*.py' -v
+          python3 tools/bootstrap/bootstrap.py build --cache "$RUNNER_TEMP/bootstrap-cache" --output "$RUNNER_TEMP/first/bootstrap-aarch64.zip" > "$RUNNER_TEMP/bootstrap-first.log" 2>&1
+          python3 tools/bootstrap/bootstrap.py build --offline --cache "$RUNNER_TEMP/bootstrap-cache" --output "$RUNNER_TEMP/second/bootstrap-aarch64.zip" > "$RUNNER_TEMP/bootstrap-second.log" 2>&1
+          cmp "$RUNNER_TEMP/first/bootstrap-aarch64.zip" "$RUNNER_TEMP/second/bootstrap-aarch64.zip"
+          sha256sum "$RUNNER_TEMP/first/bootstrap-aarch64.zip"
+          python3 tools/bootstrap/check_payload.py "$RUNNER_TEMP/first/bootstrap-aarch64.zip"
+      - name: Save bootstrap validation logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bootstrap-validation-logs
+          path: ${{ runner.temp }}/bootstrap-*.log
+          retention-days: 3
+
   unit-tests:
     name: Gradle unit tests
     runs-on: ubuntu-latest
@@ -48,6 +77,8 @@ jobs:
         with:
           cmdline-tools-version: '16111833' # 23.0
           packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
+      - name: Install bootstrap build tools
+        run: sudo apt-get update && sudo apt-get install -y binutils curl dpkg gpgv gzip xz-utils zip jq python3
       - name: Execute tests
         run: ./gradlew --no-daemon test
       - name: Save synthetic workbench renders and test reports
@@ -80,6 +111,8 @@ jobs:
         with:
           cmdline-tools-version: '16111833' # 23.0
           packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
+      - name: Install bootstrap build tools
+        run: sudo apt-get update && sudo apt-get install -y binutils curl dpkg gpgv gzip xz-utils zip jq python3
       - name: Validate opinionated release metadata
         shell: bash
         run: |
@@ -93,6 +126,8 @@ jobs:
           grep -Fx 'packageVariant=apt-android-7' <<<"$metadata"
           grep -Fx 'supportedAbis=arm64-v8a' <<<"$metadata"
           grep -Fq "version \`$version_name\` with monotonic version code \`$version_code\`" FOLD_PROFILE.md
+      - name: Verify no-clean native bootstrap replacement
+        run: python3 tools/bootstrap/check_native_incremental.py "$ANDROID_HOME/ndk/30.0.16248370"
       - name: Compile debug APK without publishing artifacts
         run: ./gradlew --no-daemon :app:assembleDebug
       - name: Compile and verify reproducible unsigned release APK

@@ -64,6 +64,9 @@ jobs:
           cmdline-tools-version: '16111833' # 23.0
           packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
 
+      - name: Install bootstrap build tools
+        run: sudo apt-get update && sudo apt-get install -y binutils curl dpkg gpgv gzip xz-utils zip jq python3
+
       - name: Validate Gradle wrapper and run unit tests
         shell: bash
         run: |

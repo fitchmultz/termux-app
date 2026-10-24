@@ -10,6 +10,7 @@ java {
 
 def profile = rootProject.ext.foldProfile
 ext.packageVariant = profile.packageVariant
+def bootstrapDirectory = layout.buildDirectory.dir("bootstrap")
 
 android {
     namespace = "com.termux"
@@ -43,6 +44,7 @@ android {
         }
         externalNativeBuild {
             ndkBuild {
+                arguments.add("FOLD_BOOTSTRAP_DIR=${bootstrapDirectory.get().asFile}")
                 cFlags.addAll(["-std=c11", "-Wall", "-Wextra", "-Werror", "-Os", "-fno-stack-protector", "-Wl,--gc-sections"])
             }
         }
@@ -138,56 +140,16 @@ tasks.register("foldReleaseMetadata") {
     }
 }
 
-def sha256(File file) {
-    def digest = java.security.MessageDigest.getInstance("SHA-256")
-    file.withInputStream { input ->
-        byte[] buffer = new byte[8192]
-        int count
-        while ((count = input.read(buffer)) != -1) {
-            digest.update(buffer, 0, count)
-        }
-    }
-    return java.util.HexFormat.of().formatHex(digest.digest())
-}
-
-def downloadBootstrap(String arch, String expectedChecksum, String version) {
-    def archive = file("src/main/cpp/bootstrap-${arch}.zip")
-    if (archive.exists() && sha256(archive) == expectedChecksum) return
-
-    def remoteUrl = "https://github.com/termux/termux-packages/releases/download/bootstrap-${version}/bootstrap-${arch}.zip"
-    logger.quiet("Downloading ${remoteUrl} ...")
-    archive.parentFile.mkdirs()
-    def temporary = File.createTempFile("bootstrap-${arch}-", ".zip", archive.parentFile)
-    try {
-        def connection = new URL(remoteUrl).openConnection()
-        connection.connectTimeout = 30000
-        connection.readTimeout = 30000
-        connection.inputStream.withCloseable { input ->
-            temporary.withOutputStream { output -> output << input }
-        }
-        def actualChecksum = sha256(temporary)
-        if (actualChecksum != expectedChecksum) {
-            throw new GradleException("Wrong checksum for ${remoteUrl}: expected: ${expectedChecksum}, actual: ${actualChecksum}")
-        }
-        java.nio.file.Files.move(temporary.toPath(), archive.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-    } finally {
-        temporary.delete()
-    }
-}
-
-tasks.named("clean") {
-    doLast {
-        fileTree("src/main/cpp").matching { include 'bootstrap-*.zip' }.each { it.delete() }
-    }
-}
-
-def downloadBootstraps = tasks.register("downloadBootstraps") {
-    doLast {
-        downloadBootstrap("aarch64", "b7827bc99710293d0e871df8b96d9d3a8ab6b22ee4b4a6f3ac076754818990ab", "2026.10.11-r1%2Bapt.android-7")
-    }
+// Always revalidate cached inputs and the generated payload, including on incremental builds.
+// No mutable apt index or first-launch package download participates in APK builds.
+def generateBootstrap = tasks.register("generateBootstrap", Exec) {
+    workingDir rootProject.projectDir
+    commandLine "python3", rootProject.file("tools/bootstrap/bootstrap.py").absolutePath,
+        "build", "--cache", bootstrapDirectory.get().dir("downloads").asFile.absolutePath,
+        "--output", bootstrapDirectory.get().file("bootstrap-aarch64.zip").asFile.absolutePath
 }
 
 // Both native and Java compilation need the verified bootstrap archive.
 tasks.named("preBuild") {
-    dependsOn(downloadBootstraps)
+    dependsOn(generateBootstrap)
 }

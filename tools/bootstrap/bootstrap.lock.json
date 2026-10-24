@@ -1,0 +1,1107 @@
+{
+  "schema": 1,
+  "profile_sha256": "c0e6477a4202c24470cc6c10e47e650b1e5928d41723087b0e194a0205bce2db",
+  "provenance": {
+    "repository": "https://packages-cf.termux.dev/apt/termux-main",
+    "date": "Sat, 24 Oct 2026 14:22:36 UTC",
+    "signer": "CC72CF8BA7DBFA0182877D045A897D96E57CF20C",
+    "inrelease_sha256": "68a77b2e5f19b0ab10c92080b15add777726ea67672b449694b665ea627c8dea",
+    "index_sha256": "a0b9f006678fdaa7b9b4f70939b4e0083c2e6c7030d68509b89c297aae7bdf4e"
+  },
+  "packages": [
+    {
+      "Package": "apt",
+      "Version": "2.8.1-2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/a/apt/apt_2.8.1-2_aarch64.deb",
+      "Size": "1031148",
+      "SHA256": "b0db77a943dfc425ee19d6c910b62f984f1cb25c2d9ca0cb661f91e95f95fec3",
+      "Depends": "coreutils, dpkg, findutils, gpgv, grep, libandroid-glob, libbz2, libc++, libiconv, libgcrypt, libgnutls, liblz4, liblzma, sed, termux-keyring, termux-licenses, xxhash, zlib, zstd",
+      "Conflicts": "apt-transport-https, libapt-pkg, unstable-repo, game-repo, science-repo"
+    },
+    {
+      "Package": "attr",
+      "Version": "2.6.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/a/attr/attr_2.6.0_aarch64.deb",
+      "Size": "56188",
+      "SHA256": "50a4d1238564a49985d398061ef61a0020348ddc84bd296e6450c5f0bdca2435",
+      "Breaks": "attr-dev"
+    },
+    {
+      "Package": "bash",
+      "Version": "5.3.20",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/b/bash/bash_5.3.20_aarch64.deb",
+      "Size": "956852",
+      "SHA256": "26b5b3ab5b0ac0e3b372ac1e7ddd89270519c1eb25b88fe4175485c2de8086b2",
+      "Depends": "libandroid-support, libiconv, readline (>= 8.3), termux-tools",
+      "Breaks": "bash-dev"
+    },
+    {
+      "Package": "bat",
+      "Version": "0.26.1-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/b/bat/bat_0.26.1-1_aarch64.deb",
+      "Size": "2277620",
+      "SHA256": "e06ec9f62d871358cebc950f7ffea24af5a201380ef6b49375b63cfeae67f11a",
+      "Depends": "less, libgit2"
+    },
+    {
+      "Package": "bzip2",
+      "Version": "1.0.8-8",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/b/bzip2/bzip2_1.0.8-8_aarch64.deb",
+      "Size": "26152",
+      "SHA256": "7b904d820c34b6c043067ca3c8cb67465413ea5eae3f529a0e05a9ae0df2b89a",
+      "Depends": "libbz2 (= 1.0.8-8)"
+    },
+    {
+      "Package": "ca-certificates",
+      "Version": "1:2026.10.20-1",
+      "Architecture": "all",
+      "Filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb",
+      "Size": "110132",
+      "SHA256": "ab8a7fe63293b455c02399ee125eb8a0041e430ccfdf89a5be8317522fdf9107"
+    },
+    {
+      "Package": "command-not-found",
+      "Version": "3.5.0-16",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/c/command-not-found/command-not-found_3.5.0-16_aarch64.deb",
+      "Size": "117504",
+      "SHA256": "bf214b752720066e29d758192308b941959c17f09725260a8cfd8470a16a1f96",
+      "Depends": "libc++"
+    },
+    {
+      "Package": "coreutils",
+      "Version": "9.12",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/c/coreutils/coreutils_9.12_aarch64.deb",
+      "Size": "824156",
+      "SHA256": "bedfe9e57f6867232e8f5fee947efa23be20332c57e92d843b3ea155545d6b8b",
+      "Depends": "libandroid-selinux, libandroid-support, libgmp, libiconv, openssl (>= 1:3.5.0-1)",
+      "Breaks": "chroot, busybox (<< 1.30.1-4)"
+    },
+    {
+      "Package": "curl",
+      "Version": "8.23.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/c/curl/curl_8.23.0_aarch64.deb",
+      "Size": "246160",
+      "SHA256": "e57a9975a828eb48790bec0da950795af165aa714f6a33d266c45a4e2898aa85",
+      "Depends": "libcurl (= 8.23.0)"
+    },
+    {
+      "Package": "dash",
+      "Version": "0.5.13.5",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/d/dash/dash_0.5.13.5_aarch64.deb",
+      "Size": "70636",
+      "SHA256": "02bb8b06db6616382e0baf9e63f11cb5fe82307dddf3f8880f6b39dbc808adc5"
+    },
+    {
+      "Package": "debianutils",
+      "Version": "5.24",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/d/debianutils/debianutils_5.24_aarch64.deb",
+      "Size": "17216",
+      "SHA256": "cde34bddb22e777b12f8dd517e85c6fb967b43234ee9c53cd2a2c213747e103c"
+    },
+    {
+      "Package": "dialog",
+      "Version": "1.3-20260721-0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/d/dialog/dialog_1.3-20260721-0_aarch64.deb",
+      "Size": "100700",
+      "SHA256": "f7c96ea214b33652b8e2b3e2f2797dbc0371be5cac5dfe341c57c0a4927bdd78",
+      "Depends": "libandroid-support, ncurses"
+    },
+    {
+      "Package": "diffutils",
+      "Version": "3.12-2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/d/diffutils/diffutils_3.12-2_aarch64.deb",
+      "Size": "162672",
+      "SHA256": "ab039ac163550ebb73a601f104da2dfb8bbd26f028086821c48edaa2384e68d2",
+      "Depends": "libiconv"
+    },
+    {
+      "Package": "direnv",
+      "Version": "2.38.2-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/d/direnv/direnv_2.38.2-1_aarch64.deb",
+      "Size": "2609408",
+      "SHA256": "e7595db02442d5e0b39c331df866bea7e00f7bd4ac8cded4496a7d19f81cac09"
+    },
+    {
+      "Package": "dos2unix",
+      "Version": "7.5.7",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/d/dos2unix/dos2unix_7.5.7_aarch64.deb",
+      "Size": "65940",
+      "SHA256": "3786079e8810ec67734c961796e7cb69c46b56a3c502c54e84207735886d9502",
+      "Depends": "libandroid-support"
+    },
+    {
+      "Package": "dpkg",
+      "Version": "1.22.6-5",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/d/dpkg/dpkg_1.22.6-5_aarch64.deb",
+      "Size": "308092",
+      "SHA256": "a9c441ebda34f7df2f4b70ade16ebed97635da022c78be31fed32649961402d0",
+      "Depends": "bzip2, coreutils, diffutils, gzip, less, libbz2, liblzma, libmd, tar, xz-utils, zlib, zstd",
+      "Breaks": "dpkg-dev"
+    },
+    {
+      "Package": "ed",
+      "Version": "1.22.6",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/e/ed/ed_1.22.6_aarch64.deb",
+      "Size": "43028",
+      "SHA256": "05baa62dd9870f8e92a1d11f6001da2f4dc0f93ca58f710fee8963e1317f72fc"
+    },
+    {
+      "Package": "fd",
+      "Version": "10.5.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/f/fd/fd_10.5.0_aarch64.deb",
+      "Size": "954120",
+      "SHA256": "402e0b0b2bc1791414585450ac35541fc646f278bdce2b0145f4085fed54bb04"
+    },
+    {
+      "Package": "findutils",
+      "Version": "4.11.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/f/findutils/findutils_4.11.0_aarch64.deb",
+      "Size": "260932",
+      "SHA256": "6922198895b41394aad417b9793c3bc9b336a4d83bae310346fc1a2ca97abbd3",
+      "Depends": "libandroid-support"
+    },
+    {
+      "Package": "fzf",
+      "Version": "0.74.5-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/f/fzf/fzf_0.74.5-1_aarch64.deb",
+      "Size": "1610452",
+      "SHA256": "2ca0eb55187b9b67842b3c61e52269c7e174387963f63bcf87441deab02270ab",
+      "Depends": "bash, findutils, ncurses-utils"
+    },
+    {
+      "Package": "gawk",
+      "Version": "5.4.1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/g/gawk/gawk_5.4.1_aarch64.deb",
+      "Size": "928020",
+      "SHA256": "4f82f448d969e7f874d9d627af063a2da713d4c6540039a402cefbfc4976af1f",
+      "Depends": "libandroid-support, libgmp, libmpfr, readline",
+      "Breaks": "gawk-dev"
+    },
+    {
+      "Package": "git",
+      "Version": "2.56.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/g/git/git_2.56.0_aarch64.deb",
+      "Size": "4541040",
+      "SHA256": "dcdd22c5fdf7bdb5b825a03a17441d43858ed8515fea57fbb37eb42e733ca82f",
+      "Depends": "libcurl, libexpat, libiconv, less, openssl, pcre2, zlib"
+    },
+    {
+      "Package": "git-delta",
+      "Version": "0.20.1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/g/git-delta/git-delta_0.20.1_aarch64.deb",
+      "Size": "2141268",
+      "SHA256": "d27f00c5d026248b04b7bcc0d2880cbd7cfa72a958cecfa504d47110ffa512f2",
+      "Depends": "git, libgit2, oniguruma"
+    },
+    {
+      "Package": "git-lfs",
+      "Version": "3.8.1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/g/git-lfs/git-lfs_3.8.1_aarch64.deb",
+      "Size": "3754972",
+      "SHA256": "56a49e57b5f97023b7ea1573174b28f18e93f8a085e796f8a7b3a58a9743d31c"
+    },
+    {
+      "Package": "gpgv",
+      "Version": "2.5.24",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/g/gpgv/gpgv_2.5.24_aarch64.deb",
+      "Size": "196552",
+      "SHA256": "9db7753c851ab12f916313178fca032b2ab4e475a4bc7c118ed9ee611c0a419f",
+      "Depends": "libassuan, libbz2, libgcrypt, libgpg-error, libnpth, zlib"
+    },
+    {
+      "Package": "grep",
+      "Version": "3.12-3",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/g/grep/grep_3.12-3_aarch64.deb",
+      "Size": "128312",
+      "SHA256": "a2819b49c621b61567e39c5c647d5ed6fe9d51eab71ed73eebf18be76719457d",
+      "Depends": "libandroid-support, pcre2"
+    },
+    {
+      "Package": "gzip",
+      "Version": "1.15",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/g/gzip/gzip_1.15_aarch64.deb",
+      "Size": "75552",
+      "SHA256": "0c9806c03dedf51a753f1dc7d93e016fb9e6c8d522d0b1418fd2209244985c84"
+    },
+    {
+      "Package": "inetutils",
+      "Version": "2.8-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/i/inetutils/inetutils_2.8-1_aarch64.deb",
+      "Size": "239988",
+      "SHA256": "f0b2b7ba1c4d3d4a6dabdf30572a224794b90e1071ea92a4dd87610288b3979e",
+      "Depends": "readline"
+    },
+    {
+      "Package": "jq",
+      "Version": "1.8.2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/j/jq/jq_1.8.2_aarch64.deb",
+      "Size": "184516",
+      "SHA256": "0eac323797c5d70c35f5fb935c58b5fd7528937584a1aebbd5c5b965d1663afa",
+      "Depends": "oniguruma",
+      "Breaks": "jq-dev"
+    },
+    {
+      "Package": "krb5",
+      "Version": "1.22.2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/k/krb5/krb5_1.22.2_aarch64.deb",
+      "Size": "902380",
+      "SHA256": "3c97dcc7437616bb4051297822915bd2ff9552e63a5fbee2520db3fc0c5b575d",
+      "Depends": "libandroid-support, libandroid-glob, libresolv-wrapper, readline, openssl, libdb",
+      "Breaks": "krb5-dev"
+    },
+    {
+      "Package": "ldns",
+      "Version": "1.9.2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/l/ldns/ldns_1.9.2_aarch64.deb",
+      "Size": "305108",
+      "SHA256": "fcc8feb86be077e59cb3fd1f05867061ea1e985b11a36d30603ce1cdecd6b68a",
+      "Depends": "openssl, resolv-conf",
+      "Breaks": "ldns-dev"
+    },
+    {
+      "Package": "less",
+      "Version": "710",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/l/less/less_710_aarch64.deb",
+      "Size": "143624",
+      "SHA256": "bff261b48553bcde3a93e0d7c2a51dbb1b7e5025767a1ee9a1cb4459a3789499",
+      "Depends": "ncurses, pcre2"
+    },
+    {
+      "Package": "libacl",
+      "Version": "2.4.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/liba/libacl/libacl_2.4.0_aarch64.deb",
+      "Size": "123540",
+      "SHA256": "cb620e33405e74b566cb05740dca488705cf0c475ec7f795fa333412211b6d92",
+      "Depends": "attr"
+    },
+    {
+      "Package": "libandroid-glob",
+      "Version": "0.6-3",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/liba/libandroid-glob/libandroid-glob_0.6-3_aarch64.deb",
+      "Size": "7032",
+      "SHA256": "2276ae8adedf0db76c2f4ffc94cc4cceb2f4f5d78e021b54e2e046d1233e7826",
+      "Breaks": "libandroid-glob-dev"
+    },
+    {
+      "Package": "libandroid-posix-semaphore",
+      "Version": "0.1-4",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/liba/libandroid-posix-semaphore/libandroid-posix-semaphore_0.1-4_aarch64.deb",
+      "Size": "4076",
+      "SHA256": "0efa8677a0166315ba4e685863712eba0ca0a1732827492f38226e2723730c7a"
+    },
+    {
+      "Package": "libandroid-selinux",
+      "Version": "14.0.0.11-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/liba/libandroid-selinux/libandroid-selinux_14.0.0.11-1_aarch64.deb",
+      "Size": "59624",
+      "SHA256": "00afd8c34087c2864737b51fd9d104dc5e955f6ec3c0f50c0c7ef5b4a56866b9",
+      "Depends": "pcre2"
+    },
+    {
+      "Package": "libandroid-support",
+      "Version": "29-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/liba/libandroid-support/libandroid-support_29-1_aarch64.deb",
+      "Size": "10880",
+      "SHA256": "f2f145d6135ad4843ac9670153be3e3944dc1e6f1736d46d2306c28f2b86f517"
+    },
+    {
+      "Package": "libassuan",
+      "Version": "3.0.2-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/liba/libassuan/libassuan_3.0.2-1_aarch64.deb",
+      "Size": "73896",
+      "SHA256": "4886a69d2a30a26429ab4c2f7262a5c8fb30449dcda80358e9213c6715398fc3",
+      "Depends": "libgpg-error",
+      "Breaks": "gnupg (<< 2.4.5-3), gpgv (<< 2.4.5-3), gpgme (<< 1.23.2-3), pinentry (<< 1.3.1-1), pinentry-gtk (<< 1.3.1), profanity (<< 0.14.0-3)"
+    },
+    {
+      "Package": "libblkid",
+      "Version": "2.42.4",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libb/libblkid/libblkid_2.42.4_aarch64.deb",
+      "Size": "128848",
+      "SHA256": "4c4fcbf66b8c51e63ba5fae44a868bfb97520f504c8f8c31d4abdb7d07959513",
+      "Depends": "libandroid-posix-semaphore",
+      "Breaks": "util-linux (<< 2.38.1-1)"
+    },
+    {
+      "Package": "libbz2",
+      "Version": "1.0.8-8",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libb/libbz2/libbz2_1.0.8-8_aarch64.deb",
+      "Size": "26116",
+      "SHA256": "4335d7f060650b0aabef545d1334c2f9f280223d5962e13c24a00ec934b794ba",
+      "Breaks": "libbz2-dev"
+    },
+    {
+      "Package": "libc++",
+      "Version": "30",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libc/libc++/libc++_30_aarch64.deb",
+      "Size": "341604",
+      "SHA256": "53d0b84a7ba7459024257cb94d5b136fe13ef858567f65a8064b35950799f2ca"
+    },
+    {
+      "Package": "libcap",
+      "Version": "2.78",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libc/libcap/libcap_2.78_aarch64.deb",
+      "Size": "79188",
+      "SHA256": "50c530c845288b135dbe4690f8c19ee8ef1c6bb554be4421828eeee9c1f7f89c",
+      "Depends": "attr",
+      "Breaks": "libcap-dev"
+    },
+    {
+      "Package": "libcap-ng",
+      "Version": "2:0.9.6",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libc/libcap-ng/libcap-ng_2:0.9.6_aarch64.deb",
+      "Size": "57472",
+      "SHA256": "68e8e2a95e5ac061e40717654fe2014042d88bfa2b85455713ed992eb694f89d"
+    },
+    {
+      "Package": "libcurl",
+      "Version": "8.23.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libc/libcurl/libcurl_8.23.0_aarch64.deb",
+      "Size": "1043340",
+      "SHA256": "2011bb9709261bb3d5ecaa6672faa333be14cf48ad4af37031e3e365309557ac",
+      "Depends": "libnghttp2, libnghttp3, libngtcp2, libssh2, openssl (>= 1:3.2.1-1), zlib",
+      "Conflicts": "apt (<< 1.4.8-8)",
+      "Breaks": "libcurl-dev"
+    },
+    {
+      "Package": "libdb",
+      "Version": "18.1.40-6",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libd/libdb/libdb_18.1.40-6_aarch64.deb",
+      "Size": "496988",
+      "SHA256": "60bfb4e8bed834d334806f39aae27ffc11ab819f2da2f9abb7a3b2d37970a532",
+      "Depends": "libc++",
+      "Breaks": "libdb-dev"
+    },
+    {
+      "Package": "libedit",
+      "Version": "20260512-3.1-0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libe/libedit/libedit_20260512-3.1-0_aarch64.deb",
+      "Size": "79888",
+      "SHA256": "728da8f45e9c0027f0c5844346dd8cea153a43394bceee36a257972acf0ed440",
+      "Depends": "ncurses",
+      "Breaks": "libedit-dev"
+    },
+    {
+      "Package": "libevent",
+      "Version": "2.1.13",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libe/libevent/libevent_2.1.13_aarch64.deb",
+      "Size": "202848",
+      "SHA256": "cf99e8e6cd1218c0e4956d2ee69efbb26520211b3e03407463eac9016fe55f25",
+      "Breaks": "libevent-dev"
+    },
+    {
+      "Package": "libexpat",
+      "Version": "2.9.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libe/libexpat/libexpat_2.9.0_aarch64.deb",
+      "Size": "100256",
+      "SHA256": "f8a104e8227c9c181f6818658a3ee2fa4c107fac94219b068144fc6591086cdb",
+      "Breaks": "libexpat-dev"
+    },
+    {
+      "Package": "libffi",
+      "Version": "3.8.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libf/libffi/libffi_3.8.0_aarch64.deb",
+      "Size": "37592",
+      "SHA256": "4f255badf74cd31f6a2801c17fa1444199c84c834b517b7c843e2fe9ebe91d77",
+      "Breaks": "libffi-dev"
+    },
+    {
+      "Package": "libgcrypt",
+      "Version": "1.12.4",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libg/libgcrypt/libgcrypt_1.12.4_aarch64.deb",
+      "Size": "513340",
+      "SHA256": "806d8ae1e2b6d41037b94e95736f9709672cac052b133241fa9a18f70e7c432e",
+      "Depends": "libgpg-error",
+      "Breaks": "libgcrypt-dev"
+    },
+    {
+      "Package": "libgit2",
+      "Version": "1.9.7",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libg/libgit2/libgit2_1.9.7_aarch64.deb",
+      "Size": "721736",
+      "SHA256": "bfcc4d08b898e6b9e200242b7a1ad88582a38ff0bfbbd4398e41137d8dfcc2c0",
+      "Depends": "libssh2, openssl, pcre2, zlib",
+      "Breaks": "libgit2-dev"
+    },
+    {
+      "Package": "libgmp",
+      "Version": "6.3.0-2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libg/libgmp/libgmp_6.3.0-2_aarch64.deb",
+      "Size": "328368",
+      "SHA256": "5a3c1325638946ca212ddcb89bffb2c4459b4c90757d6e69f820e176534037fa",
+      "Depends": "libc++",
+      "Breaks": "libgmp-dev"
+    },
+    {
+      "Package": "libgnutls",
+      "Version": "3.8.13-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libg/libgnutls/libgnutls_3.8.13-1_aarch64.deb",
+      "Size": "776696",
+      "SHA256": "eb12f2cf82923caf288edd99bc4c19a9dd0cf1de4a03855ff4457a1bbdae146d",
+      "Depends": "libc++, libgmp, libnettle, ca-certificates, libidn2, libtasn1, libunbound, libunistring, p11-kit, zlib",
+      "Breaks": "libgnutls-dev"
+    },
+    {
+      "Package": "libgpg-error",
+      "Version": "1.61",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libg/libgpg-error/libgpg-error_1.61_aarch64.deb",
+      "Size": "121284",
+      "SHA256": "452afa22fe36e4d79679e91eae6e22855dd1f855e2a7e1840736279b26611d8f",
+      "Breaks": "libgpg-error-dev"
+    },
+    {
+      "Package": "libiconv",
+      "Version": "1.19",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libi/libiconv/libiconv_1.19_aarch64.deb",
+      "Size": "562724",
+      "SHA256": "fe9481b1dc101c6c3552943f25435109fd522aecc615ae49594f9fbee863bb37",
+      "Breaks": "libandroid-support (<= 24), libiconv-dev, libandroid-support-dev"
+    },
+    {
+      "Package": "libidn2",
+      "Version": "2.3.8-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libi/libidn2/libidn2_2.3.8-1_aarch64.deb",
+      "Size": "105308",
+      "SHA256": "a450a1ba25759ebf78738484a3efee316c51a1fe7bafb0b01a68e2c058a91020",
+      "Depends": "libandroid-support, libiconv, libunistring",
+      "Breaks": "libidn2-dev"
+    },
+    {
+      "Package": "liblz4",
+      "Version": "1.10.0-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libl/liblz4/liblz4_1.10.0-1_aarch64.deb",
+      "Size": "84676",
+      "SHA256": "09b9449418d5c2dc4f5c1c140ba8138d56be3e9ae5fd3be3318825ec9f8a0499",
+      "Breaks": "liblz4-dev"
+    },
+    {
+      "Package": "liblzma",
+      "Version": "5.8.4",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libl/liblzma/liblzma_5.8.4_aarch64.deb",
+      "Size": "194796",
+      "SHA256": "44e95e6e60dddb3705e60a344a4f009a1085a210797342b721eaff41b44033c0",
+      "Breaks": "liblzma-dev"
+    },
+    {
+      "Package": "libmagic",
+      "Version": "5.48-3",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libm/libmagic/libmagic_5.48-3_aarch64.deb",
+      "Size": "396656",
+      "SHA256": "e1ea626c31ac38e31023a61a1b1d347c60caaa860ff4e68f176e3a88806af2cb",
+      "Depends": "zlib",
+      "Breaks": "file (<< 5.48-2)"
+    },
+    {
+      "Package": "libmd",
+      "Version": "1.3.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libm/libmd/libmd_1.3.0_aarch64.deb",
+      "Size": "50756",
+      "SHA256": "dfa3e0cde4e867c53dabc7e0e73171de07f3d1adb2434aa9e197488016f6c2b4"
+    },
+    {
+      "Package": "libmount",
+      "Version": "2.42.4",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libm/libmount/libmount_2.42.4_aarch64.deb",
+      "Size": "158848",
+      "SHA256": "d8fa69ff2f108666e42c95fab09fbcc730a81eec02fe976cba302925f21bf51a",
+      "Depends": "libblkid, libsmartcols"
+    },
+    {
+      "Package": "libmpfr",
+      "Version": "4.2.2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libm/libmpfr/libmpfr_4.2.2_aarch64.deb",
+      "Size": "273848",
+      "SHA256": "bd2a18f433321d7be49a4e86248696c0551a8df273b2a7c34ce729abe48ce15d",
+      "Depends": "libgmp",
+      "Breaks": "libmpfr-dev"
+    },
+    {
+      "Package": "libnettle",
+      "Version": "4.0+really3.10.2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libn/libnettle/libnettle_4.0+really3.10.2_aarch64.deb",
+      "Size": "405656",
+      "SHA256": "f2d2a84083e66beab642e88496eb16976ccdb12d1278466e687f01431db8a5fb",
+      "Depends": "libgmp",
+      "Breaks": "libnettle-dev"
+    },
+    {
+      "Package": "libnghttp2",
+      "Version": "1.70.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libn/libnghttp2/libnghttp2_1.70.0_aarch64.deb",
+      "Size": "95924",
+      "SHA256": "ab2e0a3408fe4934ffdf774bd5049a265db2e6db62dcb651baecbecfb81e3f0b",
+      "Breaks": "libnghttp2-dev"
+    },
+    {
+      "Package": "libnghttp3",
+      "Version": "1.18.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libn/libnghttp3/libnghttp3_1.18.0_aarch64.deb",
+      "Size": "69668",
+      "SHA256": "0be2ee96def3608afaf24eb0b4b55f3484a37c95ea21bb1d6d85c7d543467603"
+    },
+    {
+      "Package": "libngtcp2",
+      "Version": "1.25.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libn/libngtcp2/libngtcp2_1.25.0_aarch64.deb",
+      "Size": "174068",
+      "SHA256": "f471bad7f4329b6b0b4aedf124e0a23a35f6ac99bfbae73304136f8bfd570fc3",
+      "Depends": "openssl"
+    },
+    {
+      "Package": "libnpth",
+      "Version": "1.8",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libn/libnpth/libnpth_1.8_aarch64.deb",
+      "Size": "11276",
+      "SHA256": "00afe9e4e723cf80e998266c3dcd659c0771aef59617f7a85810e5b521a7cfe2",
+      "Breaks": "libnpth-dev"
+    },
+    {
+      "Package": "libpopt",
+      "Version": "1.19-3",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libp/libpopt/libpopt_1.19-3_aarch64.deb",
+      "Size": "33272",
+      "SHA256": "8de7d28d5bb749fa1e38d229638e2f0b8c15bddd9d0eae3217b7a52fe5668145",
+      "Depends": "libandroid-glob",
+      "Breaks": "libpopt-dev"
+    },
+    {
+      "Package": "libresolv-wrapper",
+      "Version": "1.1.8",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libr/libresolv-wrapper/libresolv-wrapper_1.1.8_aarch64.deb",
+      "Size": "11248",
+      "SHA256": "41c989a4c6f85575ac542ab5d710fead6fec4cb41941f634666a68a765c13370",
+      "Depends": "resolv-conf"
+    },
+    {
+      "Package": "libsmartcols",
+      "Version": "2.42.4",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libs/libsmartcols/libsmartcols_2.42.4_aarch64.deb",
+      "Size": "103904",
+      "SHA256": "ee0bed102b2262e443d7f54c78f672b8c11cb0f78b982ed093dd92e73a683e84",
+      "Depends": "libandroid-posix-semaphore",
+      "Breaks": "util-linux (<< 2.38.1-1)"
+    },
+    {
+      "Package": "libssh2",
+      "Version": "1.11.1-2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libs/libssh2/libssh2_1.11.1-2_aarch64.deb",
+      "Size": "219220",
+      "SHA256": "1add4e0a926b848814e7e2f1817ea28b123c54cabd5bbc4e5cfd65291cbad84e",
+      "Depends": "openssl, zlib",
+      "Breaks": "libssh2-dev"
+    },
+    {
+      "Package": "libtasn1",
+      "Version": "4.21.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libt/libtasn1/libtasn1_4.21.0_aarch64.deb",
+      "Size": "101344",
+      "SHA256": "1d02de3a7e5ef4ff7d893597091176b8ddf135f1ddfacff951f76c18711a7342"
+    },
+    {
+      "Package": "libtirpc",
+      "Version": "1.3.8",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libt/libtirpc/libtirpc_1.3.8_aarch64.deb",
+      "Size": "124016",
+      "SHA256": "f32ba680517ed41ccf3271e702ac870d1a42391afeeb8694157ae428bcb6928e"
+    },
+    {
+      "Package": "libunbound",
+      "Version": "1.26.2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libu/libunbound/libunbound_1.26.2_aarch64.deb",
+      "Size": "388384",
+      "SHA256": "0eb26a2c0a3f4c80cf11350b4dee4f53f1d154b58bf76555ee13255213178571",
+      "Depends": "libevent, libnghttp2, libngtcp2, openssl, resolv-conf",
+      "Breaks": "unbound (<< 1.17.1-1)"
+    },
+    {
+      "Package": "libunistring",
+      "Version": "1.4.2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libu/libunistring/libunistring_1.4.2_aarch64.deb",
+      "Size": "561924",
+      "SHA256": "5ff75cdf3ddd4ddf5dc9705050f270c3422820295a4b26f93496d3e8e9060122",
+      "Depends": "libandroid-support, libiconv",
+      "Breaks": "libunistring-dev"
+    },
+    {
+      "Package": "libuuid",
+      "Version": "2.42.4",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libu/libuuid/libuuid_2.42.4_aarch64.deb",
+      "Size": "15456",
+      "SHA256": "ecbaab0afd7f4c2c84d687c8e4ba46794d71001866efc261a7015f663eec4e85",
+      "Depends": "libandroid-posix-semaphore",
+      "Breaks": "libuuid-dev"
+    },
+    {
+      "Package": "lsd",
+      "Version": "1.2.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/l/lsd/lsd_1.2.0_aarch64.deb",
+      "Size": "1007156",
+      "SHA256": "6b562bd08b105f1d3f6485d861d430e02b62b6aaf3c8824602b7bdd2271551f0",
+      "Depends": "zlib"
+    },
+    {
+      "Package": "lsof",
+      "Version": "4.99.7",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/l/lsof/lsof_4.99.7_aarch64.deb",
+      "Size": "124216",
+      "SHA256": "6067a81467f8f2e63379fd3d1fc1c6eb6e115f9661d3802192b365a6ceb2fb72",
+      "Depends": "libandroid-support, libtirpc"
+    },
+    {
+      "Package": "nano",
+      "Version": "9.3",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/n/nano/nano_9.3_aarch64.deb",
+      "Size": "242372",
+      "SHA256": "0b1c4199f8b90f9fdfd0741b5f291c655e9b687a7dfad8bbfa4892c7146ef24f",
+      "Depends": "libandroid-support, ncurses, libmagic"
+    },
+    {
+      "Package": "ncurses",
+      "Version": "6.6.20260307+really6.5.20250830",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/n/ncurses/ncurses_6.6.20260307+really6.5.20250830_aarch64.deb",
+      "Size": "557792",
+      "SHA256": "f44bbfdc3d42ec0217bffa978309390e59cea5a48a9a83226d4a496c42ad0b99",
+      "Breaks": "ncurses-dev, ncurses-utils (<< 6.1.20190511-4)"
+    },
+    {
+      "Package": "ncurses-utils",
+      "Version": "6.6.20260307+really6.5.20250830",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/n/ncurses-utils/ncurses-utils_6.6.20260307+really6.5.20250830_aarch64.deb",
+      "Size": "89000",
+      "SHA256": "6fc33807c23594a2c085780924b87b348b389c6c778588c8f59d8f6669f17d20",
+      "Depends": "ncurses (= 6.6.20260307+really6.5.20250830)"
+    },
+    {
+      "Package": "net-tools",
+      "Version": "2.10.0-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/n/net-tools/net-tools_2.10.0-1_aarch64.deb",
+      "Size": "118432",
+      "SHA256": "9dc39d550b7d6b447651f701149d6919c85cff69bf5951134d787d89386199d7"
+    },
+    {
+      "Package": "oniguruma",
+      "Version": "6.9.10-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/o/oniguruma/oniguruma_6.9.10-1_aarch64.deb",
+      "Size": "136460",
+      "SHA256": "93675574c560cd2f75b32f0bd2fdaa693419dd6ac0e6c71c26ce5fd928cae1c5"
+    },
+    {
+      "Package": "openssh",
+      "Version": "10.6p1-2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/o/openssh/openssh_10.6p1-2_aarch64.deb",
+      "Size": "968680",
+      "SHA256": "415b07b437c9a62afaedcfe2265fb4952de5414aa1b1f35ddc8cb3ed11fae94a",
+      "Depends": "krb5, ldns, libandroid-support, libedit, openssh-sftp-server, openssl, termux-auth, zlib",
+      "Conflicts": "dropbear"
+    },
+    {
+      "Package": "openssh-sftp-server",
+      "Version": "10.6p1-2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/o/openssh-sftp-server/openssh-sftp-server_10.6p1-2_aarch64.deb",
+      "Size": "56648",
+      "SHA256": "3b45d587315e2804b2e49ad47ba3db26c820476c998ef391fc63afa359ea2466",
+      "Depends": "libandroid-support",
+      "Breaks": "openssh (<= 9.9p2-1)"
+    },
+    {
+      "Package": "openssl",
+      "Version": "1:3.6.5",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/o/openssl/openssl_1:3.6.5_aarch64.deb",
+      "Size": "2482764",
+      "SHA256": "a2fb7856875e63ef6b90442752e05974813372c3ca86d2513a78ea43c67a0f8b",
+      "Depends": "ca-certificates, zlib",
+      "Conflicts": "libcurl (<< 7.61.0-1)",
+      "Breaks": "openssl-tool (<< 1.1.1b-1), openssl-dev"
+    },
+    {
+      "Package": "openssl-tool",
+      "Version": "1:3.6.5",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/o/openssl-tool/openssl-tool_1:3.6.5_aarch64.deb",
+      "Size": "278628",
+      "SHA256": "91b6fd0e86f2585447a44c42a496e8c4da364ff3d7b13bec236a7e65be108109",
+      "Depends": "openssl (= 1:3.6.5)"
+    },
+    {
+      "Package": "p11-kit",
+      "Version": "0.26.5",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/p/p11-kit/p11-kit_0.26.5_aarch64.deb",
+      "Size": "468204",
+      "SHA256": "7911d7427e3c7182cf364e56a45a92307e5e7fddc105dc468f25ae39aa3e0ad7",
+      "Depends": "libffi, libtasn1"
+    },
+    {
+      "Package": "patch",
+      "Version": "2.8.1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/p/patch/patch_2.8.1_aarch64.deb",
+      "Size": "74076",
+      "SHA256": "a712cb5acde9bceae855d928b17cc5dba834f24e356356984a5d685c4aaa7fdd"
+    },
+    {
+      "Package": "pcre2",
+      "Version": "10.49",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/p/pcre2/pcre2_10.49_aarch64.deb",
+      "Size": "1001320",
+      "SHA256": "c27995e5f52b8ecc9b8b3e662eb08e49f82a18bfd3f34343936acc7b23964724",
+      "Breaks": "pcre2-dev"
+    },
+    {
+      "Package": "procps",
+      "Version": "4.0.7-2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/p/procps/procps_4.0.7-2_aarch64.deb",
+      "Size": "226136",
+      "SHA256": "4dbc101282481bba10499c1f449bcf8d6ae2986872155dc09b643a70326fa1ad",
+      "Depends": "libandroid-glob, libandroid-support, ncurses",
+      "Breaks": "procps-dev"
+    },
+    {
+      "Package": "psmisc",
+      "Version": "23.7-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/p/psmisc/psmisc_23.7-1_aarch64.deb",
+      "Size": "41188",
+      "SHA256": "99d0db5ba934e7fa38e33bebbda82c78be59b90e4ba85a74a6dabc3d5b5939b0",
+      "Depends": "ncurses"
+    },
+    {
+      "Package": "readline",
+      "Version": "8.3.6",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/r/readline/readline_8.3.6_aarch64.deb",
+      "Size": "294164",
+      "SHA256": "616cc73009bc0223f61caed8dd09455714455aa5ea5e180126e2f69c4c775136",
+      "Depends": "libandroid-support, ncurses",
+      "Breaks": "bash (<< 5.0), readline-dev"
+    },
+    {
+      "Package": "resolv-conf",
+      "Version": "1.3",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/r/resolv-conf/resolv-conf_1.3_aarch64.deb",
+      "Size": "976",
+      "SHA256": "ab541abac8e0c81709cd7ca4a02bcfa0d60ba1f4bfe7fd6dce4a694a4a9dfffa"
+    },
+    {
+      "Package": "ripgrep",
+      "Version": "15.2.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/r/ripgrep/ripgrep_15.2.0_aarch64.deb",
+      "Size": "1216572",
+      "SHA256": "38e28bc297000517b24702568a483eca7dc3323eb6bdccc9033f031776bdcc6c",
+      "Depends": "pcre2"
+    },
+    {
+      "Package": "rsync",
+      "Version": "3.5.1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/r/rsync/rsync_3.5.1_aarch64.deb",
+      "Size": "302124",
+      "SHA256": "299b2e67a9b88e55b3319c1510823b780c8f513754f400b2e040939bb41516c7",
+      "Depends": "libiconv, libidn2, liblz4, libpopt, openssh | dropbear, openssl, openssl-tool, xxhash, zlib, zstd"
+    },
+    {
+      "Package": "sed",
+      "Version": "4.10",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/s/sed/sed_4.10_aarch64.deb",
+      "Size": "123312",
+      "SHA256": "9c514efdb527b5daef2d754fdbddd783f4c1e89382f1b56781120d1da99cee80"
+    },
+    {
+      "Package": "tar",
+      "Version": "1.35-3",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/t/tar/tar_1.35-3_aarch64.deb",
+      "Size": "345636",
+      "SHA256": "a3847bc259b8654f621d36fa6345b1d6e93932e60e315e526eac2e3ecc5549ec",
+      "Depends": "libacl, libandroid-glob, libandroid-selinux, libiconv"
+    },
+    {
+      "Package": "termux-am",
+      "Version": "0.8.1",
+      "Architecture": "all",
+      "Filename": "pool/main/t/termux-am/termux-am_0.8.1_all.deb",
+      "Size": "575784",
+      "SHA256": "ee7eed85ec45fbccc6f462578f0d40f5899422fe202d1d68942334a018364cba",
+      "Conflicts": "termux-tools (<< 0.51)"
+    },
+    {
+      "Package": "termux-am-socket",
+      "Version": "1.5.0-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/t/termux-am-socket/termux-am-socket_1.5.0-1_aarch64.deb",
+      "Size": "16132",
+      "SHA256": "dcf53ccb7e1ac46d50e1de9d5e182b748157ba53fbaf47e7a2d50d78447c550b",
+      "Depends": "libc++"
+    },
+    {
+      "Package": "termux-api",
+      "Version": "0.60.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/t/termux-api/termux-api_0.60.0_aarch64.deb",
+      "Size": "30112",
+      "SHA256": "b83c85e0b8f345ac4e99dd09698a8077712c85a736652bb38465cd0f2ed0a8ae",
+      "Depends": "bash, util-linux, termux-am (>= 0.8.0)"
+    },
+    {
+      "Package": "termux-auth",
+      "Version": "1.5.0-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/t/termux-auth/termux-auth_1.5.0-1_aarch64.deb",
+      "Size": "6996",
+      "SHA256": "917f431ae85368deccf3a859e66fa9c9e99d354a0e948fc5ba174ce0359b37a9",
+      "Depends": "openssl",
+      "Breaks": "termux-auth-dev"
+    },
+    {
+      "Package": "termux-core",
+      "Version": "0.4.0-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/t/termux-core/termux-core_0.4.0-1_aarch64.deb",
+      "Size": "198224",
+      "SHA256": "4f809d70eff0afa8c1beccbf4b5f65e0f59207867462a3a2f66b3e2fcd64b057"
+    },
+    {
+      "Package": "termux-exec",
+      "Version": "1:2.5.0-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/t/termux-exec/termux-exec_1:2.5.0-1_aarch64.deb",
+      "Size": "287356",
+      "SHA256": "fd6a06a6a74c6fba2d1cec56dc8b5726e6488918322b06fd19fe5cff34b28a5d"
+    },
+    {
+      "Package": "termux-keyring",
+      "Version": "3.14",
+      "Architecture": "all",
+      "Filename": "pool/main/t/termux-keyring/termux-keyring_3.14_all.deb",
+      "Size": "44992",
+      "SHA256": "ff25fc1fa648552ec1349b30f825b983aa65555c1f3bbec87a955dbf189983bb"
+    },
+    {
+      "Package": "termux-licenses",
+      "Version": "2.2",
+      "Architecture": "all",
+      "Filename": "pool/main/t/termux-licenses/termux-licenses_2.2_all.deb",
+      "Size": "52276",
+      "SHA256": "a3265cd1cf7d04754f2fb683eaf5b21918263792fd714457127900c1d6d9bcd9"
+    },
+    {
+      "Package": "termux-tools",
+      "Version": "1.46.0+really1.45.0-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/t/termux-tools/termux-tools_1.46.0+really1.45.0-1_aarch64.deb",
+      "Size": "33592",
+      "SHA256": "970fb05a835169f218ea73479eda0f2574f5f70c2af54119f42f77e97cee98e1",
+      "Depends": "bzip2, coreutils, curl, dash, diffutils, findutils, gawk, grep, gzip, less, procps, psmisc, sed, tar, termux-am (>= 0.8.0), termux-am-socket (>= 1.5.0), termux-core, termux-exec, util-linux, xz-utils, dialog",
+      "Conflicts": "procps (<< 3.3.15-2)",
+      "Breaks": "termux-keyring (<< 1.9)"
+    },
+    {
+      "Package": "tmux",
+      "Version": "3.8",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/t/tmux/tmux_3.8_aarch64.deb",
+      "Size": "449268",
+      "SHA256": "4f5c1c64fe3d99e0faec9aaa42ea17030509a29467c869032bafb8767c7aa88e",
+      "Depends": "ncurses, libevent, libandroid-support, libandroid-glob, utf8proc"
+    },
+    {
+      "Package": "tree",
+      "Version": "2.3.2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/t/tree/tree_2.3.2_aarch64.deb",
+      "Size": "35988",
+      "SHA256": "77bf9ef3035a18e3b6fb5d833b7d452733e7e0cff889bd2b71e5071c58a54867",
+      "Depends": "libandroid-support"
+    },
+    {
+      "Package": "unzip",
+      "Version": "6.0-10",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/u/unzip/unzip_6.0-10_aarch64.deb",
+      "Size": "117092",
+      "SHA256": "9e0b3320ff446d9989c048047a305c679b66f30b6fb4b04225a54821af37345b",
+      "Depends": "libbz2"
+    },
+    {
+      "Package": "utf8proc",
+      "Version": "2.12.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/u/utf8proc/utf8proc_2.12.0_aarch64.deb",
+      "Size": "60756",
+      "SHA256": "2b5886b04030e957e1b6522faa10a8170ab203d40b60b06cf8c7f9a1ff2c24d1",
+      "Breaks": "utf8proc-dev"
+    },
+    {
+      "Package": "util-linux",
+      "Version": "2.42.4",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/u/util-linux/util-linux_2.42.4_aarch64.deb",
+      "Size": "779936",
+      "SHA256": "c670b2ef280c2be220c720faff335da2e91de95deddaeffecd482392e4d781a1",
+      "Depends": "libandroid-glob, libandroid-posix-semaphore, libcap-ng, libsmartcols, ncurses, zlib",
+      "Breaks": "util-linux-dev"
+    },
+    {
+      "Package": "wget",
+      "Version": "1.25.0-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/w/wget/wget_1.25.0-1_aarch64.deb",
+      "Size": "281248",
+      "SHA256": "f2631519e0b9add766a82b6fa9b294476bddb6cad9033c214c7575b5822a8bc4",
+      "Depends": "libandroid-support, libiconv, libidn2, libuuid, openssl, pcre2, zlib"
+    },
+    {
+      "Package": "xxhash",
+      "Version": "0.8.4",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/x/xxhash/xxhash_0.8.4_aarch64.deb",
+      "Size": "80192",
+      "SHA256": "e747c95589d887156db013c7d198a83fc539315bb6ac52f0e6e204eb740443c6"
+    },
+    {
+      "Package": "xz-utils",
+      "Version": "5.8.4",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/x/xz-utils/xz-utils_5.8.4_aarch64.deb",
+      "Size": "71352",
+      "SHA256": "c26e35d5393d4ad59d7bfbac93570d418996e69bc160458bee0e165844ae56e8",
+      "Depends": "liblzma (= 5.8.4)"
+    },
+    {
+      "Package": "zip",
+      "Version": "3.0-7",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/z/zip/zip_3.0-7_aarch64.deb",
+      "Size": "142212",
+      "SHA256": "0c121e7f633e439e3c46f6e661e7a3f488ef5ee446cdcff5aed4c9ddf25001bf",
+      "Depends": "libandroid-support, libbz2"
+    },
+    {
+      "Package": "zlib",
+      "Version": "1.3.2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/z/zlib/zlib_1.3.2_aarch64.deb",
+      "Size": "62840",
+      "SHA256": "75e7d0af17fcc3b40004309fdc00a1ddb9ae08346dce5e269902c34ac3966ac9",
+      "Breaks": "ndk-sysroot (<< 19b-3), zlib-dev"
+    },
+    {
+      "Package": "zsh",
+      "Version": "5.9.2-2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/z/zsh/zsh_5.9.2-2_aarch64.deb",
+      "Size": "2015500",
+      "SHA256": "3f204ec0621c231b5f0c57ec7f37648652e6c89966e8627925e5c431ea896335",
+      "Depends": "libandroid-support, libcap, ncurses, termux-tools, pcre2"
+    },
+    {
+      "Package": "zsh-completions",
+      "Version": "0.36.0",
+      "Architecture": "all",
+      "Filename": "pool/main/z/zsh-completions/zsh-completions_0.36.0_all.deb",
+      "Size": "299136",
+      "SHA256": "26fbcd7726841e38141c9d6dadbfb6355714c9e624164baf108852d36ac2499b",
+      "Depends": "zsh"
+    },
+    {
+      "Package": "zstd",
+      "Version": "1.5.7-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/z/zstd/zstd_1.5.7-1_aarch64.deb",
+      "Size": "360488",
+      "SHA256": "e1b4a5113648da8de189620ba1fce74c48b2d0833d9043391b9a1c91fb606fd3",
+      "Depends": "liblzma, zlib",
+      "Breaks": "zstd-dev"
+    }
+  ]
+}
