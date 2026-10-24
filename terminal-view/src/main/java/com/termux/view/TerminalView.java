@@ -485,8 +485,10 @@ public final class TerminalView extends View {
             if (-mTopRow + rowShift > rowsInHistory) {
                 // .. unless we're hitting the end of history transcript, in which
                 // case we abort text selection and scroll to end.
-                if (isSelectingText())
+                if (isSelectingText()) {
                     stopTextSelectionMode();
+                    skipScrolling = false;
+                }
 
                 if (mEmulator.isAutoScrollDisabled()) {
                     setTopRow(-rowsInHistory);
