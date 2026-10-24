@@ -14,6 +14,7 @@ This is the canonical concise inventory of intentional differences from the audi
 ## Fixes
 
 - Candidate on `fold/upstream-audit` (not yet integrated into `fold/main`): ports upstream `47c473f9` to clear stale wrapped-line metadata when an erase reaches the right edge, preserving newlines in copied terminal text.
+- Candidate on `fold/upstream-audit`: ports upstream `5532cc4f` to keep UTF-16 row lengths in an `int`, preventing overflow with supplementary combining text in wide terminal rows.
 
 - Makes Dock/Panes labels readable in both app themes, combines the single-visible-pane title with those actions, and preserves separate focus headers when both panes are visible.
 
