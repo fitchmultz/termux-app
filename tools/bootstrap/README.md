@@ -1,8 +1,8 @@
 # Offline default tools
 
-This is the Fold **candidate** bootstrap on `fold/default-tools`; it becomes the
-`fold/main` default only on merge. No version bump, APK publication, or installation
-is implied.
+This is the Fold source profile's locked offline bootstrap. Source integration,
+release versioning, signed APK publication, and physical installation/validation
+remain separate steps; see [FOLD_PROFILE.md](../../FOLD_PROFILE.md).
 
 Fresh ARM64/API-24+ installations get the usual Termux Android-7 apt bootstrap
 plus **Git, OpenSSH (ssh/scp/sftp), tmux, jq, ripgrep (`rg`), fd, fzf, rsync, tree,

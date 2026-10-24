@@ -1,10 +1,10 @@
 # Dependency and tooling audit — 2026-10-24
 
-Candidate: `fold/maintenance-refresh`, based on `fold/main` at `fc0ccf29`. This is a selective maintenance update, not an upstream sync or a release/version bump. The tables cover every external direct Gradle coordinate, the wrapper, SDK/NDK/JDK, bootstrap, and every action in both retained workflows. Project-to-project dependencies do not have independent releases.
+Historical audit for [PR #5](https://github.com/fitchmultz/termux-app/pull/5), integrated into `fold/main`, based on `fc0ccf29`. That selective maintenance update did not sync upstream or bump the release version. The tables and verification results describe its audited inputs; the later locked offline bootstrap is documented in [tools/bootstrap/README.md](../tools/bootstrap/README.md), and the current release profile is in [FOLD_PROFILE.md](../FOLD_PROFILE.md). The tables cover every external direct Gradle coordinate, the wrapper, SDK/NDK/JDK, bootstrap, and every action in both retained workflows. Project-to-project dependencies do not have independent releases.
 
 ## Changes
 
-| Input | Before → candidate | Authoritative evidence and compatibility |
+| Input | Before → integrated | Authoritative evidence and compatibility |
 | --- | --- | --- |
 | Gradle | 9.8.1 → **9.8.2** | [Release notes](https://docs.gradle.org/9.8.2/release-notes.html): fixes a false virtual-platform graph-stability warning. [Current stable metadata](https://services.gradle.org/versions/current), [distribution SHA-256](https://services.gradle.org/distributions/gradle-9.8.2-bin.zip.sha256), and [wrapper SHA-256](https://services.gradle.org/distributions/gradle-9.8.2-wrapper.jar.sha256) agree. AGP 9.4 requires Gradle ≥9.6; Java 21 remains supported. Ran the canonical wrapper task twice; scripts/JAR remain byte-identical. |
 | Compile SDK | 37.0 r2 → **37.2 r1** | Google's [SDK repository metadata](https://dl.google.com/android/repository/repository2-3.xml) lists `platforms;android-37.2` on stable channel 0 without a preview revision/codename. Uses AGP's public [CompileSdkSpec release/minor API DSL](https://developer.android.com/reference/tools/gradle-api/9.4/com/android/build/api/dsl/CompileSdkSpec) consistently across all four modules. Debug/release AAR-metadata checks pass with this platform; this does **not** raise target 28 or minimum 24. |
@@ -59,11 +59,11 @@ No library source or test files were changed, and no transitive versions were bl
 | Hosted `ubuntu-latest` and utilities | Retain GitHub's stable managed runner alias, currently [Ubuntu 24.04](https://github.com/actions/runner-images/blob/main/README.md), although a separate 26.04 image exists. Bash/Git/ZIP/hash/GitHub CLI utilities come from that image, not independently version-pinned project dependencies. No runner migration or new build tool is required. |
 | Platform-tools | setup-android's `packages` input is explicit and does not request platform-tools; hosted builds do not require adb. SDK metadata lists 37.0.1, but installing an unused tool adds no coverage. |
 
-## Bootstrap: audited, reserved for parallel default-tools integration
+## Historical bootstrap audit
 
-Source deliberately remains at `2026.10.11-r1+apt.android-7` in this PR because the owner/default-tools writer is replacing the bootstrap input with a locked offline package closure. Do not race that writer by changing its archive/helper here.
+PR #5 retained `2026.10.11-r1+apt.android-7` while the locked offline package closure was developed independently. The current source uses that later [locked bootstrap profile](../tools/bootstrap/README.md), not either archive below.
 
-The [newest stable upstream release](https://github.com/termux/termux-packages/releases/tag/bootstrap-2026.10.18-r1%2Bapt.android-7) is **2026.10.18-r1+apt.android-7**. Its release body contains no package notes. Downloaded both ARM64 archives, verified the old source hash and the new GitHub asset SHA-256, checked ZIP CRCs, compared dpkg status, and inspected ELF headers without executing bundled programs:
+At this audit, the [newest stable upstream release](https://github.com/termux/termux-packages/releases/tag/bootstrap-2026.10.18-r1%2Bapt.android-7) was **2026.10.18-r1+apt.android-7**. Its release body contains no package notes. Downloaded both ARM64 archives, verified the old source hash and the new GitHub asset SHA-256, checked ZIP CRCs, compared dpkg status, and inspected ELF headers without executing bundled programs:
 
 - New archive: `bootstrap-aarch64.zip`, 33,071,189 bytes, SHA-256 `7b170ff5ef0befe501d01febc61382f3c6e34456521853cff9ba0b277aa52fe9`.
 - Both archives contain 83 installed packages and 338 ELF files; every ELF is AArch64. No packages added/removed.

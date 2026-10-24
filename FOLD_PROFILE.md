@@ -21,7 +21,7 @@ PR integration, signed APK publication, and physical validation are separate ste
 
 The integrated Fold profile:
 
-- identifies itself as `Termux Fold` version `0.119.0-fold.9` with monotonic version code `2026101309`;
+- identifies itself as `Termux Fold` version `0.119.0-fold.10` with monotonic version code `2026102410`;
 - builds and packages only `arm64-v8a` with the Android 7 bootstrap variant, requiring Android 7/API 24 or later;
 - compiles against Android 17/API 37.2 using a Java 21 toolchain and Java 17 source/bytecode baseline, while retaining target SDK 28 for direct prefix execution;
 - enables Samsung character-based terminal input;
@@ -29,7 +29,7 @@ The integrated Fold profile:
 - places the terminal-session drawer at the logical end/right edge;
 - provides two rows of controls on narrow windows and one row when all twelve labels and 48dp touch targets fit; preserves custom key matrices and places Up before Down;
 - combines the session title and readable Dock/Panes actions into one header when only one pane is visible;
-- advertises synchronized-output support to tmux once the terminal emulator implements DEC mode 2026.
+- advertises the terminal emulator's implemented DEC mode 2026 synchronized-output support to tmux.
 
 Properties remain available as recovery switches, but their defaults are the Fold choices rather than upstream's general-purpose choices. Release metadata is centralized in the root `build.gradle` and asserted by the read-only integration workflow so label/version drift fails CI.
 
@@ -51,9 +51,9 @@ Java equivalents of shared TypeScript types/schemas are used at the new boundari
 
 Fixes stay isolated when that improves review, regression testing, or selective cherry-picking. This is a permanent personal appliance fork: upstream PRs and wholesale synchronization are not goals. The upstream branch is a reference for individually audited security or compatibility changes, not a target the Fold profile must continually rebase onto.
 
-## Offline shell tools (candidate)
+## Offline shell tools
 
-The `fold/default-tools` candidate embeds a locked native Android-7 ARM64 bootstrap
+The Fold source profile embeds a locked native Android-7 ARM64 bootstrap
 with Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, wget, zsh with
 completions, lsd, bat, git-delta, direnv, git-lfs, and the termux-api client alongside
 the upstream baseline. Fresh installations need no first-launch network install.
@@ -70,4 +70,6 @@ Source integration is not APK publication or physical offline-bootstrap validati
 
 ## Installation boundary
 
-No generated APK is installed until the dedicated signing key, Proton Pass backup, encrypted Termux data backup, fresh bootstrap, rollback procedure, and physical Fold test plan are complete.
+Installation remains owner-controlled. Verify the dedicated signing identity and its Proton Pass backup, an encrypted Termux data backup and recovery procedure, reviewed bootstrap evidence, and the physical Fold test plan before updating. Physical fresh-bootstrap completion and heap acceptance are not established by CI; updating a nonempty prefix does not exercise that path. Never replace a real prefix just to test it.
+
+APK replacement can stop running Termux processes. Save work and wait for native builds and other critical jobs to finish before choosing **Update**; never uninstall to update. Android normally rejects a lower version code, so recovery is a same-key, higher-code roll-forward or an explicitly prepared backup/restore procedure, not an ordinary APK downgrade.
