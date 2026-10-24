@@ -38,14 +38,16 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup Java 21
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
+          check-latest: true
       - name: Install pinned Android SDK
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
-          packages: 'platforms;android-37.0 build-tools;37.0.0 ndk;30.0.16248370'
+          cmdline-tools-version: '16111833' # 23.0
+          packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
       - name: Execute tests
         run: ./gradlew --no-daemon test
       - name: Save synthetic workbench renders and test reports
@@ -68,14 +70,16 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup Java 21
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
+          check-latest: true
       - name: Install pinned Android SDK
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
-          packages: 'platforms;android-37.0 build-tools;37.0.0 ndk;30.0.16248370'
+          cmdline-tools-version: '16111833' # 23.0
+          packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
       - name: Validate opinionated release metadata
         shell: bash
         run: |

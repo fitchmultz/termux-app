@@ -62,6 +62,13 @@ This is the canonical concise inventory of intentional differences from the audi
 - Keeps `Fold checks` read-only for wrapper validation, full unit tests, packaged metadata/ABI/signature checks, and two reproducible unsigned builds. Synthetic workbench render images and unit-test reports are retained briefly as CI artifacts; no private terminal contents are captured.
 - Provides a manually dispatched `Fold signed release` workflow: an unprivileged job builds twice, then a fresh environment-scoped job (with no reviewer/wait gate) signs and verifies; public Release publication is a separate explicit boolean gate and includes only the signed APK/checksum/provenance. Inherited upstream artifact/release/dependency/JitPack workflows are removed.
 
+## Maintenance refresh (unmerged candidate)
+
+- Explicitly authorizes frequent proactive dependency/tool/bootstrap/default-package/action maintenance and useful stable-release API/convention adoption, without bypassing compatibility, read-only CI, isolated signing, reproducibility, backup/rollback, or owner-controlled integration/release gates.
+- Updates Gradle to 9.8.2 with its official distribution checksum, Java setup to SHA-pinned v6.1.0 with current Java 21 patch resolution, command-line tools to stable 23.0, and compile SDK to stable 37.2 using AGP's public minor-release DSL. Retains target 28, minimum 24, ARM64, package identity, and the source version.
+- Raises all four modules' Java source/bytecode baseline from 8 to 17 and explicitly selects the Java 21 compiler/test toolchain, using supported AGP/D8 desugaring rather than suppressing JDK 21's obsolete Java 8 warnings. Android API availability remains constrained by minimum 24, existing core-library desugaring, and hosted Android 7 regressions.
+- Records the complete direct-dependency/tool audit in [docs/DEPENDENCY_AUDIT.md](docs/DEPENDENCY_AUDIT.md). Direct Maven libraries and the remaining actions are already current stable; the newer verified October 18 bootstrap is reserved for the parallel default-tools integration rather than overwritten here.
+
 ## Package refresh (`0.119.0-fold.9`)
 
 This section inventories the `fold/package-refresh` source changes, integrated into `fold/main` on PR merge. Automated release checks do not establish physical Fold8 validation; device testing follows the signed APK update.
