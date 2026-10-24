@@ -92,6 +92,17 @@ public class UnicodeInputTest extends TerminalTestCase {
 		withTerminalSized(3, 2).enterString("Aà̲F").assertLinesAre("Aà̲F", "   ");
 	}
 
+	public void testWideRowWithSupplementaryCombiningCharacters() {
+		// Each cell has a G clef and 15 combining tremolos: 32 UTF-16 chars per cell.
+		StringBuilder text = new StringBuilder();
+		for (int column = 0; column < 1024; column++) {
+			text.appendCodePoint(0x1D11E);
+			for (int mark = 0; mark < 15; mark++) text.appendCodePoint(0x1D167);
+		}
+		withTerminalSized(1024, 2).enterString(text.toString());
+		assertEquals(text.toString(), mTerminal.getSelectedText(0, 0, 1023, 0));
+	}
+
 	public void testWideCharacterInLastColumn() throws Exception {
 		withTerminalSized(3, 2).enterString("  枝\u0302").assertLinesAre("   ", "枝\u0302 ");
 
