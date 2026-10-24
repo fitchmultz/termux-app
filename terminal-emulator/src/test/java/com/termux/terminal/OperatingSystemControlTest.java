@@ -151,11 +151,13 @@ public class OperatingSystemControlTest extends TerminalTestCase {
 	}
 
 	public void testOverflowWhileCollectingEscapeDoesNotResumeOsc() {
-		withTerminalSized(6, 2);
-		StringBuilder sequence = new StringBuilder("\033]0;");
-		for (int i = 0; i < 8190; i++) sequence.append('a');
-		enterString(sequence.append("\033QOK").toString());
-		assertLinesAre("OK    ", "      ");
+		for (int payloadLength : new int[]{8189, 8190}) {
+			withTerminalSized(6, 2);
+			StringBuilder sequence = new StringBuilder("\033]0;");
+			for (int i = 0; i < payloadLength; i++) sequence.append('a');
+			enterString(sequence.append("\033QOK").toString());
+			assertLinesAre("OK    ", "      ");
+		}
 	}
 
 	public void testResettingTerminalResetsColor() throws Exception {
