@@ -76,6 +76,7 @@ jobs:
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           cmdline-tools-version: '16111833' # 23.0
+          accept-android-sdk-licenses: false # CLT 23 removed the legacy --licenses handshake.
           packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
       - name: Install bootstrap build tools
         run: sudo apt-get update && sudo apt-get install -y binutils curl dpkg gpgv gzip xz-utils zip jq python3
@@ -110,6 +111,7 @@ jobs:
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           cmdline-tools-version: '16111833' # 23.0
+          accept-android-sdk-licenses: false # CLT 23 removed the legacy --licenses handshake.
           packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
       - name: Install bootstrap build tools
         run: sudo apt-get update && sudo apt-get install -y binutils curl dpkg gpgv gzip xz-utils zip jq python3

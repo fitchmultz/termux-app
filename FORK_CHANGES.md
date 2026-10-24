@@ -81,6 +81,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Dependency and build maintenance
 
+- Hosted CLT 23 setup skips the removed `sdkmanager --licenses` handshake, whose immediate exit can crash the setup action's stdin writer with `EPIPE`; actual SDK package installation and its license handling remain required in CI and isolated signing.
+
 - Explicitly authorizes frequent proactive dependency/tool/bootstrap/default-package/action maintenance and useful stable-release API/convention adoption, without bypassing compatibility, read-only CI, isolated signing, reproducibility, backup/recovery, or owner-controlled integration/release gates.
 - Uses AGP 9.4.1's public DSL, Gradle 9.8.2 with verified distribution/wrapper checksums, compile SDK 37.2 via the public minor-release DSL, build-tools 37.0.0, NDK r30, and explicitly provisioned stable command-line tools 23.0 in hosted CI. Retains target 28, minimum 24, ARM64, and package identity.
 - Sets all four modules' Java source/bytecode baseline to 17 with an explicit Java 21 compiler/test toolchain and current stable 21.x CI resolution. Supported AGP/D8 and core-library desugaring 2.1.5 retain the Android API floor; hosted tests include Android 7/17 regressions and the required Java 21 FileDescriptor export for Robolectric's Android 17 bridge.
