@@ -54,12 +54,15 @@ Fixes stay isolated when that improves review, regression testing, or selective 
 ## Offline shell tools (candidate)
 
 The `fold/default-tools` candidate embeds a locked native Android-7 ARM64 bootstrap
-with Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, and wget alongside
+with Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, wget, zsh with
+completions, lsd, bat, git-delta, direnv, and git-lfs alongside
 the upstream baseline. Fresh installations need no first-launch network install.
 It does not replace or auto-upgrade a nonempty existing prefix. Existing users can
 explicitly run `pkg update` followed by
-`pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget`.
-No services auto-start, and Node/Python versioned development environments and
+`pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs`.
+Bash remains the default: no aliases, shell hooks, direnv/dotfile activation,
+or global Git configuration changes are added. No services auto-start. Mise/Chezmoi,
+Node/Python versioned development environments, compilers, Tcl/Tk, X11, and
 Termux:API remain separate. See [delivery, trust, reproduction, and maintenance](tools/bootstrap/README.md).
 Source integration is not APK publication or physical offline-bootstrap validation.
 

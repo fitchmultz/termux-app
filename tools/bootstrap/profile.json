@@ -18,11 +18,13 @@
     "nano", "net-tools", "patch", "unzip"
   ],
   "additional_packages": [
-    "git", "openssh", "tmux", "jq", "ripgrep", "fd", "fzf", "rsync", "tree", "zip", "wget"
+    "git", "openssh", "tmux", "jq", "ripgrep", "fd", "fzf", "rsync", "tree", "zip", "wget",
+    "zsh", "zsh-completions", "lsd", "bat", "git-delta", "direnv", "git-lfs"
   ],
   "supplemental_packages": ["libmount"],
   "commands": [
     "bash", "apt", "dpkg", "curl", "nano", "unzip", "git", "ssh", "sftp", "scp",
-    "tmux", "jq", "rg", "fd", "fzf", "rsync", "tree", "zip", "wget"
+    "tmux", "jq", "rg", "fd", "fzf", "rsync", "tree", "zip", "wget",
+    "zsh", "lsd", "bat", "delta", "direnv", "git-lfs"
   ]
 }

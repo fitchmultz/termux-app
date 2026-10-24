@@ -6,7 +6,8 @@ is implied.
 
 Fresh ARM64/API-24+ installations get the usual Termux Android-7 apt bootstrap
 plus **Git, OpenSSH (ssh/scp/sftp), tmux, jq, ripgrep (`rg`), fd, fzf, rsync, tree,
-zip, and wget**, without first-launch network access. Bash, coreutils, curl,
+zip, wget, zsh with zsh-completions, lsd, bat, git-delta (`delta`), direnv, and
+git-lfs**, without first-launch network access. Bash, coreutils, curl,
 unzip, nano, apt/dpkg, CA certificates, and the other upstream baseline packages
 remain. This is native Android/Bionic software for `com.termux` and
 `/data/data/com.termux/files/usr`, not Linux/glibc binaries.
@@ -20,7 +21,7 @@ obtain these defaults. In an existing terminal, explicitly run:
 
 ```sh
 pkg update
-pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget
+pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs
 ```
 
 Review apt's proposed changes. This uses the user's current repository and
@@ -34,7 +35,7 @@ automatically. Both service definitions retain their `down` files and
 package `postinst` scripts offline; OpenSSH creates host keys and the private
 `~/.ssh/authorized_keys` placeholder then, **not during APK construction**. No
 keys, accounts, tokens, Pi configuration, or user dotfiles are baked in. Additional
-packages have no other postinst/preinst scripts in this snapshot.
+package scripts are reviewed below; none starts a service or downloads software.
 
 Node.js, Python, compilers, and versioned native development adapters belong to
 the separately managed development environment, **not the APK**. Android API
@@ -42,6 +43,78 @@ services still require the separately installed, compatibly signed Termux:API
 app and an explicit `pkg install termux-api`; bundling shell tools does not grant
 Android permissions. Optional Git Perl helpers and development self-tests are
 not a promise of a bundled language/toolchain runtime.
+
+## Companion package assessment
+
+Bash stays the default login shell. These are available commands, not a managed
+dotfile setup: no `chsh`, aliases, zsh completion initialization, direnv hook or
+`allow`, `.envrc` execution, `git lfs install`, delta pager configuration, or
+global Git configuration is performed. Version probes do not launch an
+interactive zsh or evaluate project environments.
+
+The seven companion roots add only `libcap` and `libgit2` to the previous closure.
+The same authenticated **2026-10-24 14:22:36 UTC** repository snapshot retains all
+110 earlier package records unchanged. Its nine new packages total 14,905,984
+downloaded `.deb` bytes and 53,977,088 declared installed-size bytes; these are
+**not** ZIP sizes. Two independent generated ZIPs (second offline) are identical:
+SHA-256 `b10710a32b2416ef1867fd0dbe90d8ae7a0343ca809868136f6e4bbf95593ec6`,
+81,435,896 compressed bytes / 201,153,568 expanded file bytes, using Python
+3.14.8 / zlib 1.3.2. The whole ZIP still crosses JNI as one Java byte array;
+physical fresh-bootstrap heap acceptance remains a required post-install gate.
+The generated payload verifies 119 package inventories/checksums, 25 commands,
+1,477 symlinks, and 451 ARM64 ELFs (442 production closure/API-24 checks plus the
+nine inherited developer fixtures described below). All six new commands pass
+native version probes in the private extracted prefix; the production Java
+extractor delivers 593 executable / 5,586 non-executable regular files.
+
+Versions below are the authenticated Termux package versions, not a claim about
+every upstream project's latest release. Corresponding upstream releases/sources
+and declared licenses:
+
+| Package | Version | Upstream source/release | License |
+| --- | --- | --- | --- |
+| zsh | 5.9.2-2 | [5.9.2 source](https://www.zsh.org/pub/zsh-5.9.2.tar.xz) | Zsh permissive custom `LICENCE` |
+| zsh-completions | 0.36.0 | [0.36.0](https://github.com/zsh-users/zsh-completions/tree/0.36.0) | BSD-3-Clause |
+| lsd | 1.2.0 | [v1.2.0](https://github.com/lsd-rs/lsd/tree/v1.2.0) | Apache-2.0 |
+| bat | 0.26.1-1 | [v0.26.1](https://github.com/sharkdp/bat/tree/v0.26.1) | Apache-2.0 |
+| git-delta | 0.20.1 | [0.20.1](https://github.com/dandavison/delta/tree/0.20.1) | MIT |
+| direnv | 2.38.2-1 | [v2.38.2](https://github.com/direnv/direnv/tree/v2.38.2) | MIT |
+| git-lfs | 3.8.1 | [v3.8.1](https://github.com/git-lfs/git-lfs/tree/v3.8.1) | MIT |
+| libcap | 2.78 | [2.78 source](https://kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.78.tar.xz) | BSD-3-Clause / GPL-2.0, per component |
+| libgit2 | 1.9.7 | [v1.9.7](https://github.com/libgit2/libgit2/tree/v1.9.7) | GPL-2.0 with linking exception |
+
+The reviewed [Termux build definitions, patches, and upstream source checksums](https://github.com/termux/termux-packages/tree/de1dd3d18e239ef514e5c55ad744e6485e408c65/packages)
+correspond to the pinned source snapshot. Official package license files and
+common-license symlinks are retained under `share/doc/` and `share/LICENSES/`.
+The native Android-7 aarch64 packages (zsh-completions is architecture `all`)
+retain their authenticated hashes and dpkg metadata; no build-host binaries,
+SDK runtime assets, compiler, or runtime patches are substituted into the APK.
+
+Actual new-package maintainer scripts have two offline effects:
+
+- `git-delta.postinst` generates Bash, zsh, and fish completion files under
+  `$PREFIX/share/`. It does not edit shell startup files or select a Git pager.
+- `bat.postinst` registers a `pager` alternative at priority **10**; the inherited
+  `less` alternative at priority **50** remains preferred in fresh auto mode.
+  `bat.prerm` removes its registration. Metadata/scripts are not stripped to
+  conceal this behavior.
+
+The other seven new packages have no maintainer scripts. Official zsh global
+configuration adjusts the default prompt/command-not-found handler and sources
+the existing Termux profile **only when the user chooses that shell**. No user
+dotfiles or shell selection are changed.
+
+Mise and Chezmoi stay **outside the APK**: those two packages alone add
+50,632,824 `.deb` bytes / 229,511,168 declared installed-size bytes to this
+snapshot, before any further closure. The assessed versions are
+[Mise 2026.10.18](https://github.com/jdx/mise/tree/v2026.10.18) and
+[Chezmoi 2.73.3-1](https://github.com/twpayne/chezmoi/tree/v2.73.3), both MIT;
+their Termux build/source definitions are in the same pinned tree above.
+They belong to an explicitly selected
+configuration-specific development bootstrap. Rust/compiler, Tcl/Tk, X11, and
+language-runtime stacks likewise remain opt-in development packages, not this
+offline shell baseline. Keeping that boundary avoids silently multiplying the
+whole-blob bootstrap allocation.
 
 ## Delivery and trust
 
@@ -60,7 +133,7 @@ not a promise of a bundled language/toolchain runtime.
   a giant redundant package index is not vendored. Archive the matching full index
   externally if historical metadata revalidation will be needed after mirror
   rotation. Current production builds **never fetch an index or resolve latest**.
-- There are 110 locked packages. The generator chooses the first dependency
+- There are 119 locked packages. The generator chooses the first dependency
   alternative; our validator requires that choice and verifies Debian version
   constraints with host dpkg. Missing dependencies, unsupported syntax or
   Pre-Depends, conflicts, wrong architecture, and development/service-manager
@@ -97,11 +170,11 @@ not a promise of a bundled language/toolchain runtime.
   `down` files still keep services disabled. Missing/unsafe executable metadata
   fails before installation commits.
   DEFLATE level 9 keeps the whole-blob JNI/Java bootstrap allocation bounded:
-  this snapshot is 60,690,486 compressed bytes / 151,375,877 expanded bytes on
+  this snapshot is 81,435,896 compressed bytes / 201,153,568 expanded bytes on
   Python 3.14.8 + zlib 1.3.2. **Use the same Python/zlib toolchain for byte-for-byte
   reproduction**; the runner prints both versions. CI compares two independent
   generations, the second offline, as well as retaining the two unsigned APK
-  builds. No uncompressed 151 MB blob is loaded just to chase cross-zlib identity.
+  builds. No uncompressed 201 MB blob is loaded just to chase cross-zlib identity.
 - Validation checks the exact dpkg package/version/architecture inventory,
   package-owned paths and file checksums, requested commands and symlinks, every
   ELF's ARM64 architecture, and every production ELF's NEEDED-library closure and

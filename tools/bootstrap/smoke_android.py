@@ -56,7 +56,9 @@ def main():
 
     for name, arguments in [("git", ["--version"]), ("ssh", ["-V"]), ("tmux", ["-V"]), ("jq", ["--version"]),
                             ("rg", ["--version"]), ("fd", ["--version"]), ("fzf", ["--version"]),
-                            ("rsync", ["--version"]), ("tree", ["--version"]), ("zip", ["-v"]), ("wget", ["--version"])]:
+                            ("rsync", ["--version"]), ("tree", ["--version"]), ("zip", ["-v"]), ("wget", ["--version"]),
+                            ("zsh", ["--version"]), ("lsd", ["--version"]), ("bat", ["--version"]),
+                            ("delta", ["--version"]), ("direnv", ["version"]), ("git-lfs", ["version"])]:
         run(name, *arguments)
     run("sftp", "-h", expected=1)
     run("scp", "-h", expected=1)

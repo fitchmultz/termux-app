@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "profile_sha256": "82352af3060fdc43fbef6d07e183378bdef4e48b8869269e7de9e39b70e076a1",
+  "profile_sha256": "96785225a0ecdceef856b4fdfd727a0253a6861cbb61cd69ba2282a8d9fa3b14",
   "provenance": {
     "repository": "https://packages-cf.termux.dev/apt/termux-main",
     "date": "Sat, 24 Oct 2026 14:22:36 UTC",
@@ -37,6 +37,15 @@
       "SHA256": "26b5b3ab5b0ac0e3b372ac1e7ddd89270519c1eb25b88fe4175485c2de8086b2",
       "Depends": "libandroid-support, libiconv, readline (>= 8.3), termux-tools",
       "Breaks": "bash-dev"
+    },
+    {
+      "Package": "bat",
+      "Version": "0.26.1-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/b/bat/bat_0.26.1-1_aarch64.deb",
+      "Size": "2277620",
+      "SHA256": "e06ec9f62d871358cebc950f7ffea24af5a201380ef6b49375b63cfeae67f11a",
+      "Depends": "less, libgit2"
     },
     {
       "Package": "bzip2",
@@ -118,6 +127,14 @@
       "Depends": "libiconv"
     },
     {
+      "Package": "direnv",
+      "Version": "2.38.2-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/d/direnv/direnv_2.38.2-1_aarch64.deb",
+      "Size": "2609408",
+      "SHA256": "e7595db02442d5e0b39c331df866bea7e00f7bd4ac8cded4496a7d19f81cac09"
+    },
+    {
       "Package": "dos2unix",
       "Version": "7.5.7",
       "Architecture": "aarch64",
@@ -188,6 +205,23 @@
       "Size": "4541040",
       "SHA256": "dcdd22c5fdf7bdb5b825a03a17441d43858ed8515fea57fbb37eb42e733ca82f",
       "Depends": "libcurl, libexpat, libiconv, less, openssl, pcre2, zlib"
+    },
+    {
+      "Package": "git-delta",
+      "Version": "0.20.1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/g/git-delta/git-delta_0.20.1_aarch64.deb",
+      "Size": "2141268",
+      "SHA256": "d27f00c5d026248b04b7bcc0d2880cbd7cfa72a958cecfa504d47110ffa512f2",
+      "Depends": "git, libgit2, oniguruma"
+    },
+    {
+      "Package": "git-lfs",
+      "Version": "3.8.1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/g/git-lfs/git-lfs_3.8.1_aarch64.deb",
+      "Size": "3754972",
+      "SHA256": "56a49e57b5f97023b7ea1573174b28f18e93f8a085e796f8a7b3a58a9743d31c"
     },
     {
       "Package": "gpgv",
@@ -344,6 +378,16 @@
       "SHA256": "53d0b84a7ba7459024257cb94d5b136fe13ef858567f65a8064b35950799f2ca"
     },
     {
+      "Package": "libcap",
+      "Version": "2.78",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libc/libcap/libcap_2.78_aarch64.deb",
+      "Size": "79188",
+      "SHA256": "50c530c845288b135dbe4690f8c19ee8ef1c6bb554be4421828eeee9c1f7f89c",
+      "Depends": "attr",
+      "Breaks": "libcap-dev"
+    },
+    {
       "Package": "libcap-ng",
       "Version": "2:0.9.6",
       "Architecture": "aarch64",
@@ -418,6 +462,16 @@
       "SHA256": "806d8ae1e2b6d41037b94e95736f9709672cac052b133241fa9a18f70e7c432e",
       "Depends": "libgpg-error",
       "Breaks": "libgcrypt-dev"
+    },
+    {
+      "Package": "libgit2",
+      "Version": "1.9.7",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/libg/libgit2/libgit2_1.9.7_aarch64.deb",
+      "Size": "721736",
+      "SHA256": "bfcc4d08b898e6b9e200242b7a1ad88582a38ff0bfbbd4398e41137d8dfcc2c0",
+      "Depends": "libssh2, openssl, pcre2, zlib",
+      "Breaks": "libgit2-dev"
     },
     {
       "Package": "libgmp",
@@ -651,6 +705,15 @@
       "SHA256": "ecbaab0afd7f4c2c84d687c8e4ba46794d71001866efc261a7015f663eec4e85",
       "Depends": "libandroid-posix-semaphore",
       "Breaks": "libuuid-dev"
+    },
+    {
+      "Package": "lsd",
+      "Version": "1.2.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/l/lsd/lsd_1.2.0_aarch64.deb",
+      "Size": "1007156",
+      "SHA256": "6b562bd08b105f1d3f6485d861d430e02b62b6aaf3c8824602b7bdd2271551f0",
+      "Depends": "zlib"
     },
     {
       "Package": "lsof",
@@ -1002,6 +1065,24 @@
       "Size": "62840",
       "SHA256": "75e7d0af17fcc3b40004309fdc00a1ddb9ae08346dce5e269902c34ac3966ac9",
       "Breaks": "ndk-sysroot (<< 19b-3), zlib-dev"
+    },
+    {
+      "Package": "zsh",
+      "Version": "5.9.2-2",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/z/zsh/zsh_5.9.2-2_aarch64.deb",
+      "Size": "2015500",
+      "SHA256": "3f204ec0621c231b5f0c57ec7f37648652e6c89966e8627925e5c431ea896335",
+      "Depends": "libandroid-support, libcap, ncurses, termux-tools, pcre2"
+    },
+    {
+      "Package": "zsh-completions",
+      "Version": "0.36.0",
+      "Architecture": "all",
+      "Filename": "pool/main/z/zsh-completions/zsh-completions_0.36.0_all.deb",
+      "Size": "299136",
+      "SHA256": "26fbcd7726841e38141c9d6dadbfb6355714c9e624164baf108852d36ac2499b",
+      "Depends": "zsh"
     },
     {
       "Package": "zstd",
