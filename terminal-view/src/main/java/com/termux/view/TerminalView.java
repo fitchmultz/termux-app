@@ -469,6 +469,11 @@ public final class TerminalView extends View {
 
     public void onScreenUpdated(boolean skipScrolling) {
         if (mEmulator == null) return;
+        if (mEmulator.isSynchronizedOutputActive()) {
+            // Lifecycle refreshes may redraw the completed snapshot, but must not consume live state.
+            invalidate();
+            return;
+        }
 
         int rowsInHistory = mEmulator.getScreen().getActiveTranscriptRows();
         if (mTopRow < -rowsInHistory) setTopRow(-rowsInHistory);
@@ -1017,9 +1022,7 @@ public final class TerminalView extends View {
             setTopRow(Math.min(0, Math.max(-rowsInHistory, mEmulator.getTopRow())));
             scrollTo(0, 0);
             // Consume output accumulated while detached once, without following it to the bottom.
-            // An unfinished synchronized frame must leave its scroll counter for frame completion.
-            if (mEmulator.isSynchronizedOutputActive()) invalidate();
-            else onScreenUpdated(true);
+            onScreenUpdated(true);
         }
     }
 

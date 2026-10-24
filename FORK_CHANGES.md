@@ -13,7 +13,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
-- Candidate (`fold/scroll-lifecycle`, not yet integrated): adapts upstream `74ab5126` to retain each session's scroll offset across session/pane replacement, activity-view restoration, and keyboard/window resizing, bounded by remaining history. SCROLL reconciles detached output once, deferring unfinished synchronized frames; normal output still follows the terminal.
+- Candidate (`fold/scroll-lifecycle`, not yet integrated): adapts upstream `74ab5126` to retain each session's scroll offset across session/pane replacement, activity-view restoration, keyboard/window resizing, and foreground refresh, bounded by remaining history. SCROLL reconciles background/detached output once; all view refreshes defer unfinished synchronized frames, while normal new output still follows the terminal.
 
 - Makes Dock/Panes labels readable in both app themes, combines the single-visible-pane title with those actions, and preserves separate focus headers when both panes are visible.
 
