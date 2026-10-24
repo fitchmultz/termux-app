@@ -297,7 +297,8 @@ public class TerminalPaneLayoutTest {
         output(session, lines(180));
         TerminalView terminal = panes.getActiveTerminal();
         Bitmap completed = render(terminal);
-        int top = pageUp(terminal);
+        int top = -3;
+        terminal.setTopRow(top);
         output(session, "\033[?2026h\033[2J\033[HUNFINISHED");
         panes.showSession(other);
         panes.showSession(session);
