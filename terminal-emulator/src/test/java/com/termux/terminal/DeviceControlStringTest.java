@@ -39,6 +39,12 @@ public class DeviceControlStringTest extends TerminalTestCase {
 		assertCapabilityResponse("kB", "\033[Z");
 	}
 
+	public void testBackslashAloneDoesNotTerminateDeviceControlString() {
+		withTerminalSized(6, 2)
+			.enterString("\033Pignored\\payload\033\\OK")
+			.assertLinesAre("OK    ", "      ");
+	}
+
 	public void testReallyLongDeviceControlString() {
 		withTerminalSized(3, 3).enterString("\033P");
 		for (int i = 0; i < 10000; i++) {

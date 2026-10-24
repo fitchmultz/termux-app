@@ -150,6 +150,16 @@ public class OperatingSystemControlTest extends TerminalTestCase {
 		assertLinesAre("          ", "          ");
 	}
 
+	public void testOverflowWhileCollectingEscapeDoesNotResumeOsc() {
+		for (int payloadLength : new int[]{8189, 8190}) {
+			withTerminalSized(6, 2);
+			StringBuilder sequence = new StringBuilder("\033]0;");
+			for (int i = 0; i < payloadLength; i++) sequence.append('a');
+			enterString(sequence.append("\033QOK").toString());
+			assertLinesAre("OK    ", "      ");
+		}
+	}
+
 	public void testResettingTerminalResetsColor() throws Exception {
 		// "OSC 4; $INDEX; $COLORSPEC BEL" => Change color $INDEX to the color specified by $COLORSPEC.
 		withTerminalSized(4, 4).enterString("\033]4;5;#00FF00\007");
