@@ -1,0 +1,52 @@
+name: Controlled cold preference initialization stress
+
+on:
+  push:
+    branches: ['diagnostic/awake-fixture-proof']
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: One bounded public-API cold/warm stress case
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Clone diagnostic snapshot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Java 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          check-latest: true
+      - name: Install matching Android test SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          cmdline-tools-version: '16111833'
+          packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
+      - name: Install bootstrap build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y binutils curl dpkg gpgv gzip xz-utils zip jq python3
+      - name: Run only the explicit diagnostic once
+        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests com.termux.app.terminal.ColdPreferenceInitializationProof
+      - name: Print actual diagnostic case and trial report
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as E
+          root = E.parse('app/build/test-results/testDebugUnitTest/TEST-com.termux.app.terminal.ColdPreferenceInitializationProof.xml').getroot()
+          print(root.attrib)
+          print(root.findtext('system-out', ''))
+          assert int(root.attrib['tests']) == 1
+          assert int(root.attrib['failures']) == 0 and int(root.attrib['errors']) == 0
+          PY
+      - name: Preserve diagnostic XML even if inconclusive
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: awake-cold-warm-stress
+          path: app/build/test-results/**/*.xml
+          retention-days: 3

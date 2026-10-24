@@ -64,6 +64,10 @@ This is the canonical concise inventory of intentional differences from the audi
 - Keeps `Fold checks` read-only for wrapper validation, full unit tests, packaged metadata/ABI/signature checks, and two reproducible unsigned builds. Synthetic workbench render images and unit-test reports are retained briefly as CI artifacts; no private terminal contents are captured.
 - Provides a manually dispatched `Fold signed release` workflow: an unprivileged job builds twice, then a fresh environment-scoped job (with no reviewer/wait gate) signs and verifies; public Release publication is a separate explicit boolean gate and includes only the signed APK/checksum/provenance. Inherited upstream artifact/release/dependency/JitPack workflows are removed.
 
+## Controlled preference validation (diagnostic-only candidate)
+
+- Runs one public-API Android-28 preference stress case (200 cold / 200 prewarmed trials) in an isolated read-only hosted unit workflow. Uses real private XML, the production preference wrapper, and bounded joins of newly created preference loaders; a zero-loss cold run is inconclusive. No production behavior or final PR workflow changes; this diagnostic is not merged into the default-tools candidate.
+
 ## Offline default tools (unmerged `fold/default-tools` candidate)
 
 - Replaces the single upstream bootstrap download with a native Android-7 ARM64 package snapshot: Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, wget, zsh/completions, lsd, bat, git-delta, direnv, and git-lfs join the existing baseline, available offline on fresh installation. No version bump or release/install is included.
