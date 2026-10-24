@@ -402,6 +402,8 @@ jobs:
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           cmdline-tools-version: '16111833' # 23.0; SDK installation itself needs the modern JVM
+          # CLT 23 removed the legacy --licenses handshake; package installs still handle licenses.
+          accept-android-sdk-licenses: false
           packages: 'platforms;android-30 build-tools;30.0.2 ndk;21.1.6352462 platforms;android-35 build-tools;34.0.0 build-tools;37.0.0'
 
       - name: Set up Java 11 for the unchanged legacy producer recipes
@@ -591,6 +593,8 @@ jobs:
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           cmdline-tools-version: '16111833'
+          # CLT 23 removed the legacy --licenses handshake; package installs still handle licenses.
+          accept-android-sdk-licenses: false
           packages: 'build-tools;37.0.0'
 
       - name: Independently validate the complete candidate before loading secrets
