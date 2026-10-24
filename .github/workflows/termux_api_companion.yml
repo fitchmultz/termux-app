@@ -32,7 +32,7 @@ env:
   WORKFLOW_RUN_ID: ${{ github.run_id }}
   WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
   CANDIDATE_CONTRACT: >-
-    {"schema":1,"source_repository":"https://github.com/termux/termux-api",
+    {"schema":2,"source_repository":"https://github.com/termux/termux-api",
     "source_tag":"v0.53.0","source_commit":"6c8eaa223bcc387e6b28146d340acb20712aa3e7",
     "source_tree":"f7262e96f32bb63c654396a1adc370c89395bec8","source_date_epoch":1756768574,
     "package":"com.termux.api","shared_user_id":"com.termux","version_name":"0.53.0",
@@ -41,10 +41,178 @@ env:
     "agp":"8.7.3","gradle":"8.9","gradle_distribution":"gradle-8.9-all.zip",
     "gradle_distribution_sha256":"258e722ec21e955201e31447b0aed14201765a3bfbae296a46cf60b70e66db70",
     "upstream_wrapper_sha256":"e996d452d2645e70c01c11143ca2d3742734a28da2bf61f25c82bdc288c9e637",
+    "upstream_wrapper_properties_sha256":"c4fcac9a6f994b73c3e402d75ad6bd07d51b66ee01e935663a3388b2c034bd37",
     "java_major":21,"java_source_target":11,"runner":"ubuntu-24.04/X64",
     "compile_build_tools":"34.0.0","verification_build_tools":"37.0.0",
     "sdk_command_line_tools":"16111833","unsigned_filename":"termux-api-unsigned.apk",
-    "clean_builds":2,"byte_identical":true}
+    "clean_builds":2,"byte_identical":true,"resolution":"exclusive-round-local-maven-with-aar-hash-audit",
+    "source_dependencies":{
+    "shared":{"repository":"https://github.com/termux/termux-app",
+    "commit":"7bceab88e2272f961d1b94ef736f1a9e20173247","tree":"e982c267beddd24e389f6a4cee378dfc09f5f605",
+    "epoch":1750867852,"agp":"4.2.2","group":"com.termux.termux-app","version":"7bceab88e2"},
+    "am":{"repository":"https://github.com/termux/termux-am-library",
+    "commit":"d979ee308d52c59c6265ed9d9e254c97702ee4fb","tree":"f986157b9b588f527825c924623811149cb03ee8",
+    "epoch":1650918843,"agp":"7.0.3","group":"com.termux","version":"v2.0.0"}},
+    "legacy_recipe":{"java_major":11,"java_source_target":8,"gradle":"7.2","compile_sdk":30,
+    "min_sdk":21,"target_sdk":28,"build_tools":"30.0.2","ndk":"21.1.6352462",
+    "gradle_distribution_sha256":"a8da5b02437a60819cad23e10fc7e9cf32bcb57029d9cb277e26eeff76ce014b",
+    "wrapper_sha256":"e996d452d2645e70c01c11143ca2d3742734a28da2bf61f25c82bdc288c9e637",
+    "wrapper_properties_sha256":"cc162bed9654746905008154a8e69de28b28316f1b6c146bbfd1fcd13f554cfa"}}
+  LIBRARY_SETTINGS: |
+    include ':termux-shared', ':terminal-view', ':terminal-emulator'
+  PUBLISH_INIT: |
+    // Publication identity/output only; the pinned components own all artifacts and dependency metadata.
+    gradle.beforeProject { p ->
+        p.group = System.getenv('SOURCE_GROUP')
+        p.version = System.getenv('SOURCE_VERSION')
+    }
+    gradle.projectsEvaluated {
+        def root = gradle.rootProject
+        def modules = System.getenv('SOURCE_GROUP') == 'com.termux' ?
+            ['termux-am-library'] : ['termux-shared', 'terminal-view', 'terminal-emulator']
+        if (root.allprojects*.path.toSet() != ([':'] + modules.collect { ':' + it }).toSet()) {
+            throw new GradleException('Unexpected producer projects; main app must not be included')
+        }
+        modules.each { name ->
+            def p = root.project(':' + name)
+            def publication = p.publishing.publications.getByName('release')
+            publication.groupId = System.getenv('SOURCE_GROUP')
+            publication.artifactId = name
+            publication.version = System.getenv('SOURCE_VERSION')
+            p.publishing.repositories.maven {
+                name = 'Companion'
+                url = p.uri(System.getenv('COMPANION_MAVEN_REPO'))
+            }
+        }
+    }
+  LOCAL_REPOSITORY_INIT: |
+    import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+    // No user mavenLocal, remote fallback, or version substitution for these source-built modules.
+    def modules = ['com.termux:termux-am-library:v2.0.0']
+    if (System.getenv('COMPANION_CONSUMER') == 'api') {
+        modules += ['termux-shared', 'terminal-view', 'terminal-emulator'].collect {
+            'com.termux.termux-app:' + it + ':7bceab88e2'
+        }
+    }
+    def repo = new File(System.getenv('COMPANION_MAVEN_REPO'))
+    gradle.beforeProject { p ->
+        p.repositories.exclusiveContent {
+            forRepository { p.repositories.maven { name = 'CompanionSources'; url = p.uri(repo) } }
+            filter { modules.each { gav -> def c = gav.split(':'); includeModule(c[0], c[1]) } }
+        }
+    }
+    gradle.projectsEvaluated {
+        def root = gradle.rootProject
+        root.tasks.register('companionSourceResolution') {
+            doLast {
+                def project = root.project(System.getenv('COMPANION_CONSUMER') == 'api' ? ':app' : ':termux-shared')
+                def artifacts = project.configurations.getByName('releaseRuntimeClasspath').resolvedConfiguration.resolvedArtifacts
+                def found = []
+                artifacts.each { artifact ->
+                    def id = artifact.moduleVersion.id
+                    if (artifact.id.componentIdentifier instanceof ModuleComponentIdentifier &&
+                        id.group in ['com.termux', 'com.termux.termux-app']) {
+                        def gav = id.group + ':' + id.name + ':' + id.version
+                        if (!(gav in modules) || artifact.extension != 'aar' || artifact.classifier != null) {
+                            throw new GradleException('Unexpected source module: ' + gav)
+                        }
+                        def input = new File(repo, id.group.replace('.', '/') + '/' + id.name + '/' + id.version +
+                            '/' + id.name + '-' + id.version + '.aar')
+                        def sha = { file -> java.security.MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString() }
+                        if (sha(artifact.file) != sha(input)) throw new GradleException('Source AAR hash mismatch: ' + gav)
+                        found += gav
+                        println('source_resolution=' + gav + ' sha256=' + sha(input))
+                    }
+                }
+                if (found.sort() != modules.sort()) throw new GradleException('Incomplete source dependency graph')
+            }
+        }
+    }
+  SDK_TOOL_FILES: >-
+    ["platforms/android-30/android.jar","platforms/android-35/android.jar",
+    "build-tools/30.0.2/aapt2","build-tools/34.0.0/aapt2","build-tools/37.0.0/aapt",
+    "build-tools/37.0.0/zipalign","build-tools/37.0.0/lib/apksigner.jar",
+    "cmdline-tools/16111833/bin/apkanalyzer","ndk/21.1.6352462/ndk-build",
+    "ndk/21.1.6352462/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"]
+  PUBLICATION_CONTRACT: >-
+    {"com.termux:termux-am-library:v2.0.0":{"api":[],"runtime":[]},
+    "com.termux.termux-app:terminal-emulator:7bceab88e2":{"api":[],"runtime":["androidx.annotation:annotation:1.3.0"]},
+    "com.termux.termux-app:terminal-view:7bceab88e2":{"api":["com.termux.termux-app:terminal-emulator:7bceab88e2"],
+    "runtime":["androidx.annotation:annotation:1.3.0","com.termux.termux-app:terminal-emulator:7bceab88e2"]},
+    "com.termux.termux-app:termux-shared:7bceab88e2":{"api":[],"runtime":[
+    "androidx.appcompat:appcompat:1.3.1","androidx.annotation:annotation:1.3.0","androidx.core:core:1.6.0",
+    "com.google.android.material:material:1.4.0","com.google.guava:guava:24.1-jre",
+    "io.noties.markwon:core:4.6.2","io.noties.markwon:ext-strikethrough:4.6.2","io.noties.markwon:linkify:4.6.2",
+    "io.noties.markwon:recycler:4.6.2","org.lsposed.hiddenapibypass:hiddenapibypass:6.1",
+    "androidx.window:window:1.0.0-alpha09","commons-io:commons-io:2.5",
+    "com.termux.termux-app:terminal-view:7bceab88e2","com.termux:termux-am-library:v2.0.0"]}}
+  PUBLICATION_INSPECTOR: |
+    import hashlib, json, os, pathlib, stat, sys, zipfile
+    import xml.etree.ElementTree as ET
+
+    def require(ok, message):
+        if not ok:
+            raise SystemExit(message)
+
+    repo = pathlib.Path(sys.argv[1])
+    result = {}
+    ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+    for gav, dependencies in json.loads(os.environ["PUBLICATION_CONTRACT"]).items():
+        group, name, version = gav.split(":")
+        directory = repo / group.replace(".", "/") / name / version
+        stem = name + "-" + version
+        files = {ext: directory / (stem + "." + ext) for ext in ("aar", "pom", "module")}
+        records = {}
+        for ext, path in files.items():
+            st = path.lstat()
+            require(stat.S_ISREG(st.st_mode) and 0 < st.st_size <= (32 * 1024 * 1024 if ext == "aar" else 65_536),
+                    "Missing/oversized publication: " + gav)
+            records[ext] = {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "size": st.st_size}
+        pom = ET.parse(files["pom"]).getroot()
+        value = lambda key: pom.findtext("m:" + key, namespaces=ns)
+        require((value("groupId"), value("artifactId"), value("version"), value("packaging")) ==
+                (group, name, version, "aar"), "Wrong POM identity: " + gav)
+        expected = {d: "compile" if d in dependencies["api"] else "runtime" for d in dependencies["runtime"]}
+        actual = {}
+        for dep in pom.findall("m:dependencies/m:dependency", ns):
+            v = lambda key: dep.findtext("m:" + key, namespaces=ns)
+            coordinate = ":".join(v(k) for k in ("groupId", "artifactId", "version"))
+            require(coordinate not in actual and v("optional") in (None, "false"), "Duplicate/optional POM edge")
+            actual[coordinate] = v("scope") or "compile"
+        require(actual == expected, "POM graph/scope mismatch: " + gav)
+        metadata = json.loads(files["module"].read_text())
+        component = metadata["component"]
+        require((component["group"], component["module"], component["version"]) == (group, name, version),
+                "Wrong module identity: " + gav)
+        usages = set()
+        for variant in metadata["variants"]:
+            usage = variant["attributes"]["org.gradle.usage"]
+            require(usage in ("java-api", "java-runtime") and usage not in usages, "Unexpected publication variant")
+            usages.add(usage)
+            edges = [d["group"] + ":" + d["module"] + ":" + d["version"]["requires"]
+                     for d in variant.get("dependencies", [])]
+            require(sorted(edges) == sorted(dependencies["api" if usage == "java-api" else "runtime"])
+                    and not variant.get("dependencyConstraints"), "Module dependency graph mismatch: " + gav)
+            require(len(variant["files"]) == 1, "Unexpected module artifacts")
+            artifact = variant["files"][0]
+            require(artifact["name"] == artifact["url"] == stem + ".aar" and
+                    artifact["size"] == records["aar"]["size"], "Wrong module artifact reference")
+            for algorithm in ("sha256", "sha512", "sha1", "md5"):
+                if algorithm in artifact:
+                    require(hashlib.new(algorithm, files["aar"].read_bytes()).hexdigest() == artifact[algorithm],
+                            "Module artifact digest mismatch")
+            require(artifact.get("sha256") == records["aar"]["sha256"], "Missing module SHA256")
+        require(usages == {"java-api", "java-runtime"}, "Incomplete release publication")
+        with zipfile.ZipFile(files["aar"]) as archive:
+            names = archive.namelist()
+            require("AndroidManifest.xml" in names and "classes.jar" in names and archive.testzip() is None,
+                    "Incomplete/corrupt AAR")
+            library = {"termux-shared": "liblocal-socket.so", "terminal-emulator": "libtermux.so"}.get(name)
+            native = {n for n in names if n.startswith("jni/") and n.endswith(".so")}
+            expected_native = {"jni/" + abi + "/" + library for abi in ("armeabi-v7a", "arm64-v8a", "x86", "x86_64")} if library else set()
+            require(native == expected_native, "Producer native ABI/library contract changed")
+        result[gav] = records
+    print(json.dumps(result, sort_keys=True))
   APK_VALIDATOR: |
     import hashlib, json, os, pathlib, re, stat, struct, subprocess, sys, zipfile
     import xml.etree.ElementTree as ET
@@ -140,15 +308,18 @@ env:
 
 jobs:
   build:
-    name: Pinned upstream, two clean unsigned builds
+    name: Two independent pinned source chains
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
+    env:
+      TZ: UTC
+      LANG: C.UTF-8
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
     steps:
-      - name: Check out only the pinned upstream release
+      - name: Check out the pinned API release
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: termux/termux-api
@@ -156,85 +327,205 @@ jobs:
           path: upstream
           persist-credentials: false
 
-      - name: Validate source and wrapper provenance before executing source
+      - name: Check out the exact shared-library source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: termux/termux-app
+          ref: ${{ fromJSON(env.CANDIDATE_CONTRACT).source_dependencies.shared.commit }}
+          path: shared-upstream
+          persist-credentials: false
+
+      - name: Check out the exact transitive AM source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: termux/termux-am-library
+          ref: ${{ fromJSON(env.CANDIDATE_CONTRACT).source_dependencies.am.commit }}
+          path: am-upstream
+          persist-credentials: false
+
+      - name: Validate all source/wrapper identities and prepare pristine rounds
         shell: bash
         run: |
           set -euo pipefail
           test "$RUNNER_ARCH" = X64
-          test "$(git -C upstream rev-parse HEAD)" = "$API_SOURCE_COMMIT"
-          test "$(git -C upstream rev-parse 'HEAD^{tree}')" = "$API_SOURCE_TREE"
-          test "$(git -C upstream log -1 --format=%ct)" = "$SOURCE_DATE_EPOCH"
-          test -z "$(git -C upstream status --porcelain)"
-          echo 'e996d452d2645e70c01c11143ca2d3742734a28da2bf61f25c82bdc288c9e637  upstream/gradle/wrapper/gradle-wrapper.jar' | sha256sum -c -
-          echo 'c4fcac9a6f994b73c3e402d75ad6bd07d51b66ee01e935663a3388b2c034bd37  upstream/gradle/wrapper/gradle-wrapper.properties' | sha256sum -c -
-          # The unchanged old wrapper has no distribution checksum. Do not run it.
-          # Verify and invoke its declared 8.9-all distribution directly instead.
-          curl --fail --location --proto '=https' --proto-redir '=https' --retry 3 \
-            https://services.gradle.org/distributions/gradle-8.9-all.zip -o "$RUNNER_TEMP/gradle-8.9-all.zip"
-          echo "258e722ec21e955201e31447b0aed14201765a3bfbae296a46cf60b70e66db70  $RUNNER_TEMP/gradle-8.9-all.zip" | sha256sum -c -
-          unzip -q "$RUNNER_TEMP/gradle-8.9-all.zip" -d "$RUNNER_TEMP/gradle-dist"
-          # Snapshot both pristine inputs before any upstream Gradle execution.
+          python3 -I - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          c = json.loads(os.environ["CANDIDATE_CONTRACT"])
+          sources = {"api": ("upstream", c["source_commit"], c["source_tree"], c["source_date_epoch"],
+                             c["upstream_wrapper_sha256"], c["upstream_wrapper_properties_sha256"])}
+          for role, source in c["source_dependencies"].items():
+              sources[role] = (role + "-upstream", source["commit"], source["tree"], source["epoch"],
+                               c["legacy_recipe"]["wrapper_sha256"], c["legacy_recipe"]["wrapper_properties_sha256"])
+          for role, (directory, commit, tree, epoch, wrapper_hash, properties_hash) in sources.items():
+              root = pathlib.Path(directory)
+              git = lambda *args: subprocess.check_output(["git", "-C", directory, *args], text=True).strip()
+              if (git("rev-parse", "HEAD"), git("rev-parse", "HEAD^{tree}"), git("log", "-1", "--format=%ct"), git("status", "--porcelain")) != (commit, tree, str(epoch), ""):
+                  raise SystemExit("Source identity mismatch: " + role)
+              for file, expected in (("gradle-wrapper.jar", wrapper_hash),
+                                     ("gradle-wrapper.properties", properties_hash)):
+                  if hashlib.sha256((root / "gradle/wrapper" / file).read_bytes()).hexdigest() != expected:
+                      raise SystemExit("Wrapper provenance mismatch: " + role)
+              for n in (1, 2):
+                  round_dir = pathlib.Path(os.environ["RUNNER_TEMP"]) / ("round-" + str(n))
+                  target = round_dir / role
+                  target.mkdir(parents=True)
+                  archive = round_dir / (role + "-source.tar")
+                  subprocess.run(["git", "-C", directory, "-c", "tar.umask=0022", "archive", "--format=tar", "--output=" + str(archive), commit], check=True)
+                  subprocess.run(["tar", "--same-permissions", "-xf", str(archive), "-C", str(target)], check=True)
+          PY
+          # Neither old unchecked wrapper runs. Verify each declared distribution independently.
+          while read -r version checksum; do
+            curl --fail --location --proto '=https' --proto-redir '=https' --retry 3 \
+              "https://services.gradle.org/distributions/gradle-$version-all.zip" -o "$RUNNER_TEMP/gradle-$version-all.zip"
+            echo "$checksum  $RUNNER_TEMP/gradle-$version-all.zip" | sha256sum -c -
+            unzip -q "$RUNNER_TEMP/gradle-$version-all.zip" -d "$RUNNER_TEMP/gradle-dist"
+          done <<'DISTRIBUTIONS'
+          7.2 a8da5b02437a60819cad23e10fc7e9cf32bcb57029d9cb277e26eeff76ce014b
+          8.9 258e722ec21e955201e31447b0aed14201765a3bfbae296a46cf60b70e66db70
+          DISTRIBUTIONS
+          printf '%s' "$PUBLISH_INIT" > "$RUNNER_TEMP/publish.init.gradle"
+          printf '%s' "$LOCAL_REPOSITORY_INIT" > "$RUNNER_TEMP/local.init.gradle"
           for n in 1 2; do
-            mkdir "$RUNNER_TEMP/source-$n"
-            git -C upstream archive "$API_SOURCE_COMMIT" | tar -x -C "$RUNNER_TEMP/source-$n"
+            printf '%s' "$LIBRARY_SETTINGS" > "$RUNNER_TEMP/round-$n/shared/companion.settings.gradle"
+            mkdir "$RUNNER_TEMP/round-$n/maven"
           done
 
-      - name: Set up Java 21
+      - name: Set up Java 21 for SDK installation and API consumption
+        id: java21
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
           check-latest: true
 
-      - name: Install upstream compile SDK and isolated verification tools
+      - name: Install the retained producer and consumer SDK recipes
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
-          cmdline-tools-version: '16111833' # 23.0, same trusted installer as Fold CI
-          packages: 'platforms;android-35 build-tools;34.0.0 build-tools;37.0.0'
+          cmdline-tools-version: '16111833' # 23.0; SDK installation itself needs the modern JVM
+          packages: 'platforms;android-30 build-tools;30.0.2 ndk;21.1.6352462 platforms;android-35 build-tools;34.0.0 build-tools;37.0.0'
 
-      - name: Run available release unit tests and build twice without signing
+      - name: Set up Java 11 for the unchanged legacy producer recipes
+        id: java11
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '11'
+          check-latest: true
+
+      - name: Independently build and publish both complete source dependency chains
         shell: bash
         env:
-          TZ: UTC
-          LANG: C.UTF-8
+          JITPACK_NDK_VERSION: '21.1.6352462'
         run: |
           set -euo pipefail
+          grep -E '^JAVA_VERSION="11[.]' "$JAVA_HOME/release"
+          gradle="$RUNNER_TEMP/gradle-dist/gradle-7.2/bin/gradle"
+          common=(--no-daemon --no-build-cache --no-configuration-cache --max-workers=2)
+          for n in 1 2; do
+            round="$RUNNER_TEMP/round-$n"
+            export COMPANION_MAVEN_REPO="$round/maven"
+            export GRADLE_USER_HOME="$round/gradle-am" SOURCE_GROUP=com.termux SOURCE_VERSION=v2.0.0 SOURCE_DATE_EPOCH=1650918843
+            "$gradle" "${common[@]}" -p "$round/am" -I "$RUNNER_TEMP/publish.init.gradle" \
+              :termux-am-library:publishReleasePublicationToCompanionRepository
+            export GRADLE_USER_HOME="$round/gradle-shared" SOURCE_GROUP=com.termux.termux-app SOURCE_VERSION=7bceab88e2 SOURCE_DATE_EPOCH=1750867852
+            export COMPANION_CONSUMER=shared
+            shared=(-p "$round/shared" --settings-file "$round/shared/companion.settings.gradle"
+              -I "$RUNNER_TEMP/publish.init.gradle" -I "$RUNNER_TEMP/local.init.gradle")
+            "$gradle" "${common[@]}" "${shared[@]}" companionSourceResolution
+            "$gradle" "${common[@]}" "${shared[@]}" \
+              :terminal-emulator:publishReleasePublicationToCompanionRepository \
+              :terminal-view:publishReleasePublicationToCompanionRepository \
+              :termux-shared:publishReleasePublicationToCompanionRepository
+            python3 -I -c "$PUBLICATION_INSPECTOR" "$round/maven" > "$round/publications.json"
+          done
+
+      - name: Build API twice using only each round's source publications
+        shell: bash
+        env:
+          JAVA_HOME: ${{ steps.java21.outputs.path }}
+          JAVA11_HOME: ${{ steps.java11.outputs.path }}
+        run: |
+          set -euo pipefail
+          export PATH="$JAVA_HOME/bin:$PATH"
+          grep -E '^JAVA_VERSION="21[.]' "$JAVA_HOME/release"
           unset TERMUX_API_APP__BUILD__APP_VERSION_NAME TERMUX_API_APP__BUILD__APK_VERSION_TAG
+          export COMPANION_CONSUMER=api
           candidate="$RUNNER_TEMP/api-companion-candidate"
           mkdir "$candidate"
           for n in 1 2; do
-            export GRADLE_USER_HOME="$RUNNER_TEMP/gradle-home-$n"
+            round="$RUNNER_TEMP/round-$n"
+            export GRADLE_USER_HOME="$round/gradle-api" COMPANION_MAVEN_REPO="$round/maven"
             args=(--no-daemon --no-build-cache --no-configuration-cache --max-workers=2
-              -p "$RUNNER_TEMP/source-$n")
-            if [ "$n" = 1 ]; then
-              "$RUNNER_TEMP/gradle-dist/gradle-8.9/bin/gradle" "${args[@]}" :app:testReleaseUnitTest
-            fi
-            # No debug variant, signing task, upstream test key, or source patch.
-            "$RUNNER_TEMP/gradle-dist/gradle-8.9/bin/gradle" "${args[@]}" :app:assembleRelease
-            mapfile -t apks < <(find "$RUNNER_TEMP/source-$n/app/build/outputs/apk/release" -type f -name '*.apk')
+              -p "$round/api" -I "$RUNNER_TEMP/local.init.gradle")
+            gradle="$RUNNER_TEMP/gradle-dist/gradle-8.9/bin/gradle"
+            "$gradle" "${args[@]}" companionSourceResolution
+            if [ "$n" = 1 ]; then "$gradle" "${args[@]}" :app:testReleaseUnitTest; fi
+            "$gradle" "${args[@]}" :app:assembleRelease
+            mapfile -t apks < <(find "$round/api/app/build/outputs/apk/release" -type f -name '*.apk')
             test "${#apks[@]}" -eq 1
             test "$(basename "${apks[0]}")" = 'termux-api-app_v0.53.0+release.apk'
             python3 -I -c "$APK_VALIDATOR" "${apks[0]}" unsigned
-            if [ "$n" = 1 ]; then
-              cp "${apks[0]}" "$candidate/termux-api-unsigned.apk"
-            else
-              cmp "$candidate/termux-api-unsigned.apk" "${apks[0]}"
-            fi
+            if [ "$n" = 1 ]; then cp "${apks[0]}" "$candidate/termux-api-unsigned.apk"; else cmp "$candidate/termux-api-unsigned.apk" "${apks[0]}"; fi
           done
           python3 -I - "$candidate" <<'PY'
-          import hashlib, json, os, pathlib, sys
+          import hashlib, json, os, pathlib, stat, sys, tarfile
+          def digest(stream):
+              return hashlib.file_digest(stream, "sha256").hexdigest()
+          def record(path):
+              with path.open("rb") as stream:
+                  return {"sha256": digest(stream), "size": path.stat().st_size}
+          temp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          manifest = json.loads(os.environ["CANDIDATE_CONTRACT"])
+          tools = {p: record(pathlib.Path(os.environ["ANDROID_HOME"]) / p) for p in json.loads(os.environ["SDK_TOOL_FILES"])}
+          java_versions = {}
+          for major, home in ((11, os.environ["JAVA11_HOME"]), (21, os.environ["JAVA_HOME"])):
+              release = dict(line.split("=", 1) for line in (pathlib.Path(home) / "release").read_text().splitlines() if "=" in line)
+              java_versions[str(major)] = release["JAVA_VERSION"].strip('"')
+              for file in ("release", "lib/modules"):
+                  tools["jdk" + str(major) + "/" + file] = record(pathlib.Path(home) / file)
+          rounds = []
+          for n in (1, 2):
+              root = temp / ("round-" + str(n))
+              archives, agp = {}, {}
+              for role, version in (("api", "8.7.3"), ("shared", "4.2.2"), ("am", "7.0.3")):
+                  archive = root / (role + "-source.tar")
+                  # Check every archived production/build file after execution; ignore directory mtimes/build outputs.
+                  with tarfile.open(archive) as source:
+                      for member in source:
+                          path = root / role / member.name
+                          if member.isfile():
+                              if path.is_symlink() or not path.is_file() or stat.S_IMODE(path.stat().st_mode) != member.mode:
+                                  raise SystemExit("Changed source file type/mode: " + member.name)
+                              with path.open("rb") as actual, source.extractfile(member) as original:
+                                  if digest(actual) != digest(original):
+                                      raise SystemExit("Changed tracked source/build file: " + member.name)
+                          elif member.issym() and (not path.is_symlink() or os.readlink(path) != member.linkname):
+                              raise SystemExit("Changed source symlink")
+                  archives[role] = record(archive)
+                  jars = list((root / ("gradle-" + role)).glob("caches/modules-2/files-2.1/com.android.tools.build/gradle/" + version + "/*/gradle-" + version + ".jar"))
+                  if len(jars) != 1:
+                      raise SystemExit("Missing/ambiguous AGP binary")
+                  agp[role] = record(jars[0])
+              rounds.append({"round": n, "archives": archives, "agp": agp,
+                             "publications": json.loads((root / "publications.json").read_text())})
+          overlays = {key: {"sha256": hashlib.sha256(os.environ[key].encode()).hexdigest(), "size": len(os.environ[key].encode())}
+                      for key in ("LIBRARY_SETTINGS", "PUBLISH_INIT", "LOCAL_REPOSITORY_INIT")}
+          for key, paths in {"LIBRARY_SETTINGS": [temp / ("round-" + str(n)) / "shared/companion.settings.gradle" for n in (1, 2)],
+                             "PUBLISH_INIT": [temp / "publish.init.gradle"], "LOCAL_REPOSITORY_INIT": [temp / "local.init.gradle"]}.items():
+              if any(record(path) != overlays[key] for path in paths):
+                  raise SystemExit("Build-resolution overlay changed")
           candidate = pathlib.Path(sys.argv[1])
           apk = candidate / "termux-api-unsigned.apk"
-          manifest = json.loads(os.environ["CANDIDATE_CONTRACT"])
-          manifest.update(workflow_repository="fitchmultz/termux-app",
-                          workflow_commit=os.environ["WORKFLOW_COMMIT"],
-                          workflow_run_id=os.environ["WORKFLOW_RUN_ID"],
-                          workflow_run_attempt=os.environ["WORKFLOW_RUN_ATTEMPT"],
-                          unsigned_apk_sha256=hashlib.sha256(apk.read_bytes()).hexdigest(),
-                          unsigned_apk_size=apk.stat().st_size)
-          (candidate / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+          manifest.update(workflow_repository="fitchmultz/termux-app", workflow_commit=os.environ["WORKFLOW_COMMIT"],
+                          workflow_run_id=os.environ["WORKFLOW_RUN_ID"], workflow_run_attempt=os.environ["WORKFLOW_RUN_ATTEMPT"],
+                          unsigned_apk_sha256=record(apk)["sha256"], unsigned_apk_size=apk.stat().st_size,
+                          build_inputs={"overlays": overlays, "tools": tools, "java_versions": java_versions, "rounds": rounds})
+          encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
+          if len(encoded.encode()) > 16_384:
+              raise SystemExit("Public provenance exceeds signing-input bound")
+          (candidate / "manifest.json").write_text(encoded)
           PY
-          printf 'Two independent clean release builds are byte-identical; source and manifest are pinned.\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Two full source chains produced byte-identical unsigned APKs; intermediate inputs are recorded, not assumed identical.\n' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload only bounded unsigned signing inputs
         id: upload
@@ -307,7 +598,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -I - "$RUNNER_TEMP/candidate" <<'PY'
-          import hashlib, json, os, pathlib, stat, sys
+          import hashlib, json, os, pathlib, re, stat, sys
           candidate = pathlib.Path(sys.argv[1])
           if {p.name for p in candidate.iterdir()} != {"termux-api-unsigned.apk", "manifest.json"}:
               raise SystemExit("Unexpected signing input files")
@@ -331,6 +622,49 @@ jobs:
                           workflow_run_attempt=os.environ["WORKFLOW_RUN_ATTEMPT"],
                           unsigned_apk_sha256=hashlib.sha256(apk.read_bytes()).hexdigest(),
                           unsigned_apk_size=apk.stat().st_size)
+          # Source inputs are public build claims, not executable signing inputs or independently rebuilt here.
+          inputs = manifest.get("build_inputs")
+          if not isinstance(inputs, dict) or set(inputs) != {"overlays", "tools", "java_versions", "rounds"}:
+              raise SystemExit("Invalid build-input schema")
+          def records(value, limits):
+              if not isinstance(value, dict) or set(value) != set(limits):
+                  raise SystemExit("Unexpected build-input records")
+              for name, limit in limits.items():
+                  r = value[name]
+                  if not (isinstance(r, dict) and set(r) == {"sha256", "size"}
+                          and isinstance(r["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", r["sha256"])
+                          and type(r["size"]) is int and 0 < r["size"] <= limit):
+                      raise SystemExit("Invalid digest/size record")
+          overlays = {key: {"sha256": hashlib.sha256(os.environ[key].encode()).hexdigest(), "size": len(os.environ[key].encode())}
+                      for key in ("LIBRARY_SETTINGS", "PUBLISH_INIT", "LOCAL_REPOSITORY_INIT")}
+          if inputs["overlays"] != overlays:
+              raise SystemExit("Unreviewed build-resolution overlays")
+          tool_names = json.loads(os.environ["SDK_TOOL_FILES"]) + ["jdk" + major + "/" + file for major in ("11", "21") for file in ("release", "lib/modules")]
+          records(inputs["tools"], {key: 512 * 1024 * 1024 for key in tool_names})
+          versions = inputs["java_versions"]
+          if not isinstance(versions, dict) or set(versions) != {"11", "21"} or any(
+                  not isinstance(versions[k], str) or not re.fullmatch(k + r"\.[0-9A-Za-z._+-]{1,60}", versions[k]) for k in versions):
+              raise SystemExit("Invalid recorded JVM versions")
+          rounds = inputs["rounds"]
+          if not isinstance(rounds, list) or len(rounds) != 2:
+              raise SystemExit("Missing independent source rounds")
+          publications = json.loads(os.environ["PUBLICATION_CONTRACT"])
+          for n, r in enumerate(rounds, 1):
+              if not isinstance(r, dict) or set(r) != {"round", "archives", "agp", "publications"} or type(r["round"]) is not int or r["round"] != n:
+                  raise SystemExit("Invalid source round")
+              records(r["archives"], {role: 128 * 1024 * 1024 for role in ("api", "shared", "am")})
+              records(r["agp"], {role: 32 * 1024 * 1024 for role in ("api", "shared", "am")})
+              if not isinstance(r["publications"], dict) or set(r["publications"]) != set(publications):
+                  raise SystemExit("Unexpected source publications")
+              for publication in r["publications"].values():
+                  records(publication, {"aar": 32 * 1024 * 1024, "pom": 65_536, "module": 65_536})
+          # Independently match the verification-tool files available in this fresh signing job.
+          for file in tool_names:
+              if file.startswith(("build-tools/37.0.0/", "cmdline-tools/")):
+                  path = pathlib.Path(os.environ["ANDROID_HOME"]) / file
+                  if inputs["tools"][file] != {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "size": path.stat().st_size}:
+                      raise SystemExit("Verification tool provenance mismatch")
+          expected["build_inputs"] = inputs
           # Canonical JSON comparison also distinguishes booleans from numbers; no extra keys/claims.
           if json.dumps(manifest, sort_keys=True) != json.dumps(expected, sort_keys=True):
               raise SystemExit("Candidate manifest/hash/provenance mismatch")

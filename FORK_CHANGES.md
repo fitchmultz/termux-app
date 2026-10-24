@@ -56,7 +56,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Contracts, tests, and repository policy
 
-- **Unmerged candidate:** adds a [pinned-source Termux:API companion workflow](docs/TERMUX_API_COMPANION.md) with two clean unsigned release builds, strict APK/provenance gates, and default-off, main-branch-only isolated signing with the existing Fold key. Produces short-lived artifacts only; client defaults, publication, installation/hold clearance, permissions and physical clipboard validation remain separate owner-controlled steps.
+- **Unmerged candidate:** adds a [pinned-source Termux:API companion workflow](docs/TERMUX_API_COMPANION.md): two independent exact-source library→local-Maven→API release chains, narrow publication/resolution-only overlays, strict metadata/APK/provenance/reproducibility gates, and default-off, main-branch-only isolated signing with the existing Fold key. Short-lived artifacts only; client defaults, publication, installation/hold clearance, permissions and physical clipboard validation remain separate owner-controlled steps.
 
 - Retains the unused Fold 6 tag after cancelling publication before signing to fix a cross-pane synchronized-background regression; release tags are not rewritten.
 
