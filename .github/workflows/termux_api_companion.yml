@@ -1,0 +1,416 @@
+name: Termux API companion
+
+on:
+  pull_request:
+    branches: ['fold/main']
+    paths:
+      - '.github/workflows/termux_api_companion.yml'
+      - 'docs/TERMUX_API_COMPANION.md'
+      - 'FORK_CHANGES.md'
+      - 'AGENTS.md'
+  workflow_dispatch:
+    inputs:
+      sign_companion:
+        description: Sign the verified companion with the existing Fold key (fold/main only; no publication or installation)
+        required: true
+        default: false
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: api-companion-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+# These are reviewed workflow code, never downloaded scripts or artifact-provided policy.
+# The fresh signer gets its own copy; build-job environment changes cannot cross jobs.
+env:
+  API_SOURCE_COMMIT: 6c8eaa223bcc387e6b28146d340acb20712aa3e7
+  API_SOURCE_TREE: f7262e96f32bb63c654396a1adc370c89395bec8
+  SOURCE_DATE_EPOCH: '1756768574'
+  WORKFLOW_COMMIT: ${{ github.sha }}
+  WORKFLOW_RUN_ID: ${{ github.run_id }}
+  WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
+  CANDIDATE_CONTRACT: >-
+    {"schema":1,"source_repository":"https://github.com/termux/termux-api",
+    "source_tag":"v0.53.0","source_commit":"6c8eaa223bcc387e6b28146d340acb20712aa3e7",
+    "source_tree":"f7262e96f32bb63c654396a1adc370c89395bec8","source_date_epoch":1756768574,
+    "package":"com.termux.api","shared_user_id":"com.termux","version_name":"0.53.0",
+    "version_code":1002,"min_sdk":24,"target_sdk":28,"compile_sdk":35,
+    "debuggable":false,"native_libraries":[],"build_variant":"release",
+    "agp":"8.7.3","gradle":"8.9","gradle_distribution":"gradle-8.9-all.zip",
+    "gradle_distribution_sha256":"258e722ec21e955201e31447b0aed14201765a3bfbae296a46cf60b70e66db70",
+    "upstream_wrapper_sha256":"e996d452d2645e70c01c11143ca2d3742734a28da2bf61f25c82bdc288c9e637",
+    "java_major":21,"java_source_target":11,"runner":"ubuntu-24.04/X64",
+    "compile_build_tools":"34.0.0","verification_build_tools":"37.0.0",
+    "sdk_command_line_tools":"16111833","unsigned_filename":"termux-api-unsigned.apk",
+    "clean_builds":2,"byte_identical":true}
+  APK_VALIDATOR: |
+    import hashlib, json, os, pathlib, re, stat, struct, subprocess, sys, zipfile
+    import xml.etree.ElementTree as ET
+
+    def require(ok, message):
+        if not ok:
+            raise SystemExit(message)
+
+    apk = pathlib.Path(sys.argv[1])
+    mode = sys.argv[2]
+    require(mode in ("unsigned", "signed"), "Unknown validation mode")
+    st = apk.lstat()
+    require(stat.S_ISREG(st.st_mode) and st.st_nlink == 1, "APK must be a regular, unlinked file")
+    require(100_000 <= st.st_size <= 32 * 1024 * 1024, "APK size outside reviewed bounds")
+    data = apk.read_bytes()
+    require(data[:4] == b"PK\x03\x04", "Unexpected APK prefix")
+    # No ZIP64, multidisk, trailing payload, comment, or hidden APK signing block on unsigned input.
+    require(len(data) >= 22 and data[-22:-18] == b"PK\x05\x06", "Noncanonical ZIP ending")
+    _, disk, cd_disk, disk_count, count, cd_size, cd_offset, comment = struct.unpack("<4s4H2IH", data[-22:])
+    require(disk == cd_disk == comment == 0 and disk_count == count < 20_000,
+            "Unsupported ZIP layout")
+    require(cd_offset + cd_size == len(data) - 22, "Invalid ZIP central directory")
+    if mode == "unsigned":
+        require(data[cd_offset - 16:cd_offset] != b"APK Sig Block 42", "Existing APK signing block")
+    with zipfile.ZipFile(apk) as z:
+        entries = z.infolist()
+        require(len(entries) == count, "ZIP entry count mismatch")
+        names = [i.filename for i in entries]
+        require(len(names) == len(set(names)), "Duplicate ZIP entries")
+        require("AndroidManifest.xml" in names and "classes.dex" in names, "Incomplete APK")
+        require(sum(i.file_size for i in entries) <= 128 * 1024 * 1024, "Expanded APK too large")
+        for i in entries:
+            name = i.filename
+            parts = name.rstrip("/").split("/")
+            require(all(p not in ("", ".", "..") for p in parts) and "\\" not in name
+                    and not any(ord(c) < 32 or ord(c) == 127 for c in name), "Unsafe ZIP path")
+            require(stat.S_IFMT(i.external_attr >> 16) in (0, stat.S_IFREG, stat.S_IFDIR),
+                    "Special ZIP entry")
+            require(not i.flag_bits & 1 and i.compress_type in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED),
+                    "Unsupported ZIP compression/encryption")
+            require(i.file_size <= 64 * 1024 * 1024, "Oversized ZIP entry")
+            require(parts[0].lower() != "lib" and not name.lower().endswith(".so"),
+                    "Native libraries are not allowed in this companion")
+            with z.open(i) as f:
+                require(f.read(4) != b"\x7fELF", "Unexpected ELF payload")
+            if mode == "unsigned":
+                require(not re.match(r"(?i)^META-INF/(?:MANIFEST\.MF|[^/]+\.(?:SF|RSA|DSA|EC))$", name),
+                        "Existing JAR signing material")
+        require(z.testzip() is None, "ZIP CRC failure")
+
+    tools = pathlib.Path(os.environ["ANDROID_HOME"]) / "build-tools/37.0.0"
+    analyzer = pathlib.Path(os.environ["ANDROID_HOME"]) / "cmdline-tools/16111833/bin/apkanalyzer"
+    xml = subprocess.check_output([str(analyzer), "manifest", "print", str(apk)], timeout=60)
+    require(len(xml) <= 1024 * 1024, "Manifest too large")
+    root = ET.fromstring(xml)
+    a = "{http://schemas.android.com/apk/res/android}"
+    require(root.tag == "manifest" and root.get("package") == "com.termux.api", "Wrong package")
+    require(root.get(a + "versionCode") == "1002" and root.get(a + "versionName") == "0.53.0",
+            "Wrong version")
+    require(root.get(a + "sharedUserId") == "com.termux"
+            and root.get(a + "sharedUserMaxSdkVersion") is None, "Wrong/limited shared UID")
+    sdk = root.findall("uses-sdk")
+    require(len(sdk) == 1 and sdk[0].get(a + "minSdkVersion") == "24"
+            and sdk[0].get(a + "targetSdkVersion") == "28", "Wrong SDK contract")
+    apps = root.findall("application")
+    require(len(apps) == 1 and apps[0].get(a + "debuggable", "false") == "false",
+            "Debuggable or invalid application")
+    receivers = [r for r in apps[0].findall("receiver")
+                 if r.get(a + "name") in (".TermuxApiReceiver", "com.termux.api.TermuxApiReceiver")]
+    require(len(receivers) == 1 and receivers[0].get(a + "exported") == "false", "API receiver exported/missing")
+    badging = subprocess.check_output([str(tools / "aapt"), "dump", "badging", str(apk)], timeout=60).decode()
+    require("package: name='com.termux.api' versionCode='1002' versionName='0.53.0'" in badging,
+            "Badging disagrees with manifest")
+    require(not re.search(r"^native-code:|^application-debuggable", badging, re.M), "Native/debug APK")
+    subprocess.run([str(tools / "zipalign"), "-c", "-P", "16", "4", str(apk)], check=True, timeout=60,
+                   stdout=subprocess.DEVNULL)
+    verify = subprocess.run([str(tools / "apksigner"), "verify", "--verbose", "--print-certs",
+                             "--min-sdk-version", "23", str(apk)], capture_output=True, text=True, timeout=60)
+    if mode == "unsigned":
+        require(verify.returncode != 0, "APK already verifies as signed")
+    else:
+        require(verify.returncode == 0, "Signed APK failed verification")
+        lines = verify.stdout.splitlines()
+        for line in ("Verified using v1 scheme (JAR signing): true",
+                     "Verified using v2 scheme (APK Signature Scheme v2): true",
+                     "Verified using v3 scheme (APK Signature Scheme v3): true",
+                     "Verified using v4 scheme (APK Signature Scheme v4): false", "Number of signers: 1"):
+            require(line in lines, "Missing signature requirement: " + line)
+        certificates = re.findall(r"certificate SHA-256 digest: ([0-9a-fA-F]+)", verify.stdout)
+        require(bool(certificates) and set(c.lower() for c in certificates) ==
+                {"221f36cca6e32ee1666bb210046654b26900cd9ea98c2155d0cbe66102060437"}, "Wrong Fold certificate")
+    print(json.dumps({"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}))
+
+jobs:
+  build:
+    name: Pinned upstream, two clean unsigned builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - name: Check out only the pinned upstream release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: termux/termux-api
+          ref: ${{ env.API_SOURCE_COMMIT }}
+          path: upstream
+          persist-credentials: false
+
+      - name: Validate source and wrapper provenance before executing source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ARCH" = X64
+          test "$(git -C upstream rev-parse HEAD)" = "$API_SOURCE_COMMIT"
+          test "$(git -C upstream rev-parse 'HEAD^{tree}')" = "$API_SOURCE_TREE"
+          test "$(git -C upstream log -1 --format=%ct)" = "$SOURCE_DATE_EPOCH"
+          test -z "$(git -C upstream status --porcelain)"
+          echo 'e996d452d2645e70c01c11143ca2d3742734a28da2bf61f25c82bdc288c9e637  upstream/gradle/wrapper/gradle-wrapper.jar' | sha256sum -c -
+          echo 'c4fcac9a6f994b73c3e402d75ad6bd07d51b66ee01e935663a3388b2c034bd37  upstream/gradle/wrapper/gradle-wrapper.properties' | sha256sum -c -
+          # The unchanged old wrapper has no distribution checksum. Do not run it.
+          # Verify and invoke its declared 8.9-all distribution directly instead.
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 3 \
+            https://services.gradle.org/distributions/gradle-8.9-all.zip -o "$RUNNER_TEMP/gradle-8.9-all.zip"
+          echo "258e722ec21e955201e31447b0aed14201765a3bfbae296a46cf60b70e66db70  $RUNNER_TEMP/gradle-8.9-all.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/gradle-8.9-all.zip" -d "$RUNNER_TEMP/gradle-dist"
+          # Snapshot both pristine inputs before any upstream Gradle execution.
+          for n in 1 2; do
+            mkdir "$RUNNER_TEMP/source-$n"
+            git -C upstream archive "$API_SOURCE_COMMIT" | tar -x -C "$RUNNER_TEMP/source-$n"
+          done
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          check-latest: true
+
+      - name: Install upstream compile SDK and isolated verification tools
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          cmdline-tools-version: '16111833' # 23.0, same trusted installer as Fold CI
+          packages: 'platforms;android-35 build-tools;34.0.0 build-tools;37.0.0'
+
+      - name: Run available release unit tests and build twice without signing
+        shell: bash
+        env:
+          TZ: UTC
+          LANG: C.UTF-8
+        run: |
+          set -euo pipefail
+          unset TERMUX_API_APP__BUILD__APP_VERSION_NAME TERMUX_API_APP__BUILD__APK_VERSION_TAG
+          candidate="$RUNNER_TEMP/api-companion-candidate"
+          mkdir "$candidate"
+          for n in 1 2; do
+            export GRADLE_USER_HOME="$RUNNER_TEMP/gradle-home-$n"
+            args=(--no-daemon --no-build-cache --no-configuration-cache --max-workers=2
+              -p "$RUNNER_TEMP/source-$n")
+            if [ "$n" = 1 ]; then
+              "$RUNNER_TEMP/gradle-dist/gradle-8.9/bin/gradle" "${args[@]}" :app:testReleaseUnitTest
+            fi
+            # No debug variant, signing task, upstream test key, or source patch.
+            "$RUNNER_TEMP/gradle-dist/gradle-8.9/bin/gradle" "${args[@]}" :app:assembleRelease
+            mapfile -t apks < <(find "$RUNNER_TEMP/source-$n/app/build/outputs/apk/release" -type f -name '*.apk')
+            test "${#apks[@]}" -eq 1
+            test "$(basename "${apks[0]}")" = 'termux-api-app_v0.53.0+release.apk'
+            python3 -I -c "$APK_VALIDATOR" "${apks[0]}" unsigned
+            if [ "$n" = 1 ]; then
+              cp "${apks[0]}" "$candidate/termux-api-unsigned.apk"
+            else
+              cmp "$candidate/termux-api-unsigned.apk" "${apks[0]}"
+            fi
+          done
+          python3 -I - "$candidate" <<'PY'
+          import hashlib, json, os, pathlib, sys
+          candidate = pathlib.Path(sys.argv[1])
+          apk = candidate / "termux-api-unsigned.apk"
+          manifest = json.loads(os.environ["CANDIDATE_CONTRACT"])
+          manifest.update(workflow_repository="fitchmultz/termux-app",
+                          workflow_commit=os.environ["WORKFLOW_COMMIT"],
+                          workflow_run_id=os.environ["WORKFLOW_RUN_ID"],
+                          workflow_run_attempt=os.environ["WORKFLOW_RUN_ATTEMPT"],
+                          unsigned_apk_sha256=hashlib.sha256(apk.read_bytes()).hexdigest(),
+                          unsigned_apk_size=apk.stat().st_size)
+          (candidate / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+          PY
+          printf 'Two independent clean release builds are byte-identical; source and manifest are pinned.\n' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload only bounded unsigned signing inputs
+        id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: api-companion-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/api-companion-candidate/termux-api-unsigned.apk
+            ${{ runner.temp }}/api-companion-candidate/manifest.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  sign:
+    name: Opt-in isolated Fold signing (artifact only)
+    needs: build
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.sign_companion == true &&
+      github.ref == 'refs/heads/fold/main' && github.repository == 'fitchmultz/termux-app'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: termux-fold-signing
+    permissions:
+      actions: read
+    steps:
+      # No repository checkout, cache restore, Gradle, or upstream/build-artifact code execution here.
+      - name: Check same-run artifact identity and download-size bound
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.build.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          [[ "$ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/fitchmultz/termux-app/actions/artifacts/$ARTIFACT_ID" > "$RUNNER_TEMP/artifact-envelope.json"
+          python3 -I - "$RUNNER_TEMP/artifact-envelope.json" <<'PY'
+          import json, os, sys
+          a = json.load(open(sys.argv[1]))
+          run = a["workflow_run"]
+          if not (str(a["id"]) == os.environ["ARTIFACT_ID"] and not a["expired"]
+                  and a["name"] == "api-companion-candidate-" + os.environ["WORKFLOW_RUN_ID"] + "-" + os.environ["WORKFLOW_RUN_ATTEMPT"]
+                  and 0 < a["size_in_bytes"] <= 33 * 1024 * 1024
+                  and str(run["id"]) == os.environ["WORKFLOW_RUN_ID"]
+                  and run["head_sha"] == os.environ["WORKFLOW_COMMIT"] and run["head_branch"] == "fold/main"):
+              raise SystemExit("Untrusted/oversized artifact envelope")
+          PY
+
+      - name: Download only this build job's artifact from this run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: ${{ runner.temp }}/candidate
+          merge-multiple: true
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          check-latest: true
+
+      - name: Install trusted APK parsers and signing tools (not from artifact)
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          cmdline-tools-version: '16111833'
+          packages: 'build-tools;37.0.0'
+
+      - name: Independently validate the complete candidate before loading secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I - "$RUNNER_TEMP/candidate" <<'PY'
+          import hashlib, json, os, pathlib, stat, sys
+          candidate = pathlib.Path(sys.argv[1])
+          if {p.name for p in candidate.iterdir()} != {"termux-api-unsigned.apk", "manifest.json"}:
+              raise SystemExit("Unexpected signing input files")
+          for name, limit in (("manifest.json", 16_384), ("termux-api-unsigned.apk", 32 * 1024 * 1024)):
+              st = (candidate / name).lstat()
+              if not (stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and 0 < st.st_size <= limit):
+                  raise SystemExit("Invalid input type/size")
+          def unique(pairs):
+              result = {}
+              for k, v in pairs:
+                  if k in result:
+                      raise SystemExit("Duplicate manifest key")
+                  result[k] = v
+              return result
+          manifest = json.loads((candidate / "manifest.json").read_text(), object_pairs_hook=unique)
+          apk = candidate / "termux-api-unsigned.apk"
+          expected = json.loads(os.environ["CANDIDATE_CONTRACT"])
+          expected.update(workflow_repository="fitchmultz/termux-app",
+                          workflow_commit=os.environ["WORKFLOW_COMMIT"],
+                          workflow_run_id=os.environ["WORKFLOW_RUN_ID"],
+                          workflow_run_attempt=os.environ["WORKFLOW_RUN_ATTEMPT"],
+                          unsigned_apk_sha256=hashlib.sha256(apk.read_bytes()).hexdigest(),
+                          unsigned_apk_size=apk.stat().st_size)
+          # Canonical JSON comparison also distinguishes booleans from numbers; no extra keys/claims.
+          if json.dumps(manifest, sort_keys=True) != json.dumps(expected, sort_keys=True):
+              raise SystemExit("Candidate manifest/hash/provenance mismatch")
+          PY
+          python3 -I -c "$APK_VALIDATOR" "$RUNNER_TEMP/candidate/termux-api-unsigned.apk" unsigned
+
+      - name: Sign only the validated companion with the existing protected key
+        shell: bash
+        env:
+          FOLD_KEYSTORE_BASE64: ${{ secrets.TERMUX_FOLD_KEYSTORE_BASE64 }}
+          FOLD_KEYSTORE_PASSWORD: ${{ secrets.TERMUX_FOLD_KEYSTORE_PASSWORD }}
+          EXPECTED_KEYSTORE_SHA256: ${{ secrets.TERMUX_FOLD_KEYSTORE_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          keys="$RUNNER_TEMP/api-companion-keys"
+          mkdir -m 700 "$keys"
+          cleanup() { rm -f "$keys/key.p12" "$keys/store.pass" "$keys/key.pass" "$keys/key.der"; rmdir "$keys"; }
+          trap cleanup EXIT
+          trap 'exit 1' HUP INT TERM
+          printf '%s' "$FOLD_KEYSTORE_BASE64" | base64 --decode > "$keys/key.p12"
+          printf '%s\n' "$FOLD_KEYSTORE_PASSWORD" > "$keys/store.pass"
+          printf '%s\n' "$FOLD_KEYSTORE_PASSWORD" > "$keys/key.pass"
+          [[ "$EXPECTED_KEYSTORE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test "$(sha256sum "$keys/key.p12" | cut -d' ' -f1)" = "$EXPECTED_KEYSTORE_SHA256"
+          unset FOLD_KEYSTORE_BASE64 FOLD_KEYSTORE_PASSWORD EXPECTED_KEYSTORE_SHA256
+          keytool -exportcert -keystore "$keys/key.p12" -storetype PKCS12 \
+            -storepass:file "$keys/store.pass" -alias termux-fold-release -file "$keys/key.der" >/dev/null 2>&1
+          echo "221f36cca6e32ee1666bb210046654b26900cd9ea98c2155d0cbe66102060437  $keys/key.der" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/api-companion-signed"
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" sign \
+            --ks "$keys/key.p12" --ks-type PKCS12 --ks-key-alias termux-fold-release \
+            --ks-pass "file:$keys/store.pass" --key-pass "file:$keys/key.pass" \
+            --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
+            --v4-signing-enabled false \
+            --out "$RUNNER_TEMP/api-companion-signed/Termux-API-0.53.0-Fold.apk" \
+            "$RUNNER_TEMP/candidate/termux-api-unsigned.apk"
+
+      - name: Independently verify signed metadata, schemes, certificate, and archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          signed="$RUNNER_TEMP/api-companion-signed/Termux-API-0.53.0-Fold.apk"
+          python3 -I -c "$APK_VALIDATOR" "$signed" signed
+          test ! -e "$signed.idsig"
+          python3 -I - "$RUNNER_TEMP" <<'PY'
+          import hashlib, json, os, pathlib, sys
+          temp = pathlib.Path(sys.argv[1])
+          out = temp / "api-companion-signed"
+          apk = out / "Termux-API-0.53.0-Fold.apk"
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          (out / "SHA256SUMS").write_text(digest + "  " + apk.name + "\n")
+          provenance = json.loads((temp / "candidate/manifest.json").read_text())
+          provenance.update(signed_filename=apk.name, signed_apk_sha256=digest, signed_apk_size=apk.stat().st_size,
+                            certificate_sha256="22:1F:36:CC:A6:E3:2E:E1:66:6B:B2:10:04:66:54:B2:69:00:CD:9E:A9:8C:21:55:D0:CB:E6:61:02:06:04:37",
+                            v1=True, v2=True, v3=True, v4=False,
+                            workflow_run="https://github.com/fitchmultz/termux-app/actions/runs/" + os.environ["WORKFLOW_RUN_ID"])
+          (out / "PROVENANCE.json").write_text(json.dumps(provenance, sort_keys=True, indent=2) + "\n")
+          if {p.name for p in out.iterdir()} != {apk.name, "SHA256SUMS", "PROVENANCE.json"}:
+              raise SystemExit("Unexpected signed output")
+          PY
+          printf 'Fold-signed companion verified. Artifact only: not published, installed, or physically tested.\n' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Always remove temporary signing credentials
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          keys="$RUNNER_TEMP/api-companion-keys"
+          rm -f "$keys/key.p12" "$keys/store.pass" "$keys/key.pass" "$keys/key.der"
+          if [ -d "$keys" ]; then rmdir "$keys"; fi
+
+      - name: Save only the verified signed APK, checksum, and public provenance
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: termux-api-0.53.0-fold-signed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/api-companion-signed/Termux-API-0.53.0-Fold.apk
+            ${{ runner.temp }}/api-companion-signed/SHA256SUMS
+            ${{ runner.temp }}/api-companion-signed/PROVENANCE.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
