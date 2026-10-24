@@ -40,7 +40,7 @@ import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = 28, application = Application.class, qualifiers = "w900dp-h1000dp-mdpi", shadows = TerminalPaneLayoutTest.NoPty.class)
+@Config(sdk = {28, 37}, application = Application.class, qualifiers = "w900dp-h1000dp-mdpi", shadows = TerminalPaneLayoutTest.NoPty.class)
 public class TerminalPaneLayoutTest {
     @Implements(className = "com.termux.terminal.JNI", isInAndroidSdk = false)
     public static class NoPty {
@@ -231,8 +231,15 @@ public class TerminalPaneLayoutTest {
         assertEquals(anchor, session.getEmulator().getScreen().getSelectedText(0, -4, 20, -4));
         panes.showSession(other);
         assertFalse(other.getEmulator().isAutoScrollDisabled());
+        output(session, "detached\r\n");
         panes.showSession(session);
-        assertEquals(-4, terminal.getTopRow());
+        assertEquals(-5, terminal.getTopRow());
+        assertEquals(anchor, session.getEmulator().getScreen().getSelectedText(0, -5, 20, -5));
+        panes.showSession(other);
+        panes.showSession(session);
+        assertEquals(-5, terminal.getTopRow());
+        output(session, "attached again\r\n");
+        assertEquals(-6, terminal.getTopRow());
         output(session, lines(180));
         int oldest = -session.getEmulator().getScreen().getActiveTranscriptRows();
         assertEquals(oldest, terminal.getTopRow());
@@ -308,6 +315,29 @@ public class TerminalPaneLayoutTest {
         completed.recycle();
         deferred.recycle();
         committed.recycle();
+    }
+
+    @Test
+    public void restoringScrollLockDuringSynchronizedOutputDefersPendingShiftUntilCommit() {
+        TermuxActivity activity = notificationActivity();
+        TerminalPaneLayout panes = activity.getTerminalPanes();
+        TerminalSession session = session("Agent"), other = session("Other");
+        session.updateTerminalSessionClient(activity.getTermuxTerminalSessionClient());
+        panes.showSession(session);
+        output(session, lines(180));
+        TerminalView terminal = panes.getActiveTerminal();
+        terminal.setTopRow(-3);
+        scrollKey(activity).onTerminalExtraKeyButtonClick(null, "SCROLL", false, false, false, false);
+        panes.showSession(other);
+        output(session, "\033[?2026hnext\r\n");
+        panes.showSession(session);
+        assertEquals(-3, terminal.getTopRow());
+        size(panes, 900, 600);
+        assertEquals(-3, terminal.getTopRow());
+        output(session, "\033[?2026l");
+        assertEquals(-4, terminal.getTopRow());
+        output(session, "next\r\n");
+        assertEquals(-5, terminal.getTopRow());
     }
 
     @Test
