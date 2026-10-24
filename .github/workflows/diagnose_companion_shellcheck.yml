@@ -1,0 +1,54 @@
+name: Diagnostic companion ShellCheck
+
+on:
+  push:
+    branches: ['diagnostic/api-companion-shellcheck']
+
+permissions: {}
+
+jobs:
+  lint:
+    name: Lint exact candidate shell fragments without execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Read exact reviewed workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: c8b9ea6dbe24336c9a44bbaa1f4f6119745b644c
+          persist-credentials: false
+
+      - name: Run compatible-host ShellCheck on all eight literal scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = c8b9ea6dbe24336c9a44bbaa1f4f6119745b644c
+          echo 'bf2e5463c5d752f21c67c955046699f425f4f40e14ea25dfcd71670813e2a917  .github/workflows/termux_api_companion.yml' | sha256sum -c -
+          sudo apt-get update
+          sudo apt-get install -y python3-yaml
+          command -v shellcheck
+          shellcheck --version
+          /usr/bin/python3 -I - <<'PY'
+          import os, pathlib, subprocess, yaml
+          document = yaml.safe_load(pathlib.Path('.github/workflows/termux_api_companion.yml').read_text())
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'companion-shellcheck'
+          out.mkdir()
+          count = 0
+          for job in document['jobs'].values():
+              for step in job['steps']:
+                  if 'run' not in step:
+                      continue
+                  if step.get('shell') != 'bash':
+                      raise SystemExit('Unexpected script shell')
+                  count += 1
+                  script = out / ('fragment-' + str(count) + '.bash')
+                  script.write_text(step['run'])
+                  subprocess.run(['bash', '-n', str(script)], check=True)
+                  subprocess.run(['shellcheck', '--shell=bash', str(script)], check=True)
+                  print('PASS', count, step['name'], flush=True)
+          if count != 8:
+              raise SystemExit('Unexpected script count')
+          print('PASS all8 exact-candidate fragments; no extracted script, SDK, Gradle, APK, or signing code executed')
+          PY
