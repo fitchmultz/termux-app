@@ -342,6 +342,65 @@ public class TerminalPaneLayoutTest {
     }
 
     @Test
+    public void foregroundRefreshAfterActivityReplacementPreservesTheRestoredOffset() {
+        TermuxActivity activity = notificationActivity();
+        TerminalPaneLayout panes = activity.getTerminalPanes();
+        TerminalSession session = session("Agent");
+        session.updateTerminalSessionClient(activity.getTermuxTerminalSessionClient());
+        panes.showSession(session);
+        output(session, lines(180));
+        TerminalView original = panes.getActiveTerminal();
+        original.setTopRow(-3);
+        Bundle state = panes.saveState();
+        activity.setContentView(new View(activity));
+
+        TermuxActivity replacement = notificationActivity();
+        session.updateTerminalSessionClient(replacement.getTermuxTerminalSessionClient());
+        TerminalPaneLayout restored = replacement.getTerminalPanes();
+        restored.restoreState(state, handle -> session.mHandle.equals(handle) ? session : null);
+        assertNotSame(original, restored.getActiveTerminal());
+        assertEquals(-3, restored.getActiveTerminal().getTopRow());
+        replacement.getTermuxTerminalSessionClient().onStart();
+        assertEquals(-3, restored.getActiveTerminal().getTopRow());
+        replacement.getTermuxTerminalSessionClient().onStart();
+        assertEquals(-3, restored.getActiveTerminal().getTopRow());
+        output(session, "new output\r\n");
+        assertEquals(0, restored.getActiveTerminal().getTopRow());
+    }
+
+    @Test
+    public void foregroundRefreshReconcilesBackgroundScrollLockOnceAndDefersSynchronizedOutput() {
+        TermuxActivity activity = notificationActivity();
+        TerminalSession session = session("Agent");
+        session.updateTerminalSessionClient(activity.getTermuxTerminalSessionClient());
+        activity.getTerminalPanes().showSession(session);
+        output(session, lines(180));
+        TerminalView terminal = activity.getTerminalView();
+        terminal.setTopRow(-3);
+        scrollKey(activity).onTerminalExtraKeyButtonClick(null, "SCROLL", false, false, false, false);
+        ReflectionHelpers.setField(activity, "mIsVisible", false);
+        output(session, "background\r\n");
+        assertEquals(-3, terminal.getTopRow());
+        ReflectionHelpers.setField(activity, "mIsVisible", true);
+        activity.getTermuxTerminalSessionClient().onStart();
+        assertEquals(-4, terminal.getTopRow());
+        activity.getTermuxTerminalSessionClient().onStart();
+        assertEquals(-4, terminal.getTopRow());
+
+        ReflectionHelpers.setField(activity, "mIsVisible", false);
+        output(session, "\033[?2026hnext\r\n");
+        ReflectionHelpers.setField(activity, "mIsVisible", true);
+        activity.getTermuxTerminalSessionClient().onStart();
+        assertEquals(-4, terminal.getTopRow());
+        output(session, "\033[?2026l");
+        assertEquals(-5, terminal.getTopRow());
+        activity.getTermuxTerminalSessionClient().onStart();
+        assertEquals(-5, terminal.getTopRow());
+        output(session, "next\r\n");
+        assertEquals(-6, terminal.getTopRow());
+    }
+
+    @Test
     public void touchFocusRoutesExtraKeysWithoutReattachingOrDuplicatingSessions() {
         Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
         TerminalPaneLayout panes = layout(activity);
