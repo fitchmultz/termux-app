@@ -55,15 +55,17 @@ Fixes stay isolated when that improves review, regression testing, or selective 
 
 The Fold source profile embeds a locked native Android-7 ARM64 bootstrap
 with Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, wget, zsh with
-completions, lsd, bat, git-delta, direnv, and git-lfs alongside
+completions, lsd, bat, git-delta, direnv, git-lfs, and the termux-api client alongside
 the upstream baseline. Fresh installations need no first-launch network install.
 It does not replace or auto-upgrade a nonempty existing prefix. Existing users can
 explicitly run `pkg update` followed by
-`pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs`.
+`pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs termux-api`.
 Bash remains the default: no aliases, shell hooks, direnv/dotfile activation,
 or global Git configuration changes are added. No services auto-start. Mise/Chezmoi,
 Node/Python versioned development environments, compilers, Tcl/Tk, X11, and
-Termux:API remain separate. See [delivery, trust, reproduction, and maintenance](tools/bootstrap/README.md).
+the same-Fold-key Termux:API Android app remain separate. The client alone does
+not enable clipboard/API access or grant Android permissions; only the permissions
+needed for chosen APIs should be granted. See [delivery, trust, reproduction, and maintenance](tools/bootstrap/README.md).
 Source integration is not APK publication or physical offline-bootstrap validation.
 
 ## Installation boundary

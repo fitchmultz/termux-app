@@ -6,8 +6,8 @@ remain separate steps; see [FOLD_PROFILE.md](../../FOLD_PROFILE.md).
 
 Fresh ARM64/API-24+ installations get the usual Termux Android-7 apt bootstrap
 plus **Git, OpenSSH (ssh/scp/sftp), tmux, jq, ripgrep (`rg`), fd, fzf, rsync, tree,
-zip, wget, zsh with zsh-completions, lsd, bat, git-delta (`delta`), direnv, and
-git-lfs**, without first-launch network access. Bash, coreutils, curl,
+zip, wget, zsh with zsh-completions, lsd, bat, git-delta (`delta`), direnv,
+git-lfs, and the termux-api client**, without first-launch network access. Bash, coreutils, curl,
 unzip, nano, apt/dpkg, CA certificates, and the other upstream baseline packages
 remain. This is native Android/Bionic software for `com.termux` and
 `/data/data/com.termux/files/usr`, not Linux/glibc binaries.
@@ -21,7 +21,7 @@ obtain these defaults. In an existing terminal, explicitly run:
 
 ```sh
 pkg update
-pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs
+pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs termux-api
 ```
 
 Review apt's proposed changes. This uses the user's current repository and
@@ -35,13 +35,13 @@ automatically. Both service definitions retain their `down` files and
 package `postinst` scripts offline; OpenSSH creates host keys and the private
 `~/.ssh/authorized_keys` placeholder then, **not during APK construction**. No
 keys, accounts, tokens, Pi configuration, or user dotfiles are baked in. Additional
-package scripts are reviewed below; none starts a service or downloads software.
+maintainer scripts are reviewed below; none starts a service or downloads software.
 
 Node.js, Python, compilers, and versioned native development adapters belong to
 the separately managed development environment, **not the APK**. Android API
-services still require the separately installed, compatibly signed Termux:API
-app and an explicit `pkg install termux-api`; bundling shell tools does not grant
-Android permissions. Optional Git Perl helpers and development self-tests are
+services still require the separately installed **same-Fold-key Termux:API app**;
+the bundled client alone does not provide Android API access or grant
+permissions. Optional Git Perl helpers and development self-tests are
 not a promise of a bundled language/toolchain runtime.
 
 ## Companion package assessment
@@ -54,18 +54,20 @@ interactive zsh or evaluate project environments.
 
 The seven companion roots add only `libcap` and `libgit2` to the previous closure.
 The same authenticated **2026-10-24 14:22:36 UTC** repository snapshot retains all
-110 earlier package records unchanged. Its nine new packages total 14,905,984
+110 earlier package records unchanged. Those nine companion packages total 14,905,984
 downloaded `.deb` bytes and 53,977,088 declared installed-size bytes; these are
 **not** ZIP sizes. Two independent generated ZIPs (second offline) are identical:
-SHA-256 `b10710a32b2416ef1867fd0dbe90d8ae7a0343ca809868136f6e4bbf95593ec6`,
-81,435,896 compressed bytes / 201,153,568 expanded file bytes, using Python
-3.14.8 / zlib 1.3.2. The whole ZIP still crosses JNI as one Java byte array;
+SHA-256 `410e09f216842577d67392eec05fc6c58cf07d1a128d4cb4bf5fdbe061d4098a`,
+81,497,481 compressed bytes / 201,297,988 expanded file bytes, **including the
+API client below**, using Python 3.14.8 / zlib 1.3.2.
+The whole ZIP still crosses JNI as one Java byte array;
 physical fresh-bootstrap heap acceptance remains a required post-install gate.
-The generated payload verifies 119 package inventories/checksums, 25 commands,
-1,477 symlinks, and 451 ARM64 ELFs (442 production closure/API-24 checks plus the
-nine inherited developer fixtures described below). All six new commands pass
-native version probes in the private extracted prefix; the production Java
-extractor delivers 593 executable / 5,586 non-executable regular files.
+The generated payload verifies 120 package inventories/checksums, 27 required commands,
+1,478 symlinks, and 453 ARM64 ELFs (444 production closure/API-24 checks plus the
+nine inherited developer fixtures described below). All six non-API companion
+commands pass native version probes in the private extracted prefix; the production
+Java extractor delivers 652 executable / 5,591 non-executable regular files.
+The former 119-package ZIP hash/sizes are historical, not this payload's proof.
 
 Versions below are the authenticated Termux package versions, not a claim about
 every upstream project's latest release. Corresponding upstream releases/sources
@@ -99,7 +101,7 @@ Actual new-package maintainer scripts have two offline effects:
   `bat.prerm` removes its registration. Metadata/scripts are not stripped to
   conceal this behavior.
 
-The other seven new packages have no maintainer scripts. Official zsh global
+The other seven shell companion packages have no maintainer scripts. Official zsh global
 configuration adjusts the default prompt/command-not-found handler and sources
 the existing Termux profile **only when the user chooses that shell**. No user
 dotfiles or shell selection are changed.
@@ -115,6 +117,41 @@ configuration-specific development bootstrap. Rust/compiler, Tcl/Tk, X11, and
 language-runtime stacks likewise remain opt-in development packages, not this
 offline shell baseline. Keeping that boundary avoids silently multiplying the
 whole-blob bootstrap allocation.
+
+## Termux:API client and Android companion boundary
+
+The same signed snapshot adds exactly one package to the 119-package closure:
+`termux-api` **0.60.0**, aarch64, MIT, from
+[termux-api-package v0.60.0](https://github.com/termux/termux-api-package/tree/v0.60.0).
+All 119 prior records and repository provenance remain unchanged; Bash, util-linux,
+and termux-am (>= 0.8.0) already satisfy its dependencies. Its `.deb` is 30,112
+bytes, SHA-256 `b83c85e0b8f345ac4e99dd09698a8077712c85a736652bb38465cd0f2ed0a8ae`;
+the declared installed size is 364 KiB, not the ZIP size or expanded-byte delta.
+The full official client package is retained, including its other API wrappers,
+library/header, and MIT notice under `share/doc/termux-api/copyright`.
+
+The new command contracts are the canonical `$PREFIX/bin/termux-clipboard-get`
+and `$PREFIX/bin/termux-clipboard-set`, not a user PATH shim. Both call
+`$PREFIX/libexec/termux-api`, a symlink to `termux-api-broadcast`; there is no
+`bin/termux-api` command. Actual payload checks and production Java extraction
+prove these scripts/helper are delivered executable without invoking any API or
+reading/writing the clipboard. The two new native ELFs need only Android libc and
+carry API-24 notes.
+
+The package has **no maintainer scripts, conffiles, startup hooks, or service
+definitions**. Its explicit `termux-api-start`/`termux-api-stop` commands request
+the Android companion's KeepAliveService; neither is run by bootstrap or checks.
+This default does not install or auto-start the Android companion. Clipboard/API
+access still needs a separately installed Termux:API APK signed with the **same
+Fold key**, subject to Android access rules and only the permissions needed for
+the chosen APIs. Do not mix stock F-Droid/GitHub plugin APKs with Fold-signed
+Termux, uninstall Termux, or grant all permissions to obtain clipboard support.
+Compatible companion delivery is a separate integration/release step.
+
+This addition applies only to fresh prefixes. If an existing installation already
+has the current client, no APT transaction is needed; installing it again cannot
+replace a missing companion APK. Existing configuration and clipboard shims are
+not changed, and live clipboard functionality is not established by these builds.
 
 ## Delivery and trust
 
@@ -133,7 +170,7 @@ whole-blob bootstrap allocation.
   a giant redundant package index is not vendored. Archive the matching full index
   externally if historical metadata revalidation will be needed after mirror
   rotation. Current production builds **never fetch an index or resolve latest**.
-- There are 119 locked packages. The generator chooses the first dependency
+- There are 120 locked packages. The generator chooses the first dependency
   alternative; our validator requires that choice and verifies Debian version
   constraints with host dpkg. Missing dependencies, unsupported syntax or
   Pre-Depends, conflicts, wrong architecture, and development/service-manager
@@ -170,7 +207,7 @@ whole-blob bootstrap allocation.
   `down` files still keep services disabled. Missing/unsafe executable metadata
   fails before installation commits.
   DEFLATE level 9 keeps the whole-blob JNI/Java bootstrap allocation bounded:
-  this snapshot is 81,435,896 compressed bytes / 201,153,568 expanded bytes on
+  this snapshot is 81,497,481 compressed bytes / 201,297,988 expanded bytes on
   Python 3.14.8 + zlib 1.3.2. **Use the same Python/zlib toolchain for byte-for-byte
   reproduction**; the runner prints both versions. CI compares two independent
   generations, the second offline, as well as retaining the two unsigned APK
@@ -220,7 +257,8 @@ actual payload into a **new** private build directory and uses its own libraries
 HOME and temporary directory. It runs version/help commands, Git initialization,
 JSON/search/filter operations, a local rsync copy, and a ZIP round trip. It also
 checks generated Git hook samples' execute permissions, disabled service scripts,
-and non-executable file delivery. It never runs postinst, starts a service, connects to a network, or replaces a prefix:
+and non-executable file delivery. It never invokes API/clipboard commands, runs
+postinst, starts a service, connects to a network, or replaces a prefix:
 
 ```sh
 python3 tools/bootstrap/smoke_android.py app/build/bootstrap/first/bootstrap-aarch64.zip \
