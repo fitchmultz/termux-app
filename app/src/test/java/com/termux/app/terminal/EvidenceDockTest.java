@@ -1,5 +1,6 @@
 package com.termux.app.terminal;
 
+import android.content.Context;
 import android.content.DialogInterface;
 import android.os.Bundle;
 import android.widget.EditText;
@@ -7,6 +8,8 @@ import android.widget.EditText;
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.app.TermuxApplication;
+import com.termux.shared.termux.TermuxConstants;
+import com.termux.shared.termux.settings.preferences.TermuxPreferenceConstants;
 import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
 import com.termux.shared.termux.terminal.TermuxTerminalViewClientBase;
 import com.termux.terminal.TerminalEmulator;
@@ -146,6 +149,10 @@ public class EvidenceDockTest {
     @Test
     public void screenAwakeToggleAppliesToBothViews() {
         TermuxActivity activity = Robolectric.buildActivity(TermuxActivity.class).get();
+        assertTrue(activity.getSharedPreferences(
+            TermuxConstants.TERMUX_DEFAULT_PREFERENCES_FILE_BASENAME_WITHOUT_EXTENSION,
+            Context.MODE_PRIVATE).edit().putBoolean(
+                TermuxPreferenceConstants.TERMUX_APP.KEY_KEEP_SCREEN_ON, true).commit());
         activity.setTheme(R.style.Theme_TermuxActivity_DayNight_NoActionBar);
         activity.setContentView(R.layout.activity_termux);
         TerminalPaneLayout panes = activity.findViewById(R.id.terminal_panes);
@@ -154,8 +161,8 @@ public class EvidenceDockTest {
         com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences preferences =
             com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences.build(activity);
         assertNotNull(preferences);
+        assertTrue(preferences.shouldKeepScreenOn());
         ReflectionHelpers.setField(activity, "mPreferences", preferences);
-        preferences.setKeepScreenOn(true);
         for (TerminalView terminal : panes.getTerminals()) terminal.setKeepScreenOn(true);
         ReflectionHelpers.callInstanceMethod(activity, "toggleKeepScreenOn");
         for (TerminalView terminal : panes.getTerminals()) assertFalse(terminal.getKeepScreenOn());
