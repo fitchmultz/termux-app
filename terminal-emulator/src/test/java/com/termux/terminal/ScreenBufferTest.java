@@ -46,6 +46,18 @@ public class ScreenBufferTest extends TerminalTestCase {
 		assertEquals("ABC\nFG", mTerminal.getScreen().getSelectedText(0, 0, 1, 1, true, true));
 	}
 
+	public void testErasingRightEdgeBreaksWrappedSelection() {
+		// EL, whole-line EL, ECH, ED and whole-display ED all erase through the right edge.
+		for (String erase : new String[]{"\033[K", "\033[2K", "\033[5X", "\033[J", "\033[2J"}) {
+			withTerminalSized(5, 3).enterString("ABCDEZ\033[H" + erase + "1\r\n2");
+			assertEquals("After " + erase, "1\n2", mTerminal.getSelectedText(0, 0, 4, 1));
+		}
+
+		// Erasing only the left part of a wrapped row must keep its continuation.
+		withTerminalSized(5, 3).enterString("ABCDEZ\033[H\033[2X");
+		assertEquals("  CDEZ", mTerminal.getSelectedText(0, 0, 4, 1));
+	}
+
 	public void testGetWordAtLocation() {
 		withTerminalSized(5, 3).enterString("ABCDEFGHIJ\r\nKLMNO");
 		assertEquals("ABCDEFGHIJKLMNO", mTerminal.getScreen().getWordAtLocation(0, 0));
