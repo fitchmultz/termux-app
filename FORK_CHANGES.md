@@ -54,6 +54,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Contracts, tests, and repository policy
 
+- Diagnostic branch only (not shipped): makes one bounded, unprivileged hosted request per pinned Termux:API dependency descriptor/status/log to distinguish missing JitPack artifacts from phone-specific egress; no checkout, build, signing, installation, or helper reset.
+
 - Retains the unused Fold 6 tag after cancelling publication before signing to fix a cross-pane synchronized-background regression; release tags are not rewritten.
 
 - Defines one immutable root Gradle profile for version, label, bootstrap variant, and ABI filters across modules.

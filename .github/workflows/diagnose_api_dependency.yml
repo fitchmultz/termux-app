@@ -1,0 +1,67 @@
+name: Diagnostic API dependency egress
+
+on:
+  push:
+    branches: ['diagnostic/api-dependency-egress']
+
+permissions: {}
+
+jobs:
+  inspect:
+    name: Bounded public descriptor requests (not an APK build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Request pinned public descriptors once from hosted egress
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, urllib.error, urllib.request
+
+          requests = (
+              ("shared-custom-pom", "https://jitpack.io/com/termux/termux-app/termux-shared/7bceab88e2/termux-shared-7bceab88e2.pom"),
+              ("shared-canonical-pom", "https://jitpack.io/com/github/termux/termux-app/termux-shared/7bceab88e2/termux-shared-7bceab88e2.pom"),
+              ("shared-custom-status", "https://jitpack.io/api/builds/com.termux/termux-app/7bceab88e2"),
+              ("shared-canonical-status", "https://jitpack.io/api/builds/com.github.termux/termux-app/7bceab88e2"),
+              ("shared-custom-log", "https://jitpack.io/com/termux/termux-app/7bceab88e2/build.log"),
+              ("shared-canonical-log", "https://jitpack.io/com/github/termux/termux-app/7bceab88e2/build.log"),
+              ("am-pom-control", "https://jitpack.io/com/termux/termux-am-library/v2.0.0/termux-am-library-v2.0.0.pom"),
+          )
+          results = []
+          for name, url in requests:
+              record = {"name": name, "url": url}
+              request = urllib.request.Request(url, headers={"User-Agent": "Termux-Fold-dependency-diagnostic"})
+              try:
+                  try:
+                      response = urllib.request.urlopen(request, timeout=15)
+                  except urllib.error.HTTPError as error:
+                      response = error
+                  with response:
+                      data = response.read(65_537)
+                      record.update(status=response.status,
+                                    headers={k: response.headers.get(k) for k in ("Content-Type", "Cache-Control", "Age")},
+                                    body=data[:65_536].decode("utf-8", errors="replace"),
+                                    truncated=len(data) > 65_536)
+              except (OSError, urllib.error.URLError) as error:
+                  record.update(status=None, error=type(error).__name__ + ": " + str(error))
+              results.append(record)
+              print(name, record["status"], flush=True)
+          out = pathlib.Path(os.environ["RUNNER_TEMP"]) / "api-dependency-egress"
+          out.mkdir()
+          (out / "http-results.json").write_text(json.dumps({"workflow_commit": os.environ["GITHUB_SHA"], "results": results}, indent=2) + "\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("Diagnostic HTTP results only: no checkout, SDK, APK build, signing, or installation.\n\n")
+              for result in results:
+                  summary.write("- " + result["name"] + ": " + str(result["status"]) + "\n")
+          PY
+
+      - name: Retain bounded public response evidence for one day
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: api-dependency-egress
+          path: ${{ runner.temp }}/api-dependency-egress/http-results.json
+          if-no-files-found: error
+          retention-days: 1
