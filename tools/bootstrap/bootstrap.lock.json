@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "profile_sha256": "96785225a0ecdceef856b4fdfd727a0253a6861cbb61cd69ba2282a8d9fa3b14",
+  "profile_sha256": "c0e6477a4202c24470cc6c10e47e650b1e5928d41723087b0e194a0205bce2db",
   "provenance": {
     "repository": "https://packages-cf.termux.dev/apt/termux-main",
     "date": "Sat, 24 Oct 2026 14:22:36 UTC",
@@ -922,6 +922,15 @@
       "Size": "16132",
       "SHA256": "dcf53ccb7e1ac46d50e1de9d5e182b748157ba53fbaf47e7a2d50d78447c550b",
       "Depends": "libc++"
+    },
+    {
+      "Package": "termux-api",
+      "Version": "0.60.0",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/t/termux-api/termux-api_0.60.0_aarch64.deb",
+      "Size": "30112",
+      "SHA256": "b83c85e0b8f345ac4e99dd09698a8077712c85a736652bb38465cd0f2ed0a8ae",
+      "Depends": "bash, util-linux, termux-am (>= 0.8.0)"
     },
     {
       "Package": "termux-auth",
