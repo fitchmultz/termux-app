@@ -2,9 +2,19 @@ plugins {
     id 'com.android.library'
 }
 
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 android {
     namespace = "com.termux.emulator"
-    compileSdk = providers.gradleProperty("compileSdkVersion").get().toInteger()
+    compileSdk {
+        version = release(providers.gradleProperty("compileSdkVersion").get().toInteger()) {
+            minorApiLevel = providers.gradleProperty("compileSdkMinorVersion").get().toInteger()
+        }
+    }
     buildToolsVersion = providers.gradleProperty("buildToolsVersion").get()
     ndkVersion = providers.gradleProperty("ndkVersion").get()
 
@@ -27,8 +37,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     testOptions {
