@@ -58,6 +58,13 @@ This is the canonical concise inventory of intentional differences from the audi
 - Keeps `Fold checks` read-only for wrapper validation, full unit tests, packaged metadata/ABI/signature checks, and two reproducible unsigned builds. Synthetic workbench render images and unit-test reports are retained briefly as CI artifacts; no private terminal contents are captured.
 - Provides a manually dispatched `Fold signed release` workflow: an unprivileged job builds twice, then a fresh environment-scoped job (with no reviewer/wait gate) signs and verifies; public Release publication is a separate explicit boolean gate and includes only the signed APK/checksum/provenance. Inherited upstream artifact/release/dependency/JitPack workflows are removed.
 
+## Offline default tools (unmerged `fold/default-tools` candidate)
+
+- Replaces the single upstream bootstrap download with a native Android-7 ARM64 package snapshot: Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, and wget join the existing baseline, available offline on fresh installation. No version bump or release/install is included.
+- Authenticates maintenance indices with the pinned Termux Releases public key; locks every package URL/version/architecture/SHA-256 and the upstream generator sources. Build-private generation verifies all inputs before extraction, uses only a local snapshot, canonicalizes the compressed archive, validates dpkg files/checksums plus production ELF/API/library closure, and publishes atomically. Adds libmount/libblkid for an undeclared inherited util-linux runtime dependency; keeps optional upstream installed-test fixtures without bundling their compiler/ASan runtimes.
+- Keeps nonempty existing prefixes untouched by APK updates; documents explicit `pkg install` migration and separate Node/Python versioned development and Termux:API boundaries. Neither sshd nor ssh-agent auto-starts; host keys are generated only on-device by the ordinary offline second stage.
+- Adds runner/security and real-payload negative controls plus a two-generation/offline bootstrap CI gate without removing full unit, debug APK, identity/API/ABI/signature, reproducible unsigned APK, or isolated signing checks. Physical offline bootstrap/heap/device checks remain explicitly unperformed until authorized installation. See [bootstrap maintenance](tools/bootstrap/README.md).
+
 ## Package refresh (`0.119.0-fold.9`)
 
 This section inventories the `fold/package-refresh` source changes, integrated into `fold/main` on PR merge. Automated release checks do not establish physical Fold8 validation; device testing follows the signed APK update.

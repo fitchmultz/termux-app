@@ -1,0 +1,28 @@
+{
+  "repository": "https://packages-cf.termux.dev/apt/termux-main",
+  "upstream_commit": "de1dd3d18e239ef514e5c55ad744e6485e408c65",
+  "sources": {
+    "scripts/generate-bootstraps.sh": "2ddfaacb2f92a569f971996f0185a92e6765af1502566f2b8c5ac0be6f690a81",
+    "scripts/properties.sh": "238a19b2f29ef5eed5806a21bee8f5a51bc5031e7db3fcc393d831292300b725",
+    "scripts/bootstrap/termux-bootstrap-second-stage.sh": "bdcfcb41e9368ed8c13a4b40540cbbce309a3cc5fbff478a95bbdd9892a65fbb",
+    "scripts/bootstrap/01-termux-bootstrap-second-stage-fallback.sh": "8ed5473984a80645465d63db3a6a1db163b07fe19b02a36d1f1645684891cc1d",
+    "repo.json": "ca98924f4cd78e63dfb5c8dca10bfa34d407861cd864d97f1bf3f2ef63554271",
+    "packages/termux-keyring/termux-autobuilds.gpg": "21c385d5a30107453bd60582d64e2f6e5f5ce11e340ac05e57f943f9c0235420"
+  },
+  "signer": "CC72CF8BA7DBFA0182877D045A897D96E57CF20C",
+  "base_packages": [
+    "apt", "bash", "bzip2", "command-not-found", "coreutils", "curl", "dash",
+    "diffutils", "findutils", "gawk", "grep", "gzip", "less", "procps", "psmisc",
+    "sed", "tar", "termux-core", "termux-exec", "termux-keyring", "termux-tools",
+    "util-linux", "xz-utils", "ed", "debianutils", "dos2unix", "inetutils", "lsof",
+    "nano", "net-tools", "patch", "unzip"
+  ],
+  "additional_packages": [
+    "git", "openssh", "tmux", "jq", "ripgrep", "fd", "fzf", "rsync", "tree", "zip", "wget"
+  ],
+  "supplemental_packages": ["libmount"],
+  "commands": [
+    "bash", "apt", "dpkg", "curl", "nano", "unzip", "git", "ssh", "sftp", "scp",
+    "tmux", "jq", "rg", "fd", "fzf", "rsync", "tree", "zip", "wget"
+  ]
+}

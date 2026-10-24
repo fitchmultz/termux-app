@@ -2,7 +2,9 @@
 
 A personal ARM64 Termux fork for the Galaxy Z Fold8, with native panes, an Evidence Dock, and adaptive terminal controls. See [FOLD_PROFILE.md](FOLD_PROFILE.md), [FOLD_WORKBENCH.md](FOLD_WORKBENCH.md), and [FORK_CHANGES.md](FORK_CHANGES.md) for this fork's behavior and release constraints.
 
-Download only this fork's [Fold-signed releases](https://github.com/fitchmultz/termux-app/releases). Install as an **Update**, not by uninstalling: uninstalling deletes Termux's private files. The APK updates the app, not an existing package prefix; after installation, run `pkg update && pkg upgrade` to refresh your installed shell packages.
+Download only this fork's [Fold-signed releases](https://github.com/fitchmultz/termux-app/releases). Install as an **Update**, not by uninstalling: uninstalling deletes Termux's private files. The APK updates the app, not an existing package prefix; package upgrades remain an explicit `pkg update && pkg upgrade` choice.
+
+The [offline default-tools candidate](tools/bootstrap/README.md) adds Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, and wget to fresh installations without a first-launch network install. Existing nonempty prefixes are never replaced or automatically upgraded. To add these tools explicitly to an existing installation, run `pkg update` then `pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget` and review the proposed changes. Node/Python versioned development environments and Termux:API remain separate, opt-in installations.
 
 ## Upstream documentation (reference)
 
@@ -70,7 +72,7 @@ The APK files of different sources are signed with different signature keys. The
 
 If you wish to install from a different source, then you must **uninstall any and all existing Termux or its plugin app APKs** from your device first, then install all new APKs from the same new source. Check [Uninstallation](#uninstallation) section for details. You may also want to consider [Backing up Termux](https://wiki.termux.dev/wiki/Backing_up_Termux) before the uninstallation so that you can restore it after re-installing from Termux different source.
 
-In the following paragraphs, *"bootstrap"* refers to the minimal packages that are shipped with the `termux-app` itself to start a working shell environment. Its zips are built and released [here](https://github.com/termux/termux-packages/releases).
+In the following upstream-reference paragraphs, *"bootstrap"* refers to the minimal packages shipped with upstream `termux-app` to start a working shell environment. Upstream zips are released [here](https://github.com/termux/termux-packages/releases); this fork's offline default-tools candidate instead [generates a locked ARM64 bootstrap](tools/bootstrap/README.md).
 
 ### F-Droid
 
