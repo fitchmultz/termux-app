@@ -79,9 +79,9 @@ env:
             publication.groupId = System.getenv('SOURCE_GROUP')
             publication.artifactId = name
             publication.version = System.getenv('SOURCE_VERSION')
-            p.publishing.repositories.maven {
-                name = 'Companion'
-                url = p.uri(System.getenv('COMPANION_MAVEN_REPO'))
+            p.publishing.repositories.maven { repository ->
+                repository.name = 'Companion'
+                repository.url = p.uri(System.getenv('COMPANION_MAVEN_REPO'))
             }
         }
     }
