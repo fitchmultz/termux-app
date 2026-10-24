@@ -274,6 +274,9 @@ public final class TerminalEmulator implements TerminalRendererState {
      */
     private int mScrollCounter = 0;
 
+    /** Scroll offset retained when this session's single attached view is replaced or resized. */
+    private int mTopRow;
+
     /** If automatic scrolling of terminal is disabled */
     private boolean mAutoScrollDisabled;
 
@@ -2612,6 +2615,14 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     public void toggleAutoScrollDisabled() {
         mAutoScrollDisabled = !mAutoScrollDisabled;
+    }
+
+    public int getTopRow() {
+        return mTopRow;
+    }
+
+    public void setTopRow(int topRow) {
+        mTopRow = topRow;
     }
 
 

@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Candidate (`fold/scroll-lifecycle`, not yet integrated): adapts upstream `74ab5126` to retain each session's scroll offset across session/pane replacement, activity-view restoration, and keyboard/window resizing. Restores only within remaining history bounds; existing SCROLL/output-following and synchronized-frame presentation remain unchanged.
+
 - Makes Dock/Panes labels readable in both app themes, combines the single-visible-pane title with those actions, and preserves separate focus headers when both panes are visible.
 
 - Includes upstream `3b66f87`: rejects file-based RUN_COMMAND error results until the external-app policy has passed; Android's RUN_COMMAND permission remains required.
