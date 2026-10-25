@@ -15,6 +15,13 @@ on:
 
 permissions: {}
 
+defaults:
+  run:
+    shell: bash
+
+env:
+  SHELL: /bin/bash
+
 concurrency:
   group: fold-signed-release-${{ inputs.release_tag }}
   cancel-in-progress: false
@@ -22,13 +29,34 @@ concurrency:
 jobs:
   build:
     name: Reproducible unprivileged build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, ARM64]
+    container:
+      image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+      options: --platform linux/amd64
+      volumes:
+        - /lib/ld-linux-aarch64.so.1:/lib/ld-linux-aarch64.so.1:ro
+        - /lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu:ro
     timeout-minutes: 50
     permissions:
       contents: read
     env:
       REQUESTED_TAG: ${{ inputs.release_tag }}
     steps:
+      - name: Prepare M1 job container
+        run: |
+          set -euo pipefail
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ARCH" = ARM64
+          test "$(uname -m)" = x86_64
+          work="$(mktemp -d "$RUNNER_TEMP/fold-ci.XXXXXXXX")"
+          {
+            printf 'FOLD_CI_WORK=%s\n' "$work"
+            printf 'ANDROID_SDK_ROOT=%s/android-sdk\n' "$work"
+            printf 'ANDROID_HOME=%s/android-sdk\n' "$work"
+            printf 'GRADLE_USER_HOME=%s/gradle-home\n' "$work"
+          } >> "$GITHUB_ENV"
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates git curl unzip binutils dpkg gpgv gzip xz-utils zip jq python3 make file libstdc++6
       - name: Validate release tag input
         shell: bash
         run: |
@@ -56,6 +84,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          architecture: x64
           check-latest: true
 
       - name: Install pinned Android SDK
@@ -64,9 +93,6 @@ jobs:
           cmdline-tools-version: '16111833' # 23.0
           accept-android-sdk-licenses: false # CLT 23 removed the legacy --licenses handshake.
           packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
-
-      - name: Install bootstrap build tools
-        run: sudo apt-get update && sudo apt-get install -y binutils curl dpkg gpgv gzip xz-utils zip jq python3
 
       - name: Validate Gradle wrapper and run unit tests
         shell: bash
@@ -80,7 +106,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
           metadata="$(./gradlew --no-daemon -q :app:foldReleaseMetadata)"
           value() { awk -F= -v key="$1" '$1 == key {print substr($0, index($0, "=") + 1); exit}' <<<"$metadata"; }
           version_name="$(value versionName)"
@@ -116,7 +143,7 @@ jobs:
             exit 1
           fi
 
-          candidate="$RUNNER_TEMP/fold-release-candidate"
+          candidate="$FOLD_CI_WORK/fold-release-candidate"
           mkdir -p "$candidate"
           cp "$first_apk" "$candidate/termux-fold-unsigned.apk"
           first_hash="$(sha256sum "$candidate/termux-fold-unsigned.apk" | cut -d' ' -f1)"
@@ -151,7 +178,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fold-release-candidate-${{ github.run_id }}
-          path: ${{ runner.temp }}/fold-release-candidate
+          path: ${{ env.FOLD_CI_WORK }}/fold-release-candidate
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
@@ -159,17 +186,46 @@ jobs:
   sign-and-release:
     name: Isolated signing and GitHub Release
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, ARM64]
+    container:
+      image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+      options: --platform linux/amd64
+      volumes:
+        - /lib/ld-linux-aarch64.so.1:/lib/ld-linux-aarch64.so.1:ro
+        - /lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu:ro
     timeout-minutes: 15
     environment: termux-fold-signing
     permissions:
       contents: write
     steps:
+      - name: Prepare M1 job container
+        run: |
+          set -euo pipefail
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ARCH" = ARM64
+          test "$(uname -m)" = x86_64
+          work="$(mktemp -d "$RUNNER_TEMP/fold-ci.XXXXXXXX")"
+          {
+            printf 'FOLD_CI_WORK=%s\n' "$work"
+            printf 'ANDROID_SDK_ROOT=%s/android-sdk\n' "$work"
+            printf 'ANDROID_HOME=%s/android-sdk\n' "$work"
+          } >> "$GITHUB_ENV"
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates curl unzip libstdc++6
+          gh_archive="$work/gh.tar.gz"
+          curl --disable --fail --location --proto '=https' --proto-redir '=https' --retry 3 \
+            https://github.com/cli/cli/releases/download/v2.103.2/gh_2.103.2_linux_amd64.tar.gz \
+            --output "$gh_archive"
+          test "$(stat -c %s "$gh_archive")" = 15031001
+          printf '62ccf747115ddc61237efffdde66a3c8f70ba249433dc64f70801089b59c59c8  %s\n' "$gh_archive" | sha256sum -c -
+          tar -xzf "$gh_archive" -C "$work"
+          printf '%s/gh_2.103.2_linux_amd64/bin\n' "$work" >> "$GITHUB_PATH"
       - name: Set up Java 21
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
+          architecture: x64
           check-latest: true
 
       - name: Install signing tools
@@ -183,10 +239,11 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: fold-release-candidate-${{ github.run_id }}
-          path: candidate
+          path: ${{ env.FOLD_CI_WORK }}/candidate
 
       - name: Sign and independently verify APK
         id: sign
+        working-directory: ${{ env.FOLD_CI_WORK }}
         shell: bash
         env:
           REQUESTED_TAG: ${{ inputs.release_tag }}
@@ -220,16 +277,18 @@ jobs:
           test -x "$build_tools/zipalign"
           echo "signing tools verified: $(basename "$build_tools")"
 
-          key_store="$RUNNER_TEMP/termux-fold-release.p12"
-          store_pass="$RUNNER_TEMP/store.pass"
-          key_pass="$RUNNER_TEMP/key.pass"
+          key_store="$FOLD_CI_WORK/termux-fold-release.p12"
+          store_pass="$FOLD_CI_WORK/store.pass"
+          key_pass="$FOLD_CI_WORK/key.pass"
           cleanup() { rm -f "$key_store" "$store_pass" "$key_pass"; }
           trap cleanup EXIT
+          trap 'exit 1' HUP INT TERM
           printf '%s' "$FOLD_KEYSTORE_BASE64" | base64 --decode > "$key_store"
           printf '%s\n' "$FOLD_KEYSTORE_PASSWORD" > "$store_pass"
           printf '%s\n' "$FOLD_KEYSTORE_PASSWORD" > "$key_pass"
           test "$(sha256sum "$key_store" | cut -d' ' -f1)" = "$EXPECTED_KEYSTORE_SHA256"
           keytool -list -keystore "$key_store" -storetype PKCS12 -storepass:file "$store_pass" >/dev/null
+          unset FOLD_KEYSTORE_BASE64 FOLD_KEYSTORE_PASSWORD EXPECTED_KEYSTORE_SHA256
           echo 'keystore integrity and password verified'
 
           mkdir -p release-output
@@ -302,14 +361,17 @@ jobs:
 
           Android may require **Install anyway** because Termux intentionally retains target SDK 28 for direct execution from its writable package prefix. Verify the checksum and choose **Update**; never uninstall an existing Fold-signed installation merely to update it.
           EOF
-          printf 'version_name=%s\n' "$version_name" >> "$GITHUB_OUTPUT"
-          printf 'source_commit=%s\n' "$source_commit" >> "$GITHUB_OUTPUT"
-          printf 'signed_apk=%s\n' "$signed_name" >> "$GITHUB_OUTPUT"
-          printf 'signed_sha256=%s\n' "$signed_hash" >> "$GITHUB_OUTPUT"
-          printf 'Signed APK SHA-256: `%s`\n' "$signed_hash" >> "$GITHUB_STEP_SUMMARY"
+          {
+            printf 'version_name=%s\n' "$version_name"
+            printf 'source_commit=%s\n' "$source_commit"
+            printf 'signed_apk=%s\n' "$signed_name"
+            printf 'signed_sha256=%s\n' "$signed_hash"
+          } >> "$GITHUB_OUTPUT"
+          printf "Signed APK SHA-256: \`%s\`\n" "$signed_hash" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish signed GitHub Release
         if: inputs.publish_release
+        working-directory: ${{ env.FOLD_CI_WORK }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -335,3 +397,11 @@ jobs:
             "release-output/${{ steps.sign.outputs.signed_apk }}" \
             release-output/SHA256SUMS \
             release-output/PROVENANCE
+
+      - name: Always remove temporary signing credentials
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -n "${FOLD_CI_WORK:-}" ]; then
+            rm -f "$FOLD_CI_WORK/termux-fold-release.p12" "$FOLD_CI_WORK/store.pass" "$FOLD_CI_WORK/key.pass"
+          fi

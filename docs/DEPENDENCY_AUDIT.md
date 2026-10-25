@@ -2,6 +2,8 @@
 
 Historical audit for [PR #5](https://github.com/fitchmultz/termux-app/pull/5), integrated into `fold/main`, based on `fc0ccf29`. That selective maintenance update did not sync upstream or bump the release version. The tables and verification results describe its audited inputs; the later locked offline bootstrap is documented in [tools/bootstrap/README.md](../tools/bootstrap/README.md), and the current release profile is in [FOLD_PROFILE.md](../FOLD_PROFILE.md). The tables cover every external direct Gradle coordinate, the wrapper, SDK/NDK/JDK, bootstrap, and every action in both retained workflows. Project-to-project dependencies do not have independent releases.
 
+The runner-image discussion below is historical. [Current runner policy](CI_RUNNER.md) describes the later M1 migration, pinned amd64 job container, and explicitly provisioned utilities; it does not change the historical qualification recorded here.
+
 ## Changes
 
 | Input | Before → integrated | Authoritative evidence and compatibility |
