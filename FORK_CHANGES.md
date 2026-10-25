@@ -2,10 +2,6 @@
 
 This is the canonical concise inventory of intentional differences from the audited Termux upstream base. Update it in the same commit whenever a fix, feature, default, release constraint, or operational policy changes.
 
-## Unmerged candidate
-
-- `fold/m1-runner` moves all eight Actions jobs to the owner's persistent private M1 Linux ARM64 runner, using digest-pinned Ubuntu 24.04 amd64 job containers with Rosetta and read-only ARM64 action-runtime libraries. There is no hosted fallback. Job-private SDK/work/Gradle directories, x64 Java 11/21, hash-pinned GitHub CLI 2.103.2 in signers, and truthful companion host/container provenance preserve the existing build/signing gates; this candidate does not re-enable Actions, publish, install, or establish Android runtime qualification. See [runner policy](docs/CI_RUNNER.md).
-
 ## Scope and release profile
 
 - Prioritizes the owner's Z Fold 8 (`SM-F971U1`, Android 17), retains the Ultra (`SM-F976U1`) as a regression target, and welcomes other compatible devices without model-name gating. The signed APK remains ARM64-only.
@@ -70,6 +66,7 @@ This is the canonical concise inventory of intentional differences from the audi
 - Uses `fold/main` as the GitHub default; `master` remains an audited reference point, not an automatic synchronization target. Fork CLI/API operations explicitly name the intended repository rather than relying on upstream-prone inference.
 - Treats this as a permanent personal appliance fork. Upstream PRs and wholesale rebases/syncs are not goals; relevant security or compatibility fixes are selectively reviewed and cherry-picked.
 - Keeps `Fold checks` read-only for wrapper validation, full unit tests, packaged metadata/ABI/signature checks, and two reproducible unsigned builds. Synthetic workbench render images and unit-test reports are retained briefly as CI artifacts; no private terminal contents are captured.
+- Routes all eight Actions jobs to the owner's persistent private M1 Linux ARM64 runner, using digest-pinned Ubuntu 24.04 amd64 job containers with Rosetta and read-only ARM64 action-runtime libraries; offline jobs queue without a hosted fallback. Job-private SDK/work/Gradle directories, explicit x64 Java 11/21, verified GitHub CLI 2.103.2 in signers, and truthful companion host/container provenance preserve the existing build/signing gates. Migration does not re-enable Actions, publish, install, or establish Android runtime qualification. See [runner policy](docs/CI_RUNNER.md).
 - Provides a manually dispatched `Fold signed release` workflow: an unprivileged job builds twice, then a separate environment-scoped job (with no reviewer/wait gate) signs and verifies; public Release publication is a separate explicit boolean gate and includes only the signed APK/checksum/provenance. Inherited upstream artifact/release/dependency/JitPack workflows are removed.
 
 - Keeps installation owner-controlled with signer/backup/recovery and physical-test readiness. Checkpoint running work before APK replacement; never uninstall to update or assume Android accepts lower-code APK rollback. See [installation boundary](FOLD_PROFILE.md#installation-boundary).
