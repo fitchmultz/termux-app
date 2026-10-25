@@ -234,7 +234,9 @@ installs `termux-services`; normal command/library symlinks must resolve offline
 On Linux/Termux, install host prerequisites **in your build environment**:
 Python 3.11+, Bash, curl, dpkg/dpkg-deb, gpgv, binutils/ar, jq, zip, gzip, xz,
 and standard coreutils/find/grep/sed/tar/awk/xargs utilities. The CI workflows
-provision these explicitly; signing remains isolated and unchanged. No live
+provision these explicitly in pinned Linux amd64 job containers on the private
+M1 runner; see [runner policy and qualification limits](../../docs/CI_RUNNER.md).
+Signing remains in separate environment-scoped jobs on the persistent runner. No live
 Termux package installation is part of this project's build/test commands. On macOS,
 put Bash 4+ and GNU coreutils/findutils/grep/sed/tar/awk/binutils ahead of the BSD
 system tools and install dpkg/gpgv as build-host tools; upstream's generator does

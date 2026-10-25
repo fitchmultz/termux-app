@@ -11,6 +11,13 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
+env:
+  SHELL: /bin/bash
+
 concurrency:
   group: fold-checks-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -18,9 +25,23 @@ concurrency:
 jobs:
   wrapper-validation:
     name: Gradle wrapper validation
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, ARM64]
+    container:
+      image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+      options: --platform linux/amd64
+      volumes:
+        - /lib/ld-linux-aarch64.so.1:/lib/ld-linux-aarch64.so.1:ro
+        - /lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu:ro
     timeout-minutes: 10
     steps:
+      - name: Prepare M1 job container
+        run: |
+          set -euo pipefail
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ARCH" = ARM64
+          test "$(uname -m)" = x86_64
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git
       - name: Clone repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,38 +51,73 @@ jobs:
 
   bootstrap-validation:
     name: Offline bootstrap validation
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, ARM64]
+    container:
+      image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+      options: --platform linux/amd64
+      volumes:
+        - /lib/ld-linux-aarch64.so.1:/lib/ld-linux-aarch64.so.1:ro
+        - /lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu:ro
     timeout-minutes: 15
     steps:
+      - name: Prepare M1 job container
+        run: |
+          set -euo pipefail
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ARCH" = ARM64
+          test "$(uname -m)" = x86_64
+          work="$(mktemp -d "$RUNNER_TEMP/fold-ci.XXXXXXXX")"
+          printf 'FOLD_CI_WORK=%s\n' "$work" >> "$GITHUB_ENV"
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git curl unzip binutils dpkg gpgv gzip xz-utils zip jq python3 make file libstdc++6
       - name: Clone repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install bootstrap build tools
-        run: sudo apt-get update && sudo apt-get install -y binutils curl dpkg gpgv gzip xz-utils zip jq python3
       - name: Test runner failure paths and build twice without target execution
         shell: bash
         run: |
           set -euo pipefail
           python3 -m unittest discover -s tools/bootstrap -p 'test_*.py' -v
-          python3 tools/bootstrap/bootstrap.py build --cache "$RUNNER_TEMP/bootstrap-cache" --output "$RUNNER_TEMP/first/bootstrap-aarch64.zip" > "$RUNNER_TEMP/bootstrap-first.log" 2>&1
-          python3 tools/bootstrap/bootstrap.py build --offline --cache "$RUNNER_TEMP/bootstrap-cache" --output "$RUNNER_TEMP/second/bootstrap-aarch64.zip" > "$RUNNER_TEMP/bootstrap-second.log" 2>&1
-          cmp "$RUNNER_TEMP/first/bootstrap-aarch64.zip" "$RUNNER_TEMP/second/bootstrap-aarch64.zip"
-          sha256sum "$RUNNER_TEMP/first/bootstrap-aarch64.zip"
-          python3 tools/bootstrap/check_payload.py "$RUNNER_TEMP/first/bootstrap-aarch64.zip"
+          python3 tools/bootstrap/bootstrap.py build --cache "$FOLD_CI_WORK/bootstrap-cache" --output "$FOLD_CI_WORK/first/bootstrap-aarch64.zip" > "$FOLD_CI_WORK/bootstrap-first.log" 2>&1
+          python3 tools/bootstrap/bootstrap.py build --offline --cache "$FOLD_CI_WORK/bootstrap-cache" --output "$FOLD_CI_WORK/second/bootstrap-aarch64.zip" > "$FOLD_CI_WORK/bootstrap-second.log" 2>&1
+          cmp "$FOLD_CI_WORK/first/bootstrap-aarch64.zip" "$FOLD_CI_WORK/second/bootstrap-aarch64.zip"
+          sha256sum "$FOLD_CI_WORK/first/bootstrap-aarch64.zip"
+          python3 tools/bootstrap/check_payload.py "$FOLD_CI_WORK/first/bootstrap-aarch64.zip"
       - name: Save bootstrap validation logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bootstrap-validation-logs
-          path: ${{ runner.temp }}/bootstrap-*.log
+          path: ${{ env.FOLD_CI_WORK }}/bootstrap-*.log
           retention-days: 3
 
   unit-tests:
     name: Gradle unit tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, ARM64]
+    container:
+      image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+      options: --platform linux/amd64
+      volumes:
+        - /lib/ld-linux-aarch64.so.1:/lib/ld-linux-aarch64.so.1:ro
+        - /lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu:ro
     timeout-minutes: 30
     steps:
+      - name: Prepare M1 job container
+        run: |
+          set -euo pipefail
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ARCH" = ARM64
+          test "$(uname -m)" = x86_64
+          work="$(mktemp -d "$RUNNER_TEMP/fold-ci.XXXXXXXX")"
+          {
+            printf 'FOLD_CI_WORK=%s\n' "$work"
+            printf 'ANDROID_SDK_ROOT=%s/android-sdk\n' "$work"
+            printf 'ANDROID_HOME=%s/android-sdk\n' "$work"
+            printf 'GRADLE_USER_HOME=%s/gradle-home\n' "$work"
+          } >> "$GITHUB_ENV"
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates git curl unzip binutils dpkg gpgv gzip xz-utils zip jq python3 make file libstdc++6
       - name: Clone repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,6 +127,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          architecture: x64
           check-latest: true
       - name: Install pinned Android SDK
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
@@ -78,8 +135,6 @@ jobs:
           cmdline-tools-version: '16111833' # 23.0
           accept-android-sdk-licenses: false # CLT 23 removed the legacy --licenses handshake.
           packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
-      - name: Install bootstrap build tools
-        run: sudo apt-get update && sudo apt-get install -y binutils curl dpkg gpgv gzip xz-utils zip jq python3
       - name: Execute tests
         run: ./gradlew --no-daemon test
       - name: Save synthetic workbench renders and test reports
@@ -94,9 +149,30 @@ jobs:
 
   integration-apk-build:
     name: Integration APK compile check
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, ARM64]
+    container:
+      image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
+      options: --platform linux/amd64
+      volumes:
+        - /lib/ld-linux-aarch64.so.1:/lib/ld-linux-aarch64.so.1:ro
+        - /lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu:ro
     timeout-minutes: 45
     steps:
+      - name: Prepare M1 job container
+        run: |
+          set -euo pipefail
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ARCH" = ARM64
+          test "$(uname -m)" = x86_64
+          work="$(mktemp -d "$RUNNER_TEMP/fold-ci.XXXXXXXX")"
+          {
+            printf 'FOLD_CI_WORK=%s\n' "$work"
+            printf 'ANDROID_SDK_ROOT=%s/android-sdk\n' "$work"
+            printf 'ANDROID_HOME=%s/android-sdk\n' "$work"
+            printf 'GRADLE_USER_HOME=%s/gradle-home\n' "$work"
+          } >> "$GITHUB_ENV"
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates git curl unzip binutils dpkg gpgv gzip xz-utils zip jq python3 make file libstdc++6
       - name: Clone repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -106,6 +182,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          architecture: x64
           check-latest: true
       - name: Install pinned Android SDK
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
@@ -113,8 +190,6 @@ jobs:
           cmdline-tools-version: '16111833' # 23.0
           accept-android-sdk-licenses: false # CLT 23 removed the legacy --licenses handshake.
           packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
-      - name: Install bootstrap build tools
-        run: sudo apt-get update && sudo apt-get install -y binutils curl dpkg gpgv gzip xz-utils zip jq python3
       - name: Validate opinionated release metadata
         shell: bash
         run: |
@@ -136,7 +211,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
           metadata="$(./gradlew --no-daemon -q :app:foldReleaseMetadata)"
           version_name="$(awk -F= '$1 == "versionName" {print $2}' <<<"$metadata")"
           version_code="$(awk -F= '$1 == "versionCode" {print $2}' <<<"$metadata")"
@@ -145,7 +221,7 @@ jobs:
           mapfile -t apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
           test "${#apks[@]}" -eq 1
           apk="${apks[0]}"
-          build_tools="$ANDROID_HOME/build-tools/$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          build_tools="$ANDROID_HOME/build-tools/37.0.0"
           badging="$("$build_tools/aapt" dump badging "$apk")"
           grep -F "package: name='com.termux' versionCode='$version_code' versionName='$version_name'" <<<"$badging"
           grep -Fx "application-label:'$application_label'" <<<"$badging"
