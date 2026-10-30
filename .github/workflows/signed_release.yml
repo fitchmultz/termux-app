@@ -53,6 +53,7 @@ jobs:
             printf 'FOLD_CI_WORK=%s\n' "$work"
             printf 'ANDROID_SDK_ROOT=%s/android-sdk\n' "$work"
             printf 'ANDROID_HOME=%s/android-sdk\n' "$work"
+            printf 'ANDROID_USER_HOME=%s/android-user-home\n' "$work"
             printf 'GRADLE_USER_HOME=%s/gradle-home\n' "$work"
           } >> "$GITHUB_ENV"
           apt-get update
@@ -209,6 +210,7 @@ jobs:
             printf 'FOLD_CI_WORK=%s\n' "$work"
             printf 'ANDROID_SDK_ROOT=%s/android-sdk\n' "$work"
             printf 'ANDROID_HOME=%s/android-sdk\n' "$work"
+            printf 'ANDROID_USER_HOME=%s/android-user-home\n' "$work"
           } >> "$GITHUB_ENV"
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates curl unzip libstdc++6

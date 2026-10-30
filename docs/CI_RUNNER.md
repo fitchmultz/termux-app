@@ -62,10 +62,14 @@ The release fixes attachment-token authorization; it does not change this
 workflow's artifact-envelope/release gates. No downloaded shell script is run.
 
 Build/validation jobs with generated payloads and both signers create a new
-private directory beneath runner temporary storage. SDK installers receive
-job-specific `ANDROID_SDK_ROOT` and `ANDROID_HOME`; main Gradle jobs also receive a job-specific `GRADLE_USER_HOME`.
-Companion source rounds retain six separate Gradle homes and two empty local
-Maven repositories, with build/configuration caches disabled. No shared Actions
+private directory beneath runner temporary storage. SDK-using jobs export
+job-specific `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and `ANDROID_USER_HOME` under
+that directory before setup-android runs. This directs the modern Android CLI's
+bundles into the job's private tree instead of reusing the shared
+`$HOME/.android` bundle; the workflow does not remove shared runner state. Main
+Gradle jobs also receive a job-specific `GRADLE_USER_HOME`. Companion source
+rounds retain six separate Gradle homes and two empty local Maven repositories,
+with build/configuration caches disabled. No shared Actions
 cache is added. Java's runner tool cache may persist, separated by architecture.
 Bootstrap inputs are still rehashed; its second generation deliberately reuses
 the first generation's verified download cache offline.
