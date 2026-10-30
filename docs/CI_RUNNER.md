@@ -97,7 +97,9 @@ establish independent host isolation.
 
 The main release requires explicit dispatch and signs in its separate
 `termux-fold-signing` job; public publication is a separate **default-false**
-input. Companion signing is **default-false**, dispatch-only, `fold/main`-only and
+input. With publication off, the verified signed APK, checksum and provenance
+are downloadable in an authenticated Actions artifact using the repository's
+retention setting. Companion signing is **default-false**, dispatch-only, `fold/main`-only and
 repository-bound, in the same protected environment. The key remains in its
 existing protected GitHub secrets; no local backup is an input to these jobs.
 Neither workflow installs an APK or grants Android permissions.
@@ -109,6 +111,10 @@ The companion retains two complete source chains, publication/resolution/source
 preservation audits, byte-identical unsigned APKs, bounded same-run artifacts,
 and independent optional signature/certificate/archive validation. API unit
 sources remain absent; `NO-SOURCE` is not an additional passing suite.
+
+Git commands that read the checkout for main release identity and reproducibility
+pass `safe.directory` only for the current workspace, avoiding the container's
+host-owned checkout error without changing host or global Git configuration.
 
 ## Qualification
 
