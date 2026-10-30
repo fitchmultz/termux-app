@@ -180,9 +180,13 @@ not changed, and live clipboard functionality is not established by these builds
 - Every downloaded/cached source and **every .deb** is SHA-256 checked before the
   upstream shell runs or packages are inspected/extracted. Bad cache files fail
   instead of being silently trusted/refreshed. HTTPS redirects cannot downgrade
-  transport. Temporary downloads are renamed only after verification. The build
-  constructs a private `file://` repository from locked records and verified
-  packages; upstream cannot fall back to a live apt repository.
+  transport. Temporary downloads are renamed only after verification. If a locked
+  download fails, a recorded [content-addressed input snapshot](https://github.com/fitchmultz/termux-app/releases/tag/fold-bootstrap-inputs)
+  restores that lock's exact inputs: the archive and every member are checked
+  against reviewed hashes before the normal builder rechecks its cache. Unknown
+  locks retain the original download path; `--offline` never downloads a snapshot.
+  The build constructs a private `file://` repository from locked records and
+  verified packages; upstream cannot fall back to a live apt repository.
 - All generator source, HOME, TMPDIR, repository, unpacked native files, and
   partial archives stay under the requested build directory. No target binary,
   maintainer script, or second-stage script is executed by the build. Package
@@ -306,8 +310,22 @@ python3 tools/bootstrap/bootstrap.py refresh --metadata build/bootstrap-review \
 Review the lock/provenance diff, package scripts (especially service/network
 behavior), upstream source changes, dependency/API/ELF closure, native command
 smoke proof, compressed size, and two clean build results; update this document
-and `FORK_CHANGES.md` together. Committed hashes supply integrity, not availability:
-if a mirror prunes a locked filename, builds fail. Preserve a verified download
-cache or use an explicitly reviewed HTTPS snapshot mirror with the same hashes;
-never silently substitute newer packages. Do not commit packages/APKs or private
+and `FORK_CHANGES.md` together. After the locked inputs are in the verified cache,
+create a snapshot before the mirror rotates:
+
+```sh
+python3 tools/bootstrap/bootstrap.py build --cache build/bootstrap-review/downloads \
+  --output build/bootstrap-review/bootstrap-aarch64.zip
+python3 tools/bootstrap/snapshot.py create --metadata build/bootstrap-review \
+  --cache build/bootstrap-review/downloads --output build/bootstrap-review/inputs.tar
+sha256sum build/bootstrap-review/inputs.tar tools/bootstrap/bootstrap.lock.json
+```
+
+The command re-authenticates the signed index, reproduces the lock, and checks
+all archive members. Publish the tar as a new `bootstrap-inputs-<archive-sha256>.tar`
+asset on the dedicated input prerelease, never replacing an existing asset; add
+its archive SHA-256 under the lock SHA-256 in `snapshots.json` in the same reviewed
+change as the new lock. Verify the downloaded asset and full build gates. This
+archive contains public source/package inputs, not an APK or signing material.
+Never silently substitute newer packages or commit packages/APKs or private
 build/device data. Release versions remain centrally owned, not bumped here.
