@@ -114,6 +114,7 @@ jobs:
             printf 'FOLD_CI_WORK=%s\n' "$work"
             printf 'ANDROID_SDK_ROOT=%s/android-sdk\n' "$work"
             printf 'ANDROID_HOME=%s/android-sdk\n' "$work"
+            printf 'ANDROID_USER_HOME=%s/android-user-home\n' "$work"
             printf 'GRADLE_USER_HOME=%s/gradle-home\n' "$work"
           } >> "$GITHUB_ENV"
           apt-get update
@@ -169,6 +170,7 @@ jobs:
             printf 'FOLD_CI_WORK=%s\n' "$work"
             printf 'ANDROID_SDK_ROOT=%s/android-sdk\n' "$work"
             printf 'ANDROID_HOME=%s/android-sdk\n' "$work"
+            printf 'ANDROID_USER_HOME=%s/android-user-home\n' "$work"
             printf 'GRADLE_USER_HOME=%s/gradle-home\n' "$work"
           } >> "$GITHUB_ENV"
           apt-get update
@@ -211,7 +213,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          SOURCE_DATE_EPOCH="$(git -c safe.directory="$GITHUB_WORKSPACE" log -1 --format=%ct)"
           export SOURCE_DATE_EPOCH
           metadata="$(./gradlew --no-daemon -q :app:foldReleaseMetadata)"
           version_name="$(awk -F= '$1 == "versionName" {print $2}' <<<"$metadata")"
