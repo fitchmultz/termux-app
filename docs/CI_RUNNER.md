@@ -62,10 +62,14 @@ The release fixes attachment-token authorization; it does not change this
 workflow's artifact-envelope/release gates. No downloaded shell script is run.
 
 Build/validation jobs with generated payloads and both signers create a new
-private directory beneath runner temporary storage. SDK installers receive
-job-specific `ANDROID_SDK_ROOT` and `ANDROID_HOME`; main Gradle jobs also receive a job-specific `GRADLE_USER_HOME`.
-Companion source rounds retain six separate Gradle homes and two empty local
-Maven repositories, with build/configuration caches disabled. No shared Actions
+private directory beneath runner temporary storage. SDK-using jobs export
+job-specific `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and `ANDROID_USER_HOME` under
+that directory before setup-android runs. This directs the modern Android CLI's
+bundles into the job's private tree instead of reusing the shared
+`$HOME/.android` bundle; the workflow does not remove shared runner state. Main
+Gradle jobs also receive a job-specific `GRADLE_USER_HOME`. Companion source
+rounds retain six separate Gradle homes and two empty local Maven repositories,
+with build/configuration caches disabled. No shared Actions
 cache is added. Java's runner tool cache may persist, separated by architecture.
 Bootstrap inputs are still rehashed; its second generation deliberately reuses
 the first generation's verified download cache offline.
@@ -104,17 +108,22 @@ repository-bound, in the same protected environment. The key remains in its
 existing protected GitHub secrets; no local backup is an input to these jobs.
 Neither workflow installs an APK or grants Android permissions.
 
+The main signer copies the reviewed snapshot helper from the dispatched workflow
+commit before checking out the exact release tag. For tags with a bootstrap lock,
+that helper restores matching archived inputs before tests and again after clean;
+older tags without a lock retain their original build path. The tagged source is
+not modified. Signed provenance records both source and workflow commits.
+
 Wrapper validation, bootstrap failure/negative/offline checks, full main tests,
 native A-to-B incremental rebuild, debug compilation, packaged identity/SDK/ABI
 and unsigned-signature gates, and two reproducible unsigned main builds remain.
 The companion retains two complete source chains, publication/resolution/source
 preservation audits, byte-identical unsigned APKs, bounded same-run artifacts,
 and independent optional signature/certificate/archive validation. API unit
-sources remain absent; `NO-SOURCE` is not an additional passing suite.
-
-Git commands that read the checkout for main release identity and reproducibility
-pass `safe.directory` only for the current workspace, avoiding the container's
-host-owned checkout error without changing host or global Git configuration.
+sources remain absent; `NO-SOURCE` is not an additional passing suite. Git
+commands reading the checkout authorize only the current workspace for their
+own process, avoiding the container's host-ownership error without changing
+host or global Git configuration.
 
 ## Creating a signed update
 
