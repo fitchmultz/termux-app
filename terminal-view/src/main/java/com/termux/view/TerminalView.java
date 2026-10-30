@@ -373,7 +373,14 @@ public final class TerminalView extends View {
                 if (mEmulator == null) return true;
 
                 Editable content = getEditable();
-                sendTextToTerminal(content);
+                // IMEs can commit a multiline paste at once; a lone newline is still Enter.
+                if (mEmulator.isBracketedPasteModeEnabled() && text.length() > 1 &&
+                    (TextUtils.indexOf(text, '\n') >= 0 || TextUtils.indexOf(text, '\r') >= 0)) {
+                    stopTextSelectionMode();
+                    mEmulator.paste(content.toString());
+                } else {
+                    sendTextToTerminal(content);
+                }
                 content.clear();
                 return true;
             }

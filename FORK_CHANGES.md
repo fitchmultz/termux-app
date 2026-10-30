@@ -13,6 +13,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Routes multiline IME commits through the existing paste path when bracketed paste is enabled, while keeping ordinary text, single Enter, and unbracketed terminal input unchanged.
 - Adapts upstream `74ab5126` to retain each session's scroll offset across session/pane replacement, activity-view restoration, keyboard/window resizing, and foreground refresh, bounded by remaining history. SCROLL reconciles background/detached output once; cancelled evicted selections follow live output unless scroll-locked. All view refreshes defer unfinished synchronized frames, while normal new output still follows the terminal.
 
 - Ports upstream `47c473f9` to clear stale wrapped-line metadata when an erase reaches the right edge, preserving newlines in copied terminal text.
