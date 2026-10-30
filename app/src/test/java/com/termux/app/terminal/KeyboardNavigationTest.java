@@ -15,6 +15,7 @@ import com.termux.app.TermuxActivity;
 import com.termux.app.TermuxService;
 import com.termux.shared.shell.command.ExecutionCommand;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
+import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import com.termux.shared.termux.shell.TermuxShellManager;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
@@ -35,6 +36,7 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Map;
 
 import static org.junit.Assert.*;
 
@@ -110,6 +112,40 @@ public class KeyboardNavigationTest {
         key(activity, "⌨").performClick();
         assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
         controller.pause().stop().destroy();
+    }
+
+    @Test public void enableDisableKeyboardControlStillWorksAcrossReturn() {
+        Application app = RuntimeEnvironment.getApplication();
+        TermuxShellManager manager = TermuxShellManager.init(app);
+        manager.mTermuxSessions.clear();
+        session("one", manager);
+        ActivityController<TermuxActivity> controller = start();
+        TermuxActivity activity = controller.get();
+        Object properties = ReflectionHelpers.getField(activity.getProperties(), "mSharedProperties");
+        Map<String, Object> values = ReflectionHelpers.getField(properties, "mMap");
+        String key = TermuxPropertyConstants.KEY_SOFT_KEYBOARD_TOGGLE_BEHAVIOUR;
+        Object previous = values.put(key, TermuxPropertyConstants.IVALUE_SOFT_KEYBOARD_TOGGLE_BEHAVIOUR_ENABLE_DISABLE);
+        try {
+            InputMethodManager input = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+            idle();
+            key(activity, "⌨").performClick();
+            assertFalse(activity.getPreferences().isSoftKeyboardEnabled());
+            assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
+            controller.pause().stop().restart().start().resume().visible().windowFocusChanged(true);
+            idle();
+            assertFalse(activity.getPreferences().isSoftKeyboardEnabled());
+            assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
+            key(activity, "⌨").performClick();
+            idle();
+            assertTrue(activity.getPreferences().isSoftKeyboardEnabled());
+            assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
+            key(activity, "⌨").performClick();
+            assertFalse(activity.getPreferences().isSoftKeyboardEnabled());
+        } finally {
+            if (previous == null) values.remove(key); else values.put(key, previous);
+            activity.getPreferences().setSoftKeyboardEnabled(true);
+            controller.pause().stop().destroy();
+        }
     }
 
     @Test public void quickReturnAfterPauseKeepsKeyboardHidden() {
