@@ -137,7 +137,7 @@ are not automatically signed or made downloadable.
    from **Artifacts**. The ZIP contains the signed APK, `SHA256SUMS`, and
    `PROVENANCE`; GitHub sign-in is required. Artifacts use the repository's
    retention setting, currently 90 days. For CLI download, use
-   `gh-personal run download RUN_ID -R fitchmultz/termux-app --name termux-fold-signed-RUN_ID-ATTEMPT --dir DIR`,
+   `gh run download RUN_ID -R fitchmultz/termux-app --name termux-fold-signed-RUN_ID-ATTEMPT --dir DIR`,
    replacing the placeholders. In the extracted directory, run
    `sha256sum -c SHA256SUMS` and verify the APK's package, version, signing
    certificate and provenance against the installed app and approved tag.
