@@ -102,13 +102,22 @@ repository-bound, in the same protected environment. The key remains in its
 existing protected GitHub secrets; no local backup is an input to these jobs.
 Neither workflow installs an APK or grants Android permissions.
 
+The main signer copies the reviewed snapshot helper from the dispatched workflow
+commit before checking out the exact release tag. For tags with a bootstrap lock,
+that helper restores matching archived inputs before tests and again after clean;
+older tags without a lock retain their original build path. The tagged source is
+not modified. Signed provenance records both source and workflow commits.
+
 Wrapper validation, bootstrap failure/negative/offline checks, full main tests,
 native A-to-B incremental rebuild, debug compilation, packaged identity/SDK/ABI
 and unsigned-signature gates, and two reproducible unsigned main builds remain.
 The companion retains two complete source chains, publication/resolution/source
 preservation audits, byte-identical unsigned APKs, bounded same-run artifacts,
 and independent optional signature/certificate/archive validation. API unit
-sources remain absent; `NO-SOURCE` is not an additional passing suite.
+sources remain absent; `NO-SOURCE` is not an additional passing suite. Git
+commands reading the checkout authorize only the current workspace for their
+own process, avoiding the container's host-ownership error without changing
+host or global Git configuration.
 
 ## Qualification
 

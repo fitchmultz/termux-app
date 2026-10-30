@@ -16,6 +16,8 @@ import tempfile
 import zipfile
 import zlib
 
+import snapshot
+
 HERE = Path(__file__).resolve().parent
 PROFILE = json.loads((HERE / "profile.json").read_text())
 PREFIX = "/data/data/com.termux/files/usr/"
@@ -50,7 +52,7 @@ def atomic_write(path, data):
             temporary.unlink(missing_ok=True)
 
 
-def fetch(url, digest, cache, offline=False):
+def fetch(url, digest, cache, offline=False, recover=None):
     require(re.fullmatch(r"[0-9a-f]{64}", digest), "Invalid SHA-256")
     destination = cache / digest
     if destination.exists():
@@ -63,17 +65,24 @@ def fetch(url, digest, cache, offline=False):
     with tempfile.TemporaryDirectory(prefix="download-", dir=cache) as work:
         temporary = Path(work) / "input"
         # Constrain redirects to HTTPS too; never load the caller's curlrc.
-        subprocess.run(["curl", "--disable", "--fail", "--location", "--silent", "--show-error",
-                        "--proto", "=https", "--proto-redir", "=https", "--connect-timeout", "30",
-                        "--max-time", "300", "--output", str(temporary), url], check=True)
+        try:
+            subprocess.run(["curl", "--disable", "--fail", "--location", "--silent", "--show-error",
+                            "--proto", "=https", "--proto-redir", "=https", "--connect-timeout", "30",
+                            "--max-time", "300", "--output", str(temporary), url], check=True)
+        except subprocess.CalledProcessError:
+            if recover is None or not recover():
+                raise
+            require(destination.is_file() and not destination.is_symlink() and sha(destination) == digest,
+                    f"Recovered input checksum mismatch: {destination}")
+            return destination
         require(sha(temporary) == digest, f"Checksum mismatch: {url}")
         os.replace(temporary, destination)
     return destination
 
 
-def source_files(cache, offline=False):
+def source_files(cache, offline=False, recover=None):
     base = "https://raw.githubusercontent.com/termux/termux-packages/" + PROFILE["upstream_commit"]
-    return {name: fetch(f"{base}/{name}", digest, cache, offline)
+    return {name: fetch(f"{base}/{name}", digest, cache, offline, recover)
             for name, digest in PROFILE["sources"].items()}
 
 
@@ -358,8 +367,12 @@ def verify(archive_path, lock):
 
 def build(args):
     lock = load_lock(args.lock)
-    sources = source_files(args.cache, args.offline)
-    files = [fetch(PROFILE["repository"] + "/" + r["Filename"], r["SHA256"], args.cache, args.offline)
+    def recover():
+        return snapshot.restore(args.lock, HERE / "profile.json", args.cache,
+                                args.cache.parent / "snapshot-archives")
+
+    sources = source_files(args.cache, args.offline, recover)
+    files = [fetch(PROFILE["repository"] + "/" + r["Filename"], r["SHA256"], args.cache, args.offline, recover)
              for r in lock["packages"]]
     check_debs(lock["packages"], files)
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -421,5 +434,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, OSError, subprocess.SubprocessError, zipfile.BadZipFile) as error:
+    except (ValueError, OSError, subprocess.SubprocessError, tarfile.TarError, zipfile.BadZipFile) as error:
         sys.exit(f"bootstrap: {error}")

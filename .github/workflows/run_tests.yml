@@ -211,7 +211,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          SOURCE_DATE_EPOCH="$(git -c safe.directory="$GITHUB_WORKSPACE" log -1 --format=%ct)"
           export SOURCE_DATE_EPOCH
           metadata="$(./gradlew --no-daemon -q :app:foldReleaseMetadata)"
           version_name="$(awk -F= '$1 == "versionName" {print $2}' <<<"$metadata")"
