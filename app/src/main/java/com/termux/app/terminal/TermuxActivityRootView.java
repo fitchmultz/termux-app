@@ -292,11 +292,12 @@ public class TermuxActivityRootView extends LinearLayout implements ViewTreeObse
     public static class WindowInsetsListener implements View.OnApplyWindowInsetsListener {
         @Override
         public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
-            WindowInsetsCompat compat = WindowInsetsCompat.toWindowInsetsCompat(insets, v);
-            mStatusBarHeight = compat.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+            mStatusBarHeight = WindowInsetsCompat.toWindowInsetsCompat(insets).getInsets(WindowInsetsCompat.Type.statusBars()).top;
             TermuxActivity activity = ((TermuxActivityRootView) v).mActivity;
-            if (activity != null && activity.getTermuxTerminalViewClient() != null)
+            if (activity != null && activity.getTermuxTerminalViewClient() != null) {
+                WindowInsetsCompat compat = WindowInsetsCompat.toWindowInsetsCompat(insets, v);
                 activity.getTermuxTerminalViewClient().onSoftKeyboardVisibilityChanged(compat.isVisible(WindowInsetsCompat.Type.ime()));
+            }
             // Let view window handle insets however it wants
             return v.onApplyWindowInsets(insets);
         }
