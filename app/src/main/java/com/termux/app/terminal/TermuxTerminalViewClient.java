@@ -144,9 +144,10 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
     public void onWindowFocusChanged(boolean hasFocus) {
         if (!hasFocus || !mSuppressKeyboardOnReturn) return;
-        // Let Android process the returning window's hidden state before restoring its normal mode.
+        // Clear a carried-over IME request after Android binds this window, then restore its normal mode.
         mActivity.getWindow().getDecorView().post(() -> {
             if (!mActivity.hasWindowFocus() || !mSuppressKeyboardOnReturn) return;
+            KeyboardUtils.hideSoftKeyboard(mActivity, mActivity.getTerminalView());
             mSuppressKeyboardOnReturn = false;
             if (!mActivity.getProperties().shouldSoftKeyboardBeHiddenOnStartup())
                 KeyboardUtils.setSoftInputModeAdjustResize(mActivity);

@@ -111,6 +111,11 @@ public class KeyboardNavigationTest {
         assertEquals("a", input(terminal));
         key(activity, "⌨").performClick();
         assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
+        controller.pause().resume().visible().windowFocusChanged(true);
+        idle();
+        assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
+        key(activity, "⌨").performClick();
+        assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
         controller.pause().stop().destroy();
     }
 
