@@ -49,6 +49,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Opinionated defaults
 
+- This source branch keeps the soft keyboard hidden on return from another app and does not open it merely to switch existing sessions. It cancels pending show requests when the keyboard is hidden. Initial launch, new sessions, and deliberate keyboard controls remain available; set `show-soft-keyboard-on-navigation = true` in `~/.termux/termux.properties` and run `termux-reload-settings` to restore the old automatic requests. Existing startup-hide and keyboard-disable settings still take precedence.
 - Enables Samsung character-based terminal input for immediate command typing.
 - Makes the Evidence Dock available alongside extra keys, initially collapsed, and places the session drawer at logical `end` (right in this profile).
 - Uses `ESC`, `TAB`, `CTRL/PREV`, `ALT/NEXT`, `NEXT`, `DRAWER`; then `HOME`, `LEFT`, `UP/PGUP`, `DOWN/PGDN`, `RIGHT`, `KEYBOARD/TEXTBAR`. The default matrix reflows to one row only when every label and at least 48dp per touch target fit. Custom matrices keep their configured rows; toolbar height respects a 48dp minimum. Reflow preserves the same button instances, modifiers, macros, and popups.
