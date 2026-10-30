@@ -1,10 +1,7 @@
 package com.termux.app.terminal;
 
-import android.content.Context;
 import android.os.Bundle;
-import android.os.Looper;
 import android.view.View;
-import android.view.inputmethod.InputMethodManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -14,7 +11,6 @@ import com.termux.shared.termux.extrakeys.ExtraKeysView;
 import com.termux.shared.termux.extrakeys.SpecialButton;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
-import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalSession;
@@ -23,13 +19,10 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
-import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.ReflectionHelpers.ClassParameter;
-
-import java.util.Map;
 
 import static org.junit.Assert.*;
 
@@ -122,65 +115,6 @@ public class FoldControlsTest {
 
     @Test @Config(qualifiers = "w900dp-h1000dp-night-mdpi")
     public void darkControlsStayReadableAndReflowWithoutLosingState() throws Exception { checkControls(); }
-
-    @Test
-    public void navigationPropertyRestoresAutomaticShowing() {
-        TermuxActivity activity = activity();
-        Object properties = ReflectionHelpers.getField(activity.getProperties(), "mSharedProperties");
-        Map<String, Object> values = ReflectionHelpers.getField(properties, "mMap");
-        String key = TermuxPropertyConstants.KEY_SHOW_SOFT_KEYBOARD_ON_NAVIGATION;
-        Object previous = values.put(key, true);
-        try {
-            TermuxTerminalViewClient client = activity.getTermuxTerminalViewClient();
-            InputMethodManager input = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
-            ReflectionHelpers.setField(activity, "mIsOnResumeAfterOnCreate", true);
-            client.onResume();
-            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1));
-            assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
-            client.onToggleSoftKeyboardRequest();
-            assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
-            ReflectionHelpers.setField(activity, "mIsOnResumeAfterOnCreate", false);
-            client.onStop();
-            client.onResume();
-            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1));
-            assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
-        } finally {
-            if (previous == null) values.remove(key); else values.put(key, previous);
-        }
-    }
-
-    @Test
-    public void hiddenStartupAndDisabledKeyboardPreferencesRemainEffective() {
-        TermuxActivity activity = activity();
-        Object properties = ReflectionHelpers.getField(activity.getProperties(), "mSharedProperties");
-        Map<String, Object> values = ReflectionHelpers.getField(properties, "mMap");
-        String key = TermuxPropertyConstants.KEY_HIDE_SOFT_KEYBOARD_ON_STARTUP;
-        Object previous = values.put(key, true);
-        try {
-            TermuxTerminalViewClient client = activity.getTermuxTerminalViewClient();
-            InputMethodManager input = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
-            ReflectionHelpers.setField(activity, "mIsOnResumeAfterOnCreate", true);
-            client.onResume();
-            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1));
-            assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
-            client.onToggleSoftKeyboardRequest();
-            assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
-            ReflectionHelpers.setField(activity, "mIsOnResumeAfterOnCreate", false);
-            client.onStop();
-            client.onResume();
-            Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1));
-            assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
-
-            activity.getPreferences().setSoftKeyboardEnabled(false);
-            client.onResume();
-            client.onToggleSoftKeyboardRequest();
-            assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
-            assertFalse(activity.getPreferences().isSoftKeyboardEnabled());
-        } finally {
-            if (previous == null) values.remove(key); else values.put(key, previous);
-            activity.getPreferences().setSoftKeyboardEnabled(true);
-        }
-    }
 
     @Test
     public void largeLabelsKeepTwoRows() {

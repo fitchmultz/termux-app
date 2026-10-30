@@ -114,6 +114,66 @@ public class KeyboardNavigationTest {
         controller.pause().stop().destroy();
     }
 
+    @Test public void navigationPropertyRestoresAutomaticShowing() {
+        Application app = RuntimeEnvironment.getApplication();
+        TermuxShellManager manager = TermuxShellManager.init(app);
+        manager.mTermuxSessions.clear();
+        session("one", manager);
+        ActivityController<TermuxActivity> controller = start();
+        TermuxActivity activity = controller.get();
+        Object properties = ReflectionHelpers.getField(activity.getProperties(), "mSharedProperties");
+        Map<String, Object> values = ReflectionHelpers.getField(properties, "mMap");
+        String key = TermuxPropertyConstants.KEY_SHOW_SOFT_KEYBOARD_ON_NAVIGATION;
+        Object previous = values.put(key, true);
+        try {
+            InputMethodManager input = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+            idle();
+            assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
+            key(activity, "⌨").performClick();
+            assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
+            controller.pause().stop().restart().start().resume().visible().windowFocusChanged(true);
+            idle();
+            assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
+        } finally {
+            if (previous == null) values.remove(key); else values.put(key, previous);
+            controller.pause().stop().destroy();
+        }
+    }
+
+    @Test public void startupHideAndDisabledKeyboardPreferencesRemainEffective() {
+        Application app = RuntimeEnvironment.getApplication();
+        TermuxShellManager manager = TermuxShellManager.init(app);
+        manager.mTermuxSessions.clear();
+        session("one", manager);
+        ActivityController<TermuxActivity> controller = start();
+        TermuxActivity activity = controller.get();
+        Object properties = ReflectionHelpers.getField(activity.getProperties(), "mSharedProperties");
+        Map<String, Object> values = ReflectionHelpers.getField(properties, "mMap");
+        String key = TermuxPropertyConstants.KEY_HIDE_SOFT_KEYBOARD_ON_STARTUP;
+        Object previous = values.put(key, true);
+        try {
+            InputMethodManager input = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+            idle();
+            controller.pause().stop().restart().start().resume().visible().windowFocusChanged(true);
+            idle();
+            assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
+            key(activity, "⌨").performClick();
+            assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
+            controller.pause().stop().restart().start().resume().visible().windowFocusChanged(true);
+            idle();
+            assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
+            activity.getPreferences().setSoftKeyboardEnabled(false);
+            controller.pause().resume().visible().windowFocusChanged(true);
+            key(activity, "⌨").performClick();
+            assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
+            assertFalse(activity.getPreferences().isSoftKeyboardEnabled());
+        } finally {
+            if (previous == null) values.remove(key); else values.put(key, previous);
+            activity.getPreferences().setSoftKeyboardEnabled(true);
+            controller.pause().stop().destroy();
+        }
+    }
+
     @Test public void enableDisableKeyboardControlStillWorksAcrossReturn() {
         Application app = RuntimeEnvironment.getApplication();
         TermuxShellManager manager = TermuxShellManager.init(app);
