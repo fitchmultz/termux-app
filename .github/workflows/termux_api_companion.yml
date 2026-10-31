@@ -6,7 +6,6 @@ on:
     paths:
       - '.github/workflows/termux_api_companion.yml'
       - 'docs/TERMUX_API_COMPANION.md'
-      - 'FORK_CHANGES.md'
       - 'AGENTS.md'
   workflow_dispatch:
     inputs:

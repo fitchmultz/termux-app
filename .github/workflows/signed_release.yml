@@ -121,13 +121,12 @@ jobs:
       - name: Prepare optional verified Robolectric test seed
         run: bash "$FOLD_CI_WORK/robolectric-helper/restore-robolectric-seed.sh"
 
-      - name: Validate Gradle wrapper and run unit tests
+      - name: Validate Gradle wrapper
         shell: bash
         run: |
           set -euo pipefail
           test "$(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -d' ' -f1)" = \
             '3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98'
-          ./gradlew --no-daemon --init-script "$FOLD_CI_WORK/robolectric-helper/robolectric-seed.init.gradle" testDebugUnitTest
 
       - name: Build and verify the unsigned release twice
         shell: bash
@@ -152,7 +151,7 @@ jobs:
           [[ "$REQUESTED_TAG" == "fold-v${version_name}" ||
              "$REQUESTED_TAG" =~ ^fold-v${version_name//./[.]}-rc[1-9][0-9]*$ ]]
 
-          ./gradlew --no-daemon :app:assembleDebug :app:assembleRelease
+          ./gradlew --no-daemon --init-script "$FOLD_CI_WORK/robolectric-helper/robolectric-seed.init.gradle" testDebugUnitTest :app:assembleRelease
           mapfile -t apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
           test "${#apks[@]}" -eq 1
           first_apk="${apks[0]}"
