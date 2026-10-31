@@ -159,7 +159,7 @@ not changed, and live clipboard functionality is not established by these builds
   a giant redundant package index is not vendored. Archive the matching full index
   externally if historical metadata revalidation will be needed after mirror
   rotation. Current production builds **never fetch an index or resolve latest**.
-- There are 120 locked packages. The generator chooses the first dependency
+- There are 121 locked packages. The generator chooses the first dependency
   alternative; our validator requires that choice and verifies Debian version
   constraints with host dpkg. Missing dependencies, unsupported syntax or
   Pre-Depends, conflicts, wrong architecture, and development/service-manager
@@ -199,12 +199,12 @@ not changed, and live clipboard functionality is not established by these builds
   Git hook templates stay executable, ordinary files do not gain execute, and
   `down` files still keep services disabled. Missing/unsafe executable metadata
   fails before installation commits.
-  DEFLATE level 9 keeps the whole-blob JNI/Java bootstrap allocation bounded:
-  this snapshot is 81,497,481 compressed bytes / 201,297,988 expanded bytes on
-  Python 3.14.8 + zlib 1.3.2. **Use the same Python/zlib toolchain for byte-for-byte
-  reproduction**; the runner prints both versions. CI compares two independent
-  generations, the second offline, as well as retaining the two unsigned APK
-  builds. No uncompressed 201 MB blob is loaded just to chase cross-zlib identity.
+  The Fold-native builds measured above use DEFLATE level 9: 96,430,740
+  compressed bytes / 244,553,917 expanded bytes on Python 3.15.1 and zlib 1.3.2.
+  **Use the same Python/zlib toolchain for byte-for-byte reproduction**; the
+  runner prints both versions. CI compares two independent generations, the
+  second offline, as well as retaining the two unsigned APK builds. The JNI
+  interface returns the compressed ZIP as a Java byte array.
 - Validation checks the exact dpkg package/version/architecture inventory,
   package-owned paths and file checksums, requested commands and symlinks, every
   ELF's ARM64 architecture, and every production ELF's NEEDED-library closure and
