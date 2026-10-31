@@ -7,7 +7,7 @@ remain separate steps; see [FOLD_PROFILE.md](../../FOLD_PROFILE.md).
 Fresh ARM64/API-24+ installations get the usual Termux Android-7 apt bootstrap
 plus **Git, OpenSSH (ssh/scp/sftp), tmux, jq, ripgrep (`rg`), fd, fzf, rsync, tree,
 zip, wget, zsh with zsh-completions, lsd, bat, git-delta (`delta`), direnv,
-git-lfs, and the termux-api client**, without first-launch network access. Bash, coreutils, curl,
+git-lfs, chezmoi, and the termux-api client**, without first-launch network access. Bash, coreutils, curl,
 unzip, nano, apt/dpkg, CA certificates, and the other upstream baseline packages
 remain. This is native Android/Bionic software for `com.termux` and
 `/data/data/com.termux/files/usr`, not Linux/glibc binaries.
@@ -21,7 +21,7 @@ obtain these defaults. In an existing terminal, explicitly run:
 
 ```sh
 pkg update
-pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs termux-api
+pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs chezmoi termux-api
 ```
 
 Review apt's proposed changes. This uses the user's current repository and
@@ -56,18 +56,15 @@ The seven companion roots add only `libcap` and `libgit2` to the previous closur
 The same authenticated **2026-10-24 14:22:36 UTC** repository snapshot retains all
 110 earlier package records unchanged. Those nine companion packages total 14,905,984
 downloaded `.deb` bytes and 53,977,088 declared installed-size bytes; these are
-**not** ZIP sizes. Two independent generated ZIPs (second offline) are identical:
-SHA-256 `410e09f216842577d67392eec05fc6c58cf07d1a128d4cb4bf5fdbe061d4098a`,
-81,497,481 compressed bytes / 201,297,988 expanded file bytes, **including the
-API client below**, using Python 3.14.8 / zlib 1.3.2.
-The whole ZIP still crosses JNI as one Java byte array;
-physical fresh-bootstrap heap acceptance remains a required post-install gate.
-The generated payload verifies 120 package inventories/checksums, 27 required commands,
-1,478 symlinks, and 453 ARM64 ELFs (444 production closure/API-24 checks plus the
-nine inherited developer fixtures described below). All six non-API companion
-commands pass native version probes in the private extracted prefix; the production
-Java extractor delivers 652 executable / 5,591 non-executable regular files.
-The former 119-package ZIP hash/sizes are historical, not this payload's proof.
+**not** ZIP sizes. On the Fold, two builds from the authenticated cached inputs were byte-identical:
+SHA-256 `94f3d2546354a7a298021170c41c397ae512fa61070ae1c53013545954620f53`,
+96,430,740 compressed bytes / 244,553,917 expanded file bytes, using Python
+3.15.1 and zlib 1.3.2. The payload verifier checked 121 package inventories,
+28 commands, 1,478 symlinks, and 454 ARM64 ELFs; nine inherited installed-test
+ELFs were inspected but not claimed runnable. The bundled chezmoi executable
+matches the installed 2.73.3-1 binary that runs on this Fold. The whole ZIP
+crosses JNI as one Java byte array; physical fresh-bootstrap heap behavior has
+not been measured.
 
 Versions below are the authenticated Termux package versions, not a claim about
 every upstream project's latest release. Corresponding upstream releases/sources
@@ -106,25 +103,17 @@ configuration adjusts the default prompt/command-not-found handler and sources
 the existing Termux profile **only when the user chooses that shell**. No user
 dotfiles or shell selection are changed.
 
-Mise and Chezmoi stay **outside the APK**: those two packages alone add
-50,632,824 `.deb` bytes / 229,511,168 declared installed-size bytes to this
-snapshot, before any further closure. The assessed versions are
-[Mise 2026.10.18](https://github.com/jdx/mise/tree/v2026.10.18) and
-[Chezmoi 2.73.3-1](https://github.com/twpayne/chezmoi/tree/v2.73.3), both MIT;
-their Termux build/source definitions are in the same pinned tree above.
-They belong to an explicitly selected
-configuration-specific development bootstrap. Rust/compiler, Tcl/Tk, X11, and
-language-runtime stacks likewise remain opt-in development packages, not this
-offline shell baseline. Keeping that boundary avoids silently multiplying the
-whole-blob bootstrap allocation.
+The locked [chezmoi 2.73.3-1](https://github.com/twpayne/chezmoi/tree/v2.73.3)
+package is included. Its authenticated `.deb` is 10,682,256 bytes and has no
+maintainer scripts; its installed executable matches the version already running
+on the Fold. Mise, Rust/compiler, Tcl/Tk, X11, and language-runtime stacks remain
+separate development packages.
 
 ## Termux:API client and Android companion boundary
 
-The same signed snapshot adds exactly one package to the 119-package closure:
-`termux-api` **0.60.0**, aarch64, MIT, from
+The signed snapshot includes `termux-api` **0.60.0**, aarch64, MIT, from
 [termux-api-package v0.60.0](https://github.com/termux/termux-api-package/tree/v0.60.0).
-All 119 prior records and repository provenance remain unchanged; Bash, util-linux,
-and termux-am (>= 0.8.0) already satisfy its dependencies. Its `.deb` is 30,112
+Bash, util-linux, and termux-am (>= 0.8.0) satisfy its dependencies. Its `.deb` is 30,112
 bytes, SHA-256 `b83c85e0b8f345ac4e99dd09698a8077712c85a736652bb38465cd0f2ed0a8ae`;
 the declared installed size is 364 KiB, not the ZIP size or expanded-byte delta.
 The full official client package is retained, including its other API wrappers,
