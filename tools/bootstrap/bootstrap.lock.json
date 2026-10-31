@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "profile_sha256": "c0e6477a4202c24470cc6c10e47e650b1e5928d41723087b0e194a0205bce2db",
+  "profile_sha256": "42b58057f25b134f2f1827f41212b1aebd23ac86a32173d93d03216f2faea8a8",
   "provenance": {
     "repository": "https://packages-cf.termux.dev/apt/termux-main",
     "date": "Sat, 24 Oct 2026 14:22:36 UTC",
@@ -63,6 +63,14 @@
       "Filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb",
       "Size": "110132",
       "SHA256": "ab8a7fe63293b455c02399ee125eb8a0041e430ccfdf89a5be8317522fdf9107"
+    },
+    {
+      "Package": "chezmoi",
+      "Version": "2.73.3-1",
+      "Architecture": "aarch64",
+      "Filename": "pool/main/c/chezmoi/chezmoi_2.73.3-1_aarch64.deb",
+      "Size": "10682256",
+      "SHA256": "0333cc7b612668332877f46bae4da6a89c17e792aedf7bba19c795d3a014bafd"
     },
     {
       "Package": "command-not-found",
