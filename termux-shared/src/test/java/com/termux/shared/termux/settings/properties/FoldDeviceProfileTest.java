@@ -35,6 +35,15 @@ public class FoldDeviceProfileTest {
     }
 
     @Test
+    public void keyboardNavigationCanBeRestoredThroughProperties() {
+        String key = TermuxPropertyConstants.KEY_SHOW_SOFT_KEYBOARD_ON_NAVIGATION;
+        assertTrue(TermuxPropertyConstants.TERMUX_APP_PROPERTIES_LIST.contains(key));
+        assertFalse((boolean) TermuxSharedProperties.getInternalTermuxPropertyValueFromValue(null, key, null));
+        assertTrue((boolean) TermuxSharedProperties.getInternalTermuxPropertyValueFromValue(null, key, "true"));
+        assertFalse((boolean) TermuxSharedProperties.getInternalTermuxPropertyValueFromValue(null, key, "false"));
+    }
+
+    @Test
     public void foldExtraKeysIncludeSessionInputAndNavigationControls() {
         String keys = TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS;
         assertTrue(keys.contains(ExtraKeysConstants.ACTION_DRAWER));

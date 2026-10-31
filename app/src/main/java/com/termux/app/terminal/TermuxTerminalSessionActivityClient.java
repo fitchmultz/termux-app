@@ -297,8 +297,22 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     /** Try switching to session. */
     public void setCurrentSession(TerminalSession session) {
+        setCurrentSession(session, false);
+    }
+
+    private void setCurrentSession(TerminalSession session, boolean newSession) {
         if (session == null) return;
 
+        TermuxTerminalViewClient viewClient = mActivity.getTermuxTerminalViewClient();
+        if (!newSession && mActivity.getCurrentSession() != null && viewClient != null &&
+            !mActivity.getProperties().shouldShowSoftKeyboardOnNavigation()) {
+            viewClient.withoutAutomaticKeyboardShow(() -> showSession(session));
+        } else {
+            showSession(session);
+        }
+    }
+
+    private void showSession(TerminalSession session) {
         if (mActivity.getTerminalPanes().showSession(session)) {
             // notify about switched session if not already displaying the session
             notifyOfSessionChange();
@@ -421,7 +435,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
             if (newTermuxSession == null) return;
 
             TerminalSession newTerminalSession = newTermuxSession.getTerminalSession();
-            setCurrentSession(newTerminalSession);
+            setCurrentSession(newTerminalSession, true);
 
             mActivity.getDrawer().closeDrawers();
         }
