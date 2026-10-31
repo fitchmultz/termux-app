@@ -338,6 +338,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (mTermuxTerminalViewClient != null)
+            mTermuxTerminalViewClient.onWindowFocusChanged(hasFocus);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (!mIsInvalidState && mTermuxTerminalViewClient != null)
+            mTermuxTerminalViewClient.onPause();
+    }
+
+    @Override
     protected void onStop() {
         super.onStop();
 
