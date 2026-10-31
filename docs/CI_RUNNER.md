@@ -132,9 +132,10 @@ The companion retains two complete source chains, publication/resolution/source
 preservation audits, byte-identical unsigned APKs, bounded same-run artifacts,
 and independent optional signature/certificate/archive validation. API unit
 sources remain absent; `NO-SOURCE` is not an additional passing suite. Git
-commands reading the checkout authorize only the current workspace for their
-own process, avoiding the container's host-ownership error without changing
-host or global Git configuration.
+commands reading the main workspace or a companion source checkout authorize
+only that exact checkout for their own process, including source archiving.
+This avoids the container's host-ownership error without changing host or global
+Git configuration.
 
 ## Qualification
 
