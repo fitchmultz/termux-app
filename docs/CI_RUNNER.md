@@ -67,12 +67,16 @@ job-specific `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and `ANDROID_USER_HOME` under
 that directory before setup-android runs. This directs the modern Android CLI's
 bundles into the job's private tree instead of reusing the shared
 `$HOME/.android` bundle; the workflow does not remove shared runner state. The
-combined main test/build job also receives a job-specific `GRADLE_USER_HOME`. Companion source
-rounds retain six separate Gradle homes and two empty local Maven repositories,
-with build/configuration caches disabled. No shared Actions
-cache is added. Java's runner tool cache may persist, separated by architecture.
-Bootstrap inputs are still rehashed; its second generation deliberately reuses
-the first generation's verified download cache offline.
+combined main test/build job also receives a job-specific `GRADLE_USER_HOME`.
+Gradle's setup action validates the wrapper and restores reusable Gradle state
+from the Actions cache; its default-branch jobs save updated state, while PR jobs
+read it without publishing their own. The main build enables Gradle's task cache.
+Companion source rounds retain six separate Gradle homes and two empty local Maven
+repositories, with build/configuration caches disabled. Release reproducibility
+builds do not restore this cache or enable the task cache. Java's runner tool
+cache may persist, separated by architecture. Bootstrap inputs are still rehashed;
+its second generation deliberately reuses the first generation's verified
+download cache offline.
 
 The combined main test/build job and unprivileged release-build test may use a
 job-private Maven-layout seed from [CI input assets](https://github.com/fitchmultz/termux-app/releases/tag/ci-robolectric-cache-1.0.19).
@@ -138,7 +142,7 @@ and signature checks. The separate bootstrap workflow runs failure/negative/offl
 checks and compares two bootstrap builds for changes to `tools/bootstrap/**` or
 its workflow, and can also be dispatched manually. Ordinary app builds still
 generate and validate the bootstrap from its locked inputs. Tests and the unsigned
-release assembly share one Gradle invocation and its generated bootstrap. A
+release assembly and metadata share one Gradle invocation and its generated bootstrap. A
 successful `fold/main` push uploads that verified unsigned APK. The release
 workflow reuses it only if the successful main run has the exact annotated-tag
 commit. If none is available, the workflow tests and builds the tagged source.
