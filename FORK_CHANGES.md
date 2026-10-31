@@ -57,6 +57,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Contracts, tests, and repository policy
 
+- Documents the observed Android child-process restriction and optional temporary-file retention for background work. These are device/user settings, not APK defaults or guarantees; see [background-session guidance](docs/ANDROID_BACKGROUND.md).
+
 - Provides a [pinned-source Termux:API companion workflow](docs/TERMUX_API_COMPANION.md): two independent exact-source library→local-Maven→API release chains, narrow publication/resolution-only overlays, strict metadata/APK/provenance/reproducibility gates, and default-off, main-branch-only isolated signing with the existing Fold key. Explicit publication-repository receivers avoid Groovy module-name shadowing; the source audit selects external raw AARs without changing production project variants. CLT 23 skips only the obsolete `--licenses` handshake, not package-license handling. Short-lived artifacts only; workflow integration does not publish/install the companion or establish physical clipboard access. Signing, distribution, installation/hold clearance and permissions remain separate owner-controlled steps.
 
 - Retains the unused Fold 6 tag after cancelling publication before signing to fix a cross-pane synchronized-background regression; release tags are not rewritten.

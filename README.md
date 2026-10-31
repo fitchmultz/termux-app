@@ -8,6 +8,8 @@ For an artifact-only build, run [Fold signed release](https://github.com/fitchmu
 
 The [offline default-tools profile](tools/bootstrap/README.md) adds Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, wget, zsh with completions, lsd, bat, git-delta, direnv, git-lfs, and the termux-api client to fresh installations without a first-launch network install. Existing nonempty prefixes are never replaced or automatically upgraded. To add these tools explicitly to an existing installation, run `pkg update` then `pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs termux-api` and review the proposed changes. Bash remains the default; no aliases, shell hooks, direnv activation, or global Git configuration are added. Mise/Chezmoi, Node/Python versioned development environments, and compilers remain separate, opt-in installations. Clipboard/API access still requires the separately installed, same-Fold-key Termux:API Android app and only the Android permissions needed for the chosen APIs; bundling the client alone does not enable it. Do not mix stock F-Droid/GitHub plugin APKs with Fold-signed Termux.
 
+For background work, see [Android process restrictions and temporary-file cleanup](docs/ANDROID_BACKGROUND.md).
+
 ## Upstream documentation (reference)
 
 The installation/signing and library-publication instructions below describe upstream Termux, not this fork.
@@ -29,7 +31,7 @@ Quick how-to about Termux package management is available at [Package Management
 
 ***
 
-**NOTICE: Termux may be unstable on Android 12+.** Android OS will kill any (phantom) processes greater than 32 (limit is for all apps combined) and also kill any processes using excessive CPU. You may get `[Process completed (signal 9) - press Enter]` message in the terminal without actually exiting the shell process yourself. Check the related issue [#2366](https://github.com/termux/termux-app/issues/2366), [issue tracker](https://issuetracker.google.com/u/1/issues/205156966), [phantom cached and empty processes docs](https://github.com/agnostic-apollo/Android-Docs/blob/master/en/docs/apps/processes/phantom-cached-and-empty-processes.md) and [this TLDR comment](https://github.com/termux/termux-app/issues/2366#issuecomment-1237468220) on how to disable trimming of phantom and excessive cpu usage processes. A proper docs page will be added later. An option to disable the killing should be available in Android 12L or 13, so upgrade at your own risk if you are on Android 11, specially if you are not rooted.
+**NOTICE: Android may terminate Termux child processes.** Android 12+ can trim app child processes when its device-wide monitor limit is exceeded or enforce excessive-CPU restrictions. The AOSP default is 32, but the effective limit and monitoring policy depend on the device. A pane may show `[Process completed (signal 9) - press Enter]`; other causes can also produce that message. See the [Fold background-session guidance](docs/ANDROID_BACKGROUND.md) and upstream [issue #2366](https://github.com/termux/termux-app/issues/2366).
 
 ***
 
