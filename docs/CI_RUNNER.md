@@ -1,6 +1,6 @@
 # M1 Actions runner
 
-All eight jobs in `run_tests.yml`, `signed_release.yml`, and
+Jobs in `run_tests.yml`, `bootstrap_validation.yml`, `signed_release.yml`, and
 `termux_api_companion.yml` are configured for `[self-hosted, Linux, ARM64]`.
 The owner supplies one repository Linux worker in a persistent Ubuntu 24.04
 ARM64 VM on a private M1 Mac. Its single job slot serializes these jobs.
@@ -66,15 +66,15 @@ private directory beneath runner temporary storage. SDK-using jobs export
 job-specific `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and `ANDROID_USER_HOME` under
 that directory before setup-android runs. This directs the modern Android CLI's
 bundles into the job's private tree instead of reusing the shared
-`$HOME/.android` bundle; the workflow does not remove shared runner state. Main
-Gradle jobs also receive a job-specific `GRADLE_USER_HOME`. Companion source
+`$HOME/.android` bundle; the workflow does not remove shared runner state. The
+combined main test/build job also receives a job-specific `GRADLE_USER_HOME`. Companion source
 rounds retain six separate Gradle homes and two empty local Maven repositories,
 with build/configuration caches disabled. No shared Actions
 cache is added. Java's runner tool cache may persist, separated by architecture.
 Bootstrap inputs are still rehashed; its second generation deliberately reuses
 the first generation's verified download cache offline.
 
-The main unit job and unprivileged release-build test may also use a
+The combined main test/build job and unprivileged release-build test may use a
 job-private Maven-layout seed from [CI input assets](https://github.com/fitchmultz/termux-app/releases/tag/ci-robolectric-cache-1.0.19).
 Gradle may use it as a distinct local repository only for
 `org.robolectric:nativeruntime-dist-compat:1.0.19`; its unmodified JAR and POM
@@ -86,9 +86,10 @@ When a runtime seed is available, test JVMs use this directory as
 [Robolectric's native resolver](https://github.com/robolectric/robolectric/blob/robolectric-4.17/plugins/maven-dependency-resolver/src/main/java/org/robolectric/internal/dependency/MavenArtifactFetcher.java#L65-L79)
 uses cached JARs and fetches missing versions normally. This does not enable
 Robolectric's all-or-nothing offline resolver. Unavailable assets retain the
-normal fallback; a checksum mismatch fails the job. The init script is used
-only for unit tests, not the reproducible release builds. Companion source rounds
-and signers do not use this seed.
+normal fallback; a checksum mismatch fails the job. The combined PR/main Gradle
+invocation and first signed-release build use the seed for the test dependency
+and test JVMs. The second clean release build does not use the init script.
+Companion source rounds and signers do not use this seed.
 
 Signers have no repository checkout, Gradle invocation or cache restore. Their
 candidate/output directories are below their new job root, not an old workspace.
@@ -130,9 +131,16 @@ that helper restores matching archived inputs before tests and again after clean
 older tags without a lock retain their original build path. The tagged source is
 not modified. Signed provenance records both source and workflow commits.
 
-Wrapper validation, bootstrap failure/negative/offline checks, full main tests,
-native A-to-B incremental rebuild, debug compilation, packaged identity/SDK/ABI
-and unsigned-signature gates, and two reproducible unsigned main builds remain.
+PR and main checks run wrapper validation, full main tests, the native A-to-B
+incremental rebuild, and one unsigned release build with packaged identity/SDK/ABI
+and signature checks. The separate bootstrap workflow runs failure/negative/offline
+checks and compares two bootstrap builds for changes to `tools/bootstrap/**` or
+its workflow, and can also be dispatched manually. Ordinary app builds still
+generate and validate the bootstrap from its locked inputs. Tests and the unsigned
+release assembly share one Gradle invocation and its generated bootstrap. The signed
+release workflow combines its debug unit tests with the first release assembly,
+then requires a clean, byte-identical second release build before signing. Reproducibility failures
+therefore block publication but can be found after integration.
 The companion retains two complete source chains, publication/resolution/source
 preservation audits, byte-identical unsigned APKs, bounded same-run artifacts,
 and independent optional signature/certificate/archive validation. API unit
