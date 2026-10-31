@@ -26,6 +26,7 @@ The integrated Fold profile:
 - compiles against Android 17/API 37.2 using a Java 21 toolchain and Java 17 source/bytecode baseline, while retaining target SDK 28 for direct prefix execution;
 - enables Samsung character-based terminal input;
 - avoids automatically opening the keyboard on app return or existing-session navigation while retaining the keyboard controls; `show-soft-keyboard-on-navigation = true` restores the old automatic requests, subject to existing startup-hide and keyboard-disable settings;
+- follows the app's light/dark mode for the terminal palette unless `~/.termux/colors.properties` exists; the default app mode follows Android;
 - offers a collapsible native multiline Evidence Dock above the extra keys, with per-session drafts and private file staging;
 - places the terminal-session drawer at the logical end/right edge;
 - provides two rows of controls on narrow windows and one row when all twelve labels and 48dp touch targets fit; preserves custom key matrices and places Up before Down;
@@ -33,6 +34,8 @@ The integrated Fold profile:
 - advertises the terminal emulator's implemented DEC mode 2026 synchronized-output support to tmux.
 
 Properties remain available as recovery switches, but their defaults are the Fold choices rather than upstream's general-purpose choices. Release metadata is centralized in the root `build.gradle` and asserted by the read-only integration workflow so label/version drift fails CI.
+
+The light terminal palette is Catppuccin Latte; the dark palette is the existing Termux default. Set `night-mode = system`, `true`, or `false` in `~/.termux/termux.properties` to follow Android or force the app's dark or light mode. An existing `~/.termux/colors.properties` takes precedence and keeps its fixed colors. To return to the automatic palette, move that file aside and run `termux-reload-settings`. In Pi, select the `system` theme to follow the terminal; Pi's fixed `light` and `dark` themes do not switch automatically.
 
 Native split-session controls, Evidence Dock behavior, limits, and physical acceptance checks are documented in [FOLD_WORKBENCH.md](FOLD_WORKBENCH.md).
 

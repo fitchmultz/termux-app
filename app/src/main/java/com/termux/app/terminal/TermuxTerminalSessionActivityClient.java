@@ -27,6 +27,7 @@ import com.termux.app.TermuxService;
 import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import com.termux.shared.termux.terminal.io.BellHandler;
 import com.termux.shared.logger.Logger;
+import com.termux.shared.theme.ThemeUtils;
 import com.termux.terminal.TerminalColors;
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
@@ -64,7 +65,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
      */
     public void onCreate() {
         // Set terminal fonts and colors
-        checkForFontAndColors();
+        checkForFontAndColors(false);
     }
 
     /**
@@ -113,7 +114,11 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
      */
     public void onReloadActivityStyling() {
         // Set terminal fonts and colors
-        checkForFontAndColors();
+        checkForFontAndColors(true);
+    }
+
+    public void onServiceConnected() {
+        updateSessionColors(false);
     }
 
 
@@ -545,7 +550,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     }
 
 
-    public void checkForFontAndColors() {
+    private void checkForFontAndColors(boolean resetColors) {
         try {
             File colorsFile = TermuxConstants.TERMUX_COLOR_PROPERTIES_FILE;
             File fontFile = TermuxConstants.TERMUX_FONT_FILE;
@@ -555,19 +560,34 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
                 try (InputStream in = new FileInputStream(colorsFile)) {
                     props.load(in);
                 }
+            } else if (!ThemeUtils.shouldEnableDarkTheme(mActivity, mActivity.getProperties().getNightMode())) {
+                try (InputStream in = mActivity.getResources().openRawResource(R.raw.fold_light_colors)) {
+                    props.load(in);
+                }
             }
 
             TerminalColors.COLOR_SCHEME.updateWith(props);
             final Typeface newTypeface = (fontFile.exists() && fontFile.length() > 0) ? Typeface.createFromFile(fontFile) : Typeface.MONOSPACE;
             for (TerminalView view : mActivity.getTerminalViews()) {
-                TerminalSession session = view.getCurrentSession();
-                if (session != null && session.getEmulator() != null) session.getEmulator().mColors.reset();
                 view.setTypeface(newTypeface);
             }
-            updateBackgroundColor();
+            updateSessionColors(resetColors);
         } catch (Exception e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Error in checkForFontAndColors()", e);
         }
+    }
+
+    private void updateSessionColors(boolean resetColors) {
+        TermuxService service = mActivity.getTermuxService();
+        if (service != null) {
+            for (TermuxSession session : service.getTermuxSessions()) {
+                TerminalSession terminal = session.getTerminalSession();
+                if (terminal != null && terminal.getEmulator() != null)
+                    terminal.getEmulator().updateColorScheme(resetColors);
+            }
+        }
+        updateBackgroundColor();
+        for (TerminalView view : mActivity.getTerminalViews()) view.onScreenUpdated(true);
     }
 
     public void updateBackgroundColor() {

@@ -50,6 +50,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Opinionated defaults
 
+- This source branch follows the app's light/dark mode for the terminal palette when no `~/.termux/colors.properties` exists. Light mode uses Catppuccin Latte and dark mode retains the existing Termux palette. Custom color files keep their existing behavior. Palette changes update all sessions and notify subscribed terminal programs; indexed color queries report the active palette.
 - This source branch keeps the soft keyboard hidden on return from another app and does not open it merely to switch existing sessions. It cancels pending show requests when the keyboard is hidden and clears a carried-over IME on the returning window, while retaining existing status-bar inset handling. Initial launch, new sessions, and deliberate keyboard controls remain available; set `show-soft-keyboard-on-navigation = true` in `~/.termux/termux.properties` and run `termux-reload-settings` to restore the old automatic requests. Existing startup-hide and keyboard-disable settings still take precedence.
 - Enables Samsung character-based terminal input for immediate command typing.
 - Makes the Evidence Dock available alongside extra keys, initially collapsed, and places the session drawer at logical `end` (right in this profile).
