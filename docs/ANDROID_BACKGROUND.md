@@ -12,7 +12,7 @@ On the tested Galaxy Z Fold8 with Android 17 / One UI 9:
 2. Turn on **Disable child process restrictions**.
 3. Resume the actual work and check whether the affected sessions remain alive.
 
-This is an Android-wide setting, not a Termux-only exemption. Other apps' child processes are also unrestricted by this monitor, which can increase resource and battery use. Android can still terminate processes for low memory, an app crash, or other reasons; the setting is not a guarantee. The switch can be turned off again, although a separate device or ADB override can also affect the policy. Check it after changing Developer options or updating Android.
+This is an Android-wide setting, not a Termux-only exemption. Other apps' child processes are also unrestricted by this monitor, which can increase resource and battery use. Android can still terminate processes for low memory, an app crash, or other reasons; the setting is not a guarantee. The switch can be turned off again. Check it after changing Developer options or updating Android.
 
 The Fold8 initially had the monitor enabled with a 32-process limit. After disabling it, the owner reported that the previously recurring kills appeared to stop during normal use; Android also reported 53 live child processes, 51 belonging to Termux, while both Pi sessions remained alive. The earlier kill log had already expired, so this observation does not prove what sent that particular signal.
 
@@ -26,7 +26,7 @@ Look for the recorded reason, such as `Trimming phantom processes`, rather than 
 
 ## Temporary files on service shutdown
 
-The current fork attempts to clear Termux's temporary directory when its [service is destroyed](../app/src/main/java/com/termux/app/TermuxService.java#L172-L175). That can remove files used by still-running background work; one observed shutdown also blocked the app's main thread long enough for Android to record an application-not-responding event. The existing [cleanup option](../termux-shared/src/main/java/com/termux/shared/termux/shell/TermuxShellUtils.java#L86-L110) can retain temporary files instead. Add this to `~/.termux/termux.properties`:
+The current fork attempts to clear Termux's temporary directory when its [service is destroyed](../app/src/main/java/com/termux/app/TermuxService.java#L172-L175). In one observed shutdown on the Fold, that cleanup blocked the app's main thread long enough for Android to record an application-not-responding event. The existing [cleanup option](../termux-shared/src/main/java/com/termux/shared/termux/shell/TermuxShellUtils.java#L86-L110) can retain temporary files instead. Add this to `~/.termux/termux.properties`:
 
 ```properties
 delete-tmpdir-files-older-than-x-days-on-exit = -1
