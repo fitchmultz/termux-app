@@ -402,7 +402,8 @@ jobs:
                                c["legacy_recipe"]["wrapper_sha256"], c["legacy_recipe"]["wrapper_properties_sha256"])
           for role, (directory, commit, tree, epoch, wrapper_hash, properties_hash) in sources.items():
               root = pathlib.Path(directory)
-              git = lambda *args: subprocess.check_output(["git", "-C", directory, *args], text=True).strip()
+              git_command = ["git", "-c", "safe.directory=" + str(root.resolve()), "-C", directory]
+              git = lambda *args: subprocess.check_output([*git_command, *args], text=True).strip()
               if (git("rev-parse", "HEAD"), git("rev-parse", "HEAD^{tree}"), git("log", "-1", "--format=%ct"), git("status", "--porcelain")) != (commit, tree, str(epoch), ""):
                   raise SystemExit("Source identity mismatch: " + role)
               for file, expected in (("gradle-wrapper.jar", wrapper_hash),
@@ -414,7 +415,7 @@ jobs:
                   target = round_dir / role
                   target.mkdir(parents=True)
                   archive = round_dir / (role + "-source.tar")
-                  subprocess.run(["git", "-C", directory, "-c", "tar.umask=0022", "archive", "--format=tar", "--output=" + str(archive), commit], check=True)
+                  subprocess.run([*git_command, "-c", "tar.umask=0022", "archive", "--format=tar", "--output=" + str(archive), commit], check=True)
                   subprocess.run(["tar", "--same-permissions", "-xf", str(archive), "-C", str(target)], check=True)
           PY
           # Neither old unchecked wrapper runs. Verify each declared distribution independently.
