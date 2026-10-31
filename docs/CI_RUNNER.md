@@ -146,7 +146,9 @@ release assembly and metadata share one Gradle invocation and its generated boot
 successful `fold/main` push uploads that verified unsigned APK. The release
 workflow reuses it only if the successful main run has the exact annotated-tag
 commit. If none is available, the workflow tests and builds the tagged source.
-It always requires a clean, byte-identical release rebuild before signing.
+If the main APK differs from the clean release-job build, the workflow rebuilds
+once more in the release job and requires those two builds to match byte for
+byte. A clean, byte-identical release rebuild is always required before signing.
 Reproducibility failures therefore block publication but can be found after
 integration.
 The companion retains two complete source chains, publication/resolution/source
@@ -162,7 +164,8 @@ Git configuration.
 
 The main workflow verifies and builds the exact annotated tag, not an unrelated
 `fold/main` revision. A matching successful main run can supply the first
-unsigned APK; otherwise the tag is built directly. Rebuilding an old tag cannot
+unsigned APK if the clean release-job build matches; otherwise the tag is built
+and reproduced with a clean rebuild in the release job. Rebuilding an old tag cannot
 include later commits; untagged main changes are not automatically signed or made
 downloadable.
 
