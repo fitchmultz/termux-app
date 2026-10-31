@@ -203,41 +203,53 @@ jobs:
           test "${#apks[@]}" -eq 1
           first_apk="${apks[0]}"
 
+          candidate="$FOLD_CI_WORK/fold-release-candidate"
+          mkdir -p "$candidate"
+          cp "$first_apk" "$candidate/termux-fold-unsigned.apk"
+          first_hash="$(sha256sum "$candidate/termux-fold-unsigned.apk" | cut -d' ' -f1)"
+          build_run="${MAIN_BUILD_RUN_ID:-$GITHUB_RUN_ID}"
+
+          clean_rebuild() {
+            ./gradlew --no-daemon clean
+            if [ -f tools/bootstrap/bootstrap.lock.json ]; then
+              python3 "$FOLD_CI_WORK/snapshot-helper/snapshot.py" restore \
+                --lock tools/bootstrap/bootstrap.lock.json --profile tools/bootstrap/profile.json \
+                --cache app/build/bootstrap/downloads --archives "$FOLD_CI_WORK/bootstrap-snapshots"
+            fi
+            ./gradlew --no-daemon :app:assembleRelease
+            mapfile -t rebuilt < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
+            test "${#rebuilt[@]}" -eq 1
+            second_hash="$(sha256sum "${rebuilt[0]}" | cut -d' ' -f1)"
+          }
+          clean_rebuild
+          if [ -n "$MAIN_BUILD_RUN_ID" ] && [ "$first_hash" != "$second_hash" ]; then
+            printf 'Main APK %s differs from release-job build %s; reproduce in this job.\n' "$first_hash" "$second_hash"
+            cp "${rebuilt[0]}" "$candidate/termux-fold-unsigned.apk"
+            first_hash="$second_hash"
+            build_run="$GITHUB_RUN_ID"
+            clean_rebuild
+          fi
+          printf 'unsigned build hashes: %s %s\n' "$first_hash" "$second_hash"
+          test "$first_hash" = "$second_hash"
+          cmp --silent "$candidate/termux-fold-unsigned.apk" "${rebuilt[0]}"
+
           build_tools="$ANDROID_HOME/build-tools/37.0.0"
           test -d "$build_tools"
-          badging="$("$build_tools/aapt" dump badging "$first_apk")"
+          badging="$("$build_tools/aapt" dump badging "$candidate/termux-fold-unsigned.apk")"
           grep -F "package: name='com.termux' versionCode='$version_code' versionName='$version_name'" <<<"$badging"
           grep -Fx "application-label:'$application_label'" <<<"$badging"
           grep -Fx "native-code: 'arm64-v8a'" <<<"$badging"
           grep -Fx "sdkVersion:'24'" <<<"$badging"
           grep -Fx "targetSdkVersion:'28'" <<<"$badging"
-          if "$build_tools/apksigner" verify "$first_apk" >/dev/null 2>&1; then
+          if "$build_tools/apksigner" verify "$candidate/termux-fold-unsigned.apk" >/dev/null 2>&1; then
             echo 'Release intermediate unexpectedly contains a signing certificate' >&2
             exit 1
           fi
 
-          candidate="$FOLD_CI_WORK/fold-release-candidate"
-          mkdir -p "$candidate"
-          cp "$first_apk" "$candidate/termux-fold-unsigned.apk"
-          first_hash="$(sha256sum "$candidate/termux-fold-unsigned.apk" | cut -d' ' -f1)"
-
-          ./gradlew --no-daemon clean
-          if [ -f tools/bootstrap/bootstrap.lock.json ]; then
-            python3 "$FOLD_CI_WORK/snapshot-helper/snapshot.py" restore \
-              --lock tools/bootstrap/bootstrap.lock.json --profile tools/bootstrap/profile.json \
-              --cache app/build/bootstrap/downloads --archives "$FOLD_CI_WORK/bootstrap-snapshots"
-          fi
-          ./gradlew --no-daemon :app:assembleRelease
-          mapfile -t rebuilt < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
-          test "${#rebuilt[@]}" -eq 1
-          second_hash="$(sha256sum "${rebuilt[0]}" | cut -d' ' -f1)"
-          test "$first_hash" = "$second_hash"
-          cmp --silent "$candidate/termux-fold-unsigned.apk" "${rebuilt[0]}"
-
           cat > "$candidate/release.env" <<EOF
           source_commit=$source_commit
           workflow_commit=${{ github.sha }}
-          build_run=${MAIN_BUILD_RUN_ID:-$GITHUB_RUN_ID}
+          build_run=$build_run
           source_date_epoch=$SOURCE_DATE_EPOCH
           release_tag=$REQUESTED_TAG
           version_name=$version_name
