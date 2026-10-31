@@ -86,6 +86,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Dependency and build maintenance
 
+- Unit tests can prefer a job-private, SHA-256-verified Robolectric 1.0.19 input seed from a distinct local Maven repository; unavailable assets fall back to the original repositories and mismatches fail. Other dependencies, companion source rounds, reproducible builds, and isolated signers remain unchanged.
+
 - Hosted CLT 23 setup skips the removed `sdkmanager --licenses` handshake, whose immediate exit can crash the setup action's stdin writer with `EPIPE`; actual SDK package installation and its license handling remain required in CI and isolated signing.
 
 - Explicitly authorizes frequent proactive dependency/tool/bootstrap/default-package/action maintenance and useful stable-release API/convention adoption, without bypassing compatibility, read-only CI, isolated signing, reproducibility, backup/recovery, or owner-controlled integration/release gates.

@@ -1,0 +1,15 @@
+def seedRepository = System.getenv('FOLD_CI_ROBOLECTRIC_REPOSITORY')
+if (seedRepository) {
+    gradle.projectsLoaded {
+        gradle.rootProject.allprojects { project ->
+            project.repositories.maven {
+                name = 'verifiedRobolectricSeed'
+                url = project.uri(seedRepository)
+                content {
+                    includeVersion('org.robolectric', 'nativeruntime-dist-compat', '1.0.19')
+                }
+                metadataSources { mavenPom() }
+            }
+        }
+    }
+}

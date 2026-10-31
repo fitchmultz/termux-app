@@ -74,6 +74,19 @@ cache is added. Java's runner tool cache may persist, separated by architecture.
 Bootstrap inputs are still rehashed; its second generation deliberately reuses
 the first generation's verified download cache offline.
 
+The main unit job and unprivileged release-build test may also use a
+job-private, file-based Maven repository for only
+`org.robolectric:nativeruntime-dist-compat:1.0.19`. The unmodified JAR and POM
+are retrieved as [CI input assets](https://github.com/fitchmultz/termux-app/releases/tag/ci-robolectric-cache-1.0.19)
+and checked against the SHA-256 values independently recorded in
+[Google's verification metadata](https://github.com/google/vtfx/blob/823068d39d49677b8be03779f4592232c5b8fdc6/gradle/verification-metadata.xml#L4131-L4136)
+before Gradle is given the local repository. This is a distinct cached source,
+not Maven Central; all other coordinates and versions retain the original
+repositories. If the assets are unavailable, Gradle uses the normal repositories;
+a checksum mismatch fails the job. The init script is used only for unit tests,
+not the reproducible release builds. Companion source rounds and signers do not
+use this seed.
+
 Signers have no repository checkout, Gradle invocation or cache restore. Their
 candidate/output directories are below their new job root, not an old workspace.
 Signing policy and validators remain reviewed workflow literals; APK/manifest

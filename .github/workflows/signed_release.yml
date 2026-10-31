@@ -71,11 +71,12 @@ jobs:
           path: workflow-revision
           persist-credentials: false
 
-      - name: Preserve snapshot recovery for tagged builds
+      - name: Preserve workflow helpers for tagged builds
         run: |
           set -euo pipefail
-          mkdir -p "$FOLD_CI_WORK/snapshot-helper"
+          mkdir -p "$FOLD_CI_WORK/snapshot-helper" "$FOLD_CI_WORK/robolectric-helper"
           cp workflow-revision/tools/bootstrap/{snapshot.py,snapshots.json} "$FOLD_CI_WORK/snapshot-helper/"
+          cp workflow-revision/tools/ci/{restore-robolectric-seed.sh,robolectric-seed.init.gradle} "$FOLD_CI_WORK/robolectric-helper/"
 
       - name: Check out exact tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -117,13 +118,16 @@ jobs:
           accept-android-sdk-licenses: false # CLT 23 removed the legacy --licenses handshake.
           packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
 
+      - name: Prepare optional verified Robolectric test seed
+        run: bash "$FOLD_CI_WORK/robolectric-helper/restore-robolectric-seed.sh"
+
       - name: Validate Gradle wrapper and run unit tests
         shell: bash
         run: |
           set -euo pipefail
           test "$(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -d' ' -f1)" = \
             '3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98'
-          ./gradlew --no-daemon testDebugUnitTest
+          ./gradlew --no-daemon --init-script "$FOLD_CI_WORK/robolectric-helper/robolectric-seed.init.gradle" testDebugUnitTest
 
       - name: Build and verify the unsigned release twice
         shell: bash
