@@ -135,6 +135,8 @@ public final class TerminalEmulator implements TerminalRendererState {
      * @see <a href="https://contour-terminal.org/vt-extensions/synchronized-output/">Synchronized output protocol</a>
      */
     private static final int DECSET_BIT_SYNCHRONIZED_OUTPUT = 1 << 13;
+    /** DECSET 2031 - report terminal palette changes to the running program. */
+    private static final int DECSET_BIT_THEME_UPDATES = 1 << 14;
 
 
     private String mTitle;
@@ -338,6 +340,8 @@ public final class TerminalEmulator implements TerminalRendererState {
                 return DECSET_BIT_BRACKETED_PASTE_MODE;
             case 2026:
                 return DECSET_BIT_SYNCHRONIZED_OUTPUT;
+            case 2031:
+                return DECSET_BIT_THEME_UPDATES;
             default:
                 return -1;
             // throw new IllegalArgumentException("Unsupported decset: " + decsetBit);
@@ -1225,6 +1229,9 @@ public final class TerminalEmulator implements TerminalRendererState {
                         // Extended Cursor Position (DECXCPR - http://www.vt100.net/docs/vt510-rm/DECXCPR). Page=1.
                         mSession.write(String.format(Locale.US, "\033[?%d;%d;1R", mCursorRow + 1, mCursorCol + 1));
                         break;
+                    case 996:
+                        reportTheme();
+                        break;
                     default:
                         finishSequence();
                         return;
@@ -1358,7 +1365,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             }
             case 2004:
-                // Bracketed paste mode - setting bit is enough.
+            case 2031:
                 break;
             default:
                 unknownParameter(externalBit);
@@ -2139,8 +2146,13 @@ public final class TerminalEmulator implements TerminalRendererState {
                                 unknownSequence(b);
                                 return;
                             } else {
-                                mColors.tryParseColor(colorIndex, textParameter.substring(parsingPairStart, i));
-                                mSession.onColorsChanged();
+                                String colorSpec = textParameter.substring(parsingPairStart, i);
+                                if ("?".equals(colorSpec)) {
+                                    reportColor("\033]4;" + colorIndex + ";", colorIndex, bellOrStringTerminator);
+                                } else {
+                                    mColors.tryParseColor(colorIndex, colorSpec);
+                                    mSession.onColorsChanged();
+                                }
                                 colorIndex = -1;
                                 parsingPairStart = -1;
                             }
@@ -2167,13 +2179,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                         try {
                             String colorSpec = textParameter.substring(lastSemiIndex, charIndex);
                             if ("?".equals(colorSpec)) {
-                                // Report current color in the same format xterm and gnome-terminal does.
-                                int rgb = mColors.mCurrentColors[specialIndex];
-                                int r = (65535 * ((rgb & 0x00FF0000) >> 16)) / 255;
-                                int g = (65535 * ((rgb & 0x0000FF00) >> 8)) / 255;
-                                int b = (65535 * ((rgb & 0x000000FF))) / 255;
-                                mSession.write("\033]" + value + ";rgb:" + String.format(Locale.US, "%04x", r) + "/" + String.format(Locale.US, "%04x", g) + "/"
-                                    + String.format(Locale.US, "%04x", b) + bellOrStringTerminator);
+                                reportColor("\033]" + value + ";", specialIndex, bellOrStringTerminator);
                             } else {
                                 mColors.tryParseColor(specialIndex, colorSpec);
                                 mSession.onColorsChanged();
@@ -2237,6 +2243,27 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
         }
         finishSequence();
+    }
+
+    private void reportColor(String prefix, int index, String terminator) {
+        int rgb = mColors.mCurrentColors[index];
+        int r = ((rgb >> 16) & 0xff) * 257;
+        int g = ((rgb >> 8) & 0xff) * 257;
+        int b = (rgb & 0xff) * 257;
+        mSession.write(prefix + String.format(Locale.US, "rgb:%04x/%04x/%04x", r, g, b) + terminator);
+    }
+
+    private void reportTheme() {
+        int background = mColors.mCurrentColors[TextStyle.COLOR_INDEX_BACKGROUND];
+        boolean light = TerminalColors.getPerceivedBrightnessOfColor(background) >= 130;
+        mSession.write(light ? "\033[?997;2n" : "\033[?997;1n");
+    }
+
+    /** Apply the terminal's configured palette and notify programs that requested updates. */
+    public void updateColorScheme(boolean force) {
+        if (!mColors.updateDefaultColors(force)) return;
+        mSession.onColorsChanged();
+        if (isDecsetInternalBitSet(DECSET_BIT_THEME_UPDATES)) reportTheme();
     }
 
     private void blockClear(int sx, int sy, int w) {

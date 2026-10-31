@@ -4,6 +4,7 @@ import android.util.Base64;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 import java.util.Random;
 
 /** "ESC ]" is the Operating System Command. */
@@ -98,6 +99,47 @@ public class OperatingSystemControlTest extends TerminalTestCase {
 		enterString("\033]4;7;#00FF00;8;#0000FF\007");
 		assertEquals(mTerminal.mColors.mCurrentColors[7], 0xFF00FF00);
 		assertEquals(mTerminal.mColors.mCurrentColors[8], 0xFF0000FF);
+	}
+
+	public void testReportIndexedColors() {
+		withTerminalSized(4, 4).enterString("\033]4;5;#12AB34;8;#456789\007");
+		assertEnteringStringGivesResponse("\033]4;5;?;8;?\033\\",
+			"\033]4;5;rgb:1212/abab/3434\033\\\033]4;8;rgb:4545/6767/8989\033\\");
+	}
+
+	public void testAppearanceReportingMode() {
+		withTerminalSized(4, 4);
+		assertEnteringStringGivesResponse("\033[?996n", "\033[?997;1n");
+		assertEnteringStringGivesResponse("\033[?2031$p", "\033[?2031;2$y");
+		enterString("\033[?2031h");
+		assertEnteringStringGivesResponse("\033[?2031$p", "\033[?2031;1$y");
+		enterString("\033[?2031l");
+		assertEnteringStringGivesResponse("\033[?2031$p", "\033[?2031;2$y");
+	}
+
+	public void testPaletteUpdatesNotifySubscribedPrograms() {
+		int[] original = TerminalColors.COLOR_SCHEME.mDefaultColors.clone();
+		try {
+			withTerminalSized(4, 4).enterString("\033[?2031h");
+			Properties colors = new Properties();
+			colors.setProperty("background", "#303030");
+			colors.setProperty("cursor", "#ffffff");
+			TerminalColors.COLOR_SCHEME.updateWith(colors);
+			mTerminal.updateColorScheme(false);
+			assertEquals("\033[?997;1n", mOutput.getOutputAndClear());
+			assertEnteringStringGivesResponse("\033]11;?\007", "\033]11;rgb:3030/3030/3030\007");
+			enterString("\033]4;3;#123456\007");
+			mTerminal.updateColorScheme(false);
+			assertEquals("", mOutput.getOutputAndClear());
+			assertEnteringStringGivesResponse("\033]4;3;?\007", "\033]4;3;rgb:1212/3434/5656\007");
+			enterString("\033[?2031l");
+			colors.setProperty("background", "#202020");
+			TerminalColors.COLOR_SCHEME.updateWith(colors);
+			mTerminal.updateColorScheme(false);
+			assertEquals("", mOutput.getOutputAndClear());
+		} finally {
+			System.arraycopy(original, 0, TerminalColors.COLOR_SCHEME.mDefaultColors, 0, original.length);
+		}
 	}
 
 	void assertIndexColorsMatch(int[] expected) {

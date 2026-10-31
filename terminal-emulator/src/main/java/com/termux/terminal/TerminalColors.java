@@ -2,6 +2,8 @@ package com.termux.terminal;
 
 import android.graphics.Color;
 
+import java.util.Arrays;
+
 /** Current terminal colors (if different from default). */
 public final class TerminalColors {
 
@@ -13,6 +15,7 @@ public final class TerminalColors {
      * 4 control sequence.
      */
     public final int[] mCurrentColors = new int[TextStyle.NUM_INDEXED_COLORS];
+    private final int[] mAppliedDefaultColors = new int[TextStyle.NUM_INDEXED_COLORS];
 
     /** Create a new instance with default colors from the theme. */
     public TerminalColors() {
@@ -27,6 +30,15 @@ public final class TerminalColors {
     /** Reset all indexed colors with the default color from the color theme. */
     public void reset() {
         System.arraycopy(COLOR_SCHEME.mDefaultColors, 0, mCurrentColors, 0, TextStyle.NUM_INDEXED_COLORS);
+        System.arraycopy(COLOR_SCHEME.mDefaultColors, 0, mAppliedDefaultColors, 0, TextStyle.NUM_INDEXED_COLORS);
+    }
+
+    /** Apply changed defaults without resetting application colors on unrelated activity recreation. */
+    public boolean updateDefaultColors(boolean force) {
+        if (!force && Arrays.equals(mAppliedDefaultColors, COLOR_SCHEME.mDefaultColors)) return false;
+        boolean changed = !Arrays.equals(mCurrentColors, COLOR_SCHEME.mDefaultColors);
+        reset();
+        return changed;
     }
 
     /**
