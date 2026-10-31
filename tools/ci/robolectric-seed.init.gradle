@@ -1,14 +1,24 @@
+import org.gradle.api.tasks.testing.Test
+
 def seedRepository = System.getenv('FOLD_CI_ROBOLECTRIC_REPOSITORY')
-if (seedRepository) {
+def runtimeRepository = System.getenv('FOLD_CI_ROBOLECTRIC_MAVEN_REPOSITORY')
+if (seedRepository || runtimeRepository) {
     gradle.projectsLoaded {
         gradle.rootProject.allprojects { project ->
-            project.repositories.maven {
-                name = 'verifiedRobolectricSeed'
-                url = project.uri(seedRepository)
-                content {
-                    includeVersion('org.robolectric', 'nativeruntime-dist-compat', '1.0.19')
+            if (seedRepository) {
+                project.repositories.maven {
+                    name = 'verifiedRobolectricSeed'
+                    url = project.uri(seedRepository)
+                    content {
+                        includeVersion('org.robolectric', 'nativeruntime-dist-compat', '1.0.19')
+                    }
+                    metadataSources { mavenPom() }
                 }
-                metadataSources { mavenPom() }
+            }
+            if (runtimeRepository) {
+                project.tasks.withType(Test).configureEach {
+                    systemProperty 'maven.repo.local', runtimeRepository
+                }
             }
         }
     }

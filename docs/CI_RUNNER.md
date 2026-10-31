@@ -75,17 +75,20 @@ Bootstrap inputs are still rehashed; its second generation deliberately reuses
 the first generation's verified download cache offline.
 
 The main unit job and unprivileged release-build test may also use a
-job-private, file-based Maven repository for only
-`org.robolectric:nativeruntime-dist-compat:1.0.19`. The unmodified JAR and POM
-are retrieved as [CI input assets](https://github.com/fitchmultz/termux-app/releases/tag/ci-robolectric-cache-1.0.19)
-and checked against the SHA-256 values independently recorded in
-[Google's verification metadata](https://github.com/google/vtfx/blob/823068d39d49677b8be03779f4592232c5b8fdc6/gradle/verification-metadata.xml#L4131-L4136)
-before Gradle is given the local repository. This is a distinct cached source,
-not Maven Central; all other coordinates and versions retain the original
-repositories. If the assets are unavailable, Gradle uses the normal repositories;
-a checksum mismatch fails the job. The init script is used only for unit tests,
-not the reproducible release builds. Companion source rounds and signers do not
-use this seed.
+job-private Maven-layout seed from [CI input assets](https://github.com/fitchmultz/termux-app/releases/tag/ci-robolectric-cache-1.0.19).
+Gradle may use it as a distinct local repository only for
+`org.robolectric:nativeruntime-dist-compat:1.0.19`; its unmodified JAR and POM
+are checked against [Google's independent SHA-256 pins](https://github.com/google/vtfx/blob/823068d39d49677b8be03779f4592232c5b8fdc6/gradle/verification-metadata.xml#L4131-L4136).
+The seed also contains the Android 7, 9 and 17 `android-all-instrumented` JARs
+used by the tests, checked against [Robolectric's own SHA-256 pins](https://github.com/robolectric/robolectric-bazel/blob/118b7fd904e781038051b99229fe2b0701e1e20a/bazel/robolectric.bzl#L28-L84).
+When a runtime seed is available, test JVMs use this directory as
+[`maven.repo.local`](https://github.com/robolectric/robolectric/blob/robolectric-4.17/plugins/maven-dependency-resolver/src/main/java/org/robolectric/internal/dependency/MavenDependencyResolver.java#L130-L142):
+[Robolectric's native resolver](https://github.com/robolectric/robolectric/blob/robolectric-4.17/plugins/maven-dependency-resolver/src/main/java/org/robolectric/internal/dependency/MavenArtifactFetcher.java#L65-L79)
+uses cached JARs and fetches missing versions normally. This does not enable
+Robolectric's all-or-nothing offline resolver. Unavailable assets retain the
+normal fallback; a checksum mismatch fails the job. The init script is used
+only for unit tests, not the reproducible release builds. Companion source rounds
+and signers do not use this seed.
 
 Signers have no repository checkout, Gradle invocation or cache restore. Their
 candidate/output directories are below their new job root, not an old workspace.
