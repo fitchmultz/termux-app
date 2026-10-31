@@ -83,6 +83,7 @@ This is the canonical concise inventory of intentional differences from the audi
 - Tracks the bootstrap ZIP as a prerequisite of its native assembly object, preventing stale embedded tools after a no-clean lock refresh; tests actual NDK A→B object bytes without source/makefile changes.
 - Preserves package owner-execute bits through a generated executable manifest and a focused production staging extractor, instead of granting execute by path prefix. Real script/Git-hook execution tests isolate host Git/configuration and protect service scripts and hook templates without broadening ordinary files or enabling services; the nonempty-prefix early return and symlink/rename commit path remain.
 - Initializes the existing screen-awake regression's backing preference before its dual-mode wrapper, avoiding Android-28 cold-loader races. The test asserts its initial state and retains real both-pane/persisted toggles; no runtime preference or view policy changes.
+- Removes redundant snapshot/cache path restrictions while retaining the authenticated member set and hashes.
 
 ## Dependency and build maintenance
 
