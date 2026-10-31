@@ -39,6 +39,7 @@ jobs:
     timeout-minutes: 50
     permissions:
       contents: read
+      actions: read
     env:
       REQUESTED_TAG: ${{ inputs.release_tag }}
     steps:
@@ -86,6 +87,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify annotated tag and source identity
+        id: source
         shell: bash
         run: |
           set -euo pipefail
@@ -93,8 +95,46 @@ jobs:
           test "$(git -c safe.directory="$GITHUB_WORKSPACE" rev-parse "$REQUESTED_TAG^{commit}")" = "$source_commit"
           test "$(git -c safe.directory="$GITHUB_WORKSPACE" cat-file -t "$REQUESTED_TAG")" = tag
           printf 'source_commit=%s\n' "$source_commit"
+          printf 'commit=%s\n' "$source_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Find verified main build for tagged source
+        id: main-build
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const commit = process.env.SOURCE_COMMIT;
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner, repo, workflow_id: 'run_tests.yml', branch: 'fold/main',
+              event: 'push', status: 'success', head_sha: commit, per_page: 100
+            });
+            for (const run of runs) {
+              const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                owner, repo, run_id: run.id, per_page: 100
+              });
+              const artifact = artifacts
+                .filter(a => !a.expired && a.name.startsWith(`fold-main-unsigned-${run.id}-`))
+                .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+              if (!artifact) continue;
+              core.setOutput('run_id', String(run.id));
+              core.setOutput('artifact_id', String(artifact.id));
+              return;
+            }
+            core.info('No reusable verified main artifact; build the tagged source.');
+
+      - name: Download verified main APK
+        if: ${{ steps.main-build.outputs.run_id != '' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ steps.main-build.outputs.artifact_id }}
+          run-id: ${{ steps.main-build.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ env.FOLD_CI_WORK }}/main-apk
 
       - name: Restore archived inputs for tagged source
+        if: ${{ steps.main-build.outputs.run_id == '' }}
         run: |
           set -euo pipefail
           if [ -f tools/bootstrap/bootstrap.lock.json ]; then
@@ -119,6 +159,7 @@ jobs:
           packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
 
       - name: Prepare optional verified Robolectric test seed
+        if: ${{ steps.main-build.outputs.run_id == '' }}
         run: bash "$FOLD_CI_WORK/robolectric-helper/restore-robolectric-seed.sh"
 
       - name: Validate Gradle wrapper
@@ -128,8 +169,10 @@ jobs:
           test "$(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -d' ' -f1)" = \
             '3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98'
 
-      - name: Build and verify the unsigned release twice
+      - name: Verify and reproduce the unsigned release
         shell: bash
+        env:
+          MAIN_BUILD_RUN_ID: ${{ steps.main-build.outputs.run_id }}
         run: |
           set -euo pipefail
           SOURCE_DATE_EPOCH="$(git -c safe.directory="$GITHUB_WORKSPACE" log -1 --format=%ct)"
@@ -151,8 +194,12 @@ jobs:
           [[ "$REQUESTED_TAG" == "fold-v${version_name}" ||
              "$REQUESTED_TAG" =~ ^fold-v${version_name//./[.]}-rc[1-9][0-9]*$ ]]
 
-          ./gradlew --no-daemon --init-script "$FOLD_CI_WORK/robolectric-helper/robolectric-seed.init.gradle" testDebugUnitTest :app:assembleRelease
-          mapfile -t apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
+          if [ -n "$MAIN_BUILD_RUN_ID" ]; then
+            mapfile -t apks < <(find "$FOLD_CI_WORK/main-apk" -type f -name '*.apk' | sort)
+          else
+            ./gradlew --no-daemon --init-script "$FOLD_CI_WORK/robolectric-helper/robolectric-seed.init.gradle" testDebugUnitTest :app:assembleRelease
+            mapfile -t apks < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
+          fi
           test "${#apks[@]}" -eq 1
           first_apk="${apks[0]}"
 
@@ -190,6 +237,7 @@ jobs:
           cat > "$candidate/release.env" <<EOF
           source_commit=$source_commit
           workflow_commit=${{ github.sha }}
+          build_run=${MAIN_BUILD_RUN_ID:-$GITHUB_RUN_ID}
           source_date_epoch=$SOURCE_DATE_EPOCH
           release_tag=$REQUESTED_TAG
           version_name=$version_name
@@ -294,6 +342,7 @@ jobs:
           version_code="$(value version_code)"
           unsigned_hash="$(value unsigned_apk_sha256)"
           application_label="$(value application_label)"
+          build_run="$(value build_run)"
 
           [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]]
           test "$release_tag" = "$REQUESTED_TAG"
@@ -371,6 +420,7 @@ jobs:
           workflow_commit=${{ github.sha }}
           source_tag=$release_tag
           workflow_run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          build_run=$build_run
           package=com.termux
           version_name=$version_name
           version_code=$version_code
