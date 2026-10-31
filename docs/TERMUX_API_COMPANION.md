@@ -76,7 +76,7 @@ The remaining Google/Maven graph is not fully content-addressed or offline/herme
 
 ## Workflow and privilege boundary
 
-[`.github/workflows/termux_api_companion.yml`](../.github/workflows/termux_api_companion.yml) runs on relevant `fold/main` pull requests and explicit `workflow_dispatch`. There is no push, schedule, release/tag trigger, `pull_request_target`, or default signing. Action commits reuse the audited Fold CI pins; Java/SDK installers and APK parsers come from those trusted actions, never from a build artifact.
+[`.github/workflows/termux_api_companion.yml`](../.github/workflows/termux_api_companion.yml) runs on `fold/main` pull requests changing that workflow, this document or `AGENTS.md`, and on explicit `workflow_dispatch`. Routine `FORK_CHANGES.md` updates do not rebuild the independently pinned companion. There is no push, schedule, release/tag trigger, `pull_request_target`, or default signing. Action commits reuse the audited Fold CI pins; Java/SDK installers and APK parsers come from those trusted actions, never from a build artifact.
 
 Both SDK setup steps set `accept-android-sdk-licenses: false`: CLT 23 removed the legacy `sdkmanager --licenses` handshake, whose immediate no-op exit can cause the action's stdin write to fail with EPIPE. This skips only that obsolete command, **not** actual package-license agreement. Package installation, the new Android CLI's license handling and fatal installation errors remain unchanged.
 
