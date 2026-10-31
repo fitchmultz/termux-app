@@ -67,10 +67,13 @@ job-specific `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and `ANDROID_USER_HOME` under
 that directory before setup-android runs. This directs the modern Android CLI's
 bundles into the job's private tree instead of reusing the shared
 `$HOME/.android` bundle; the workflow does not remove shared runner state. The
-combined main test/build job also receives a job-specific `GRADLE_USER_HOME`.
-Gradle's setup action validates the wrapper and restores reusable Gradle state
-from the Actions cache; its default-branch jobs save updated state, while PR jobs
-read it without publishing their own. The main build enables Gradle's task cache.
+combined main test/build job uses `$GITHUB_WORKSPACE/.gradle/ci-user-home` as
+its `GRADLE_USER_HOME`. Checkout cleans the ignored `.gradle` directory before
+the setup action restores the cache; the consistent path avoids changing the
+cache version merely because a temporary path changed. Gradle's setup action
+validates the wrapper and restores reusable Gradle state from the Actions cache;
+its default-branch jobs save updated state, while PR jobs read it without
+publishing their own. The main build enables Gradle's task cache.
 Companion source rounds retain six separate Gradle homes and two empty local Maven
 repositories, with build/configuration caches disabled. Release reproducibility
 builds do not restore this cache or enable the task cache. Java's runner tool
