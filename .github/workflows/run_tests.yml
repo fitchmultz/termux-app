@@ -136,8 +136,10 @@ jobs:
           cmdline-tools-version: '16111833' # 23.0
           accept-android-sdk-licenses: false # CLT 23 removed the legacy --licenses handshake.
           packages: 'platforms;android-37.2 build-tools;37.0.0 ndk;30.0.16248370'
+      - name: Prepare optional verified Robolectric test seed
+        run: bash tools/ci/restore-robolectric-seed.sh
       - name: Execute tests
-        run: ./gradlew --no-daemon test
+        run: ./gradlew --no-daemon --init-script tools/ci/robolectric-seed.init.gradle test
       - name: Save synthetic workbench renders and test reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
