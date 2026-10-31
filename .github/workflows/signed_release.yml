@@ -404,6 +404,18 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           printf "Signed APK SHA-256: \`%s\`\n" "$signed_hash" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload verified signed APK
+        if: ${{ !inputs.publish_release }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: termux-fold-signed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.FOLD_CI_WORK }}/release-output/${{ steps.sign.outputs.signed_apk }}
+            ${{ env.FOLD_CI_WORK }}/release-output/SHA256SUMS
+            ${{ env.FOLD_CI_WORK }}/release-output/PROVENANCE
+          if-no-files-found: error
+          compression-level: 0
+
       - name: Publish signed GitHub Release
         if: inputs.publish_release
         working-directory: ${{ env.FOLD_CI_WORK }}

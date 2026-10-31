@@ -117,7 +117,9 @@ establish independent host isolation.
 
 The main release requires explicit dispatch and signs in its separate
 `termux-fold-signing` job; public publication is a separate **default-false**
-input. Companion signing is **default-false**, dispatch-only, `fold/main`-only and
+input. With publication off, the verified signed APK, checksum and provenance
+are downloadable in an authenticated Actions artifact using the repository's
+retention setting. Companion signing is **default-false**, dispatch-only, `fold/main`-only and
 repository-bound, in the same protected environment. The key remains in its
 existing protected GitHub secrets; no local backup is an input to these jobs.
 Neither workflow installs an APK or grants Android permissions.
@@ -139,6 +141,36 @@ commands reading the main workspace or a companion source checkout authorize
 only that exact checkout for their own process, including source archiving.
 This avoids the container's host-ownership error without changing host or global
 Git configuration.
+
+## Creating a signed update
+
+The main workflow builds the exact annotated tag, not the current `fold/main`
+tree. Rebuilding an old tag cannot include later commits; untagged main changes
+are not automatically signed or made downloadable.
+
+1. Review and integrate the intended changes. Prepare a release profile in
+   `build.gradle` with a `versionName` and a `versionCode` higher than the
+   installed and previously released codes; update `FOLD_PROFILE.md` and
+   `FORK_CHANGES.md` and pass the required checks. The current workflow accepts
+   `0.119.0-fold.N` version names, where `N` is positive.
+2. After the separate versioning decision, create and push a **new annotated**
+   `fold-v<versionName>` tag on the final approved main commit. Never move or
+   reuse an existing tag. An optional `-rcN` suffix is supported.
+3. Run [Fold signed release](https://github.com/fitchmultz/termux-app/actions/workflows/signed_release.yml)
+   from `fold/main`, set `release_tag` to that tag, and leave `publish_release`
+   off. The protected environment supplies the existing key automatically.
+4. On the successful run page, download `termux-fold-signed-<run>-<attempt>`
+   from **Artifacts**. The ZIP contains the signed APK, `SHA256SUMS`, and
+   `PROVENANCE`; GitHub sign-in is required. Artifacts use the repository's
+   retention setting, currently 90 days. For CLI download, use
+   `gh run download RUN_ID -R fitchmultz/termux-app --name termux-fold-signed-RUN_ID-ATTEMPT --dir DIR`,
+   replacing the placeholders. In the extracted directory, run
+   `sha256sum -c SHA256SUMS` and verify the APK's package, version, signing
+   certificate and provenance against the installed app and approved tag.
+
+The artifact-only path creates or changes no GitHub Release. Public publication
+and physical installation remain separate decisions; see the
+[installation boundary](../FOLD_PROFILE.md#installation-boundary).
 
 ## Qualification
 
