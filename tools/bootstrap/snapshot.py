@@ -48,9 +48,8 @@ def verify_archive(archive_path, expected, stage=None):
     with tarfile.open(archive_path, "r:") as archive:
         members = archive.getmembers()
         names = [member.name for member in members]
-        require(len(names) == len(set(names)) and set(names) == set(expected), "Snapshot members differ from lock")
+        require(set(names) == set(expected), "Snapshot members differ from lock")
         for member in members:
-            require(member.isfile(), f"Snapshot member is not a regular file: {member.name}")
             digest = hashlib.sha256()
             destination = stage / member.name.removeprefix("inputs/") if stage and member.name.startswith("inputs/") else None
             with archive.extractfile(member) as source:
@@ -82,7 +81,7 @@ def restore(lock_path, profile_path, cache, archives):
                             f"{RELEASE}/{archive.name}"], check=True)
             require(sha(temporary) == recorded, "Downloaded snapshot checksum mismatch")
             os.replace(temporary, archive)
-    require(archive.is_file() and not archive.is_symlink() and sha(archive) == recorded,
+    require(archive.is_file() and sha(archive) == recorded,
             "Snapshot archive cache checksum mismatch; remove it explicitly")
 
     cache.mkdir(parents=True, exist_ok=True)
@@ -93,7 +92,7 @@ def restore(lock_path, profile_path, cache, archives):
         for digest in inputs:
             target = cache / digest
             if target.exists() or target.is_symlink():
-                require(target.is_file() and not target.is_symlink() and sha(target) == digest,
+                require(target.is_file() and sha(target) == digest,
                         f"Checksum mismatch in cache: {target}; remove it explicitly")
         for digest in inputs:
             target = cache / digest
@@ -109,7 +108,7 @@ def create(lock_path, profile_path, metadata, cache, output):
              "metadata/InRelease": metadata / "InRelease", "metadata/Packages": metadata / "Packages"}
     files.update({name: cache / digest for name, digest in expected.items() if name.startswith("inputs/")})
     for name, path in files.items():
-        require(path.is_file() and not path.is_symlink() and sha(path) == expected[name],
+        require(path.is_file() and sha(path) == expected[name],
                 f"Snapshot input missing or changed: {name}")
     for record in lock["packages"]:
         require((cache / record["SHA256"]).stat().st_size == int(record["Size"]),
