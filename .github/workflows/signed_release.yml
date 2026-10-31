@@ -111,9 +111,6 @@ jobs:
               event: 'push', status: 'success', head_sha: commit, per_page: 100
             });
             for (const run of runs) {
-              if (run.head_sha !== commit || run.head_branch !== 'fold/main' ||
-                  run.event !== 'push' || run.conclusion !== 'success' ||
-                  run.path !== '.github/workflows/run_tests.yml') continue;
               const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
                 owner, repo, run_id: run.id, per_page: 100
               });
