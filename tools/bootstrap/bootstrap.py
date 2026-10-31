@@ -56,7 +56,7 @@ def fetch(url, digest, cache, offline=False, recover=None):
     require(re.fullmatch(r"[0-9a-f]{64}", digest), "Invalid SHA-256")
     destination = cache / digest
     if destination.exists():
-        require(not destination.is_symlink() and sha(destination) == digest,
+        require(destination.is_file() and sha(destination) == digest,
                 f"Checksum mismatch in cache: {destination}; remove it explicitly")
         return destination
     require(not offline, f"Missing offline input: {url} ({digest})")
@@ -72,7 +72,7 @@ def fetch(url, digest, cache, offline=False, recover=None):
         except subprocess.CalledProcessError:
             if recover is None or not recover():
                 raise
-            require(destination.is_file() and not destination.is_symlink() and sha(destination) == digest,
+            require(destination.is_file() and sha(destination) == digest,
                     f"Recovered input checksum mismatch: {destination}")
             return destination
         require(sha(temporary) == digest, f"Checksum mismatch: {url}")
