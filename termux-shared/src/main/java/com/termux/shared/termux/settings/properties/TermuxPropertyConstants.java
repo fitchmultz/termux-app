@@ -150,6 +150,9 @@ public final class TermuxPropertyConstants {
     /** Defines the key for showing a composable text input above the extra keys at the same time. */
     public static final String KEY_SHOW_TERMINAL_TOOLBAR_TEXT_INPUT = "show-terminal-toolbar-text-input";
 
+    /** Defines whether navigation automatically shows the soft keyboard. */
+    public static final String KEY_SHOW_SOFT_KEYBOARD_ON_NAVIGATION = "show-soft-keyboard-on-navigation";
+
 
 
     /** Defines the key for whether to use black UI */
@@ -427,6 +430,7 @@ public final class TermuxPropertyConstants {
         KEY_EXTRA_KEYS_TEXT_ALL_CAPS,
         KEY_HIDE_SOFT_KEYBOARD_ON_STARTUP,
         KEY_RUN_TERMUX_AM_SOCKET_SERVER,
+        KEY_SHOW_SOFT_KEYBOARD_ON_NAVIGATION,
         KEY_SHOW_TERMINAL_TOOLBAR_TEXT_INPUT,
         KEY_TERMINAL_ONCLICK_URL_OPEN,
         KEY_USE_CTRL_SPACE_WORKAROUND,
@@ -474,6 +478,7 @@ public final class TermuxPropertyConstants {
         KEY_DISABLE_HARDWARE_KEYBOARD_SHORTCUTS,
         KEY_DISABLE_TERMINAL_SESSION_CHANGE_TOAST,
         KEY_HIDE_SOFT_KEYBOARD_ON_STARTUP,
+        KEY_SHOW_SOFT_KEYBOARD_ON_NAVIGATION,
         KEY_TERMINAL_ONCLICK_URL_OPEN,
         KEY_USE_CTRL_SPACE_WORKAROUND,
         KEY_USE_FULLSCREEN,

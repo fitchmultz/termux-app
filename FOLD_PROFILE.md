@@ -25,6 +25,7 @@ The integrated Fold profile:
 - builds and packages only `arm64-v8a` with the Android 7 bootstrap variant, requiring Android 7/API 24 or later;
 - compiles against Android 17/API 37.2 using a Java 21 toolchain and Java 17 source/bytecode baseline, while retaining target SDK 28 for direct prefix execution;
 - enables Samsung character-based terminal input;
+- avoids automatically opening the keyboard on app return or existing-session navigation while retaining the keyboard controls; `show-soft-keyboard-on-navigation = true` restores the old automatic requests, subject to existing startup-hide and keyboard-disable settings;
 - offers a collapsible native multiline Evidence Dock above the extra keys, with per-session drafts and private file staging;
 - places the terminal-session drawer at the logical end/right edge;
 - provides two rows of controls on narrow windows and one row when all twelve labels and 48dp touch targets fit; preserves custom key matrices and places Up before Down;
