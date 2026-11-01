@@ -13,7 +13,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
-- This source branch batches ordinary printable ASCII into row-bounded runs instead of repeating decoding, width lookup, and cell setup for every byte. UTF-8, escapes, line drawing, insert mode, wrapping, and complex Unicode rows retain their existing paths.
+- This source branch batches ordinary printable ASCII into row-bounded runs instead of repeating decoding, width lookup, and cell setup for every byte. UTF-8, escapes, line drawing, insert mode, wrapping, cursor normalization, and complex Unicode rows retain their existing paths.
 - This source branch schedules terminal flings on Android's animation frames instead of immediately reposting the polling loop. It retains the existing scrolling physics, history bounds, mouse reporting, and pane/session cancellation.
 - Routes multiline IME commits through the existing paste path when bracketed paste is enabled, while keeping ordinary text, single Enter, and unbracketed terminal input unchanged.
 - Adapts upstream `74ab5126` to retain each session's scroll offset across session/pane replacement, activity-view restoration, keyboard/window resizing, and foreground refresh, bounded by remaining history. SCROLL reconciles background/detached output once; cancelled evicted selections follow live output unless scroll-locked. All view refreshes defer unfinished synchronized frames, while normal new output still follows the terminal.

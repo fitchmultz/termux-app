@@ -578,7 +578,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     public void append(byte[] buffer, int length) {
         for (int i = 0; i < length; ) {
             if (buffer[i] >= 32 && buffer[i] < 127 && mEscapeState == ESC_NONE && mUtf8ToFollow == 0
-                && !mAboutToAutoWrap && !mInsertMode && mCursorCol < mRightMargin
+                && !mAboutToAutoWrap && !mInsertMode && mCursorCol >= 0 && mCursorCol < mRightMargin
                 && !(mUseLineDrawingUsesG0 ? mUseLineDrawingG0 : mUseLineDrawingG1)) {
                 int end = i + 1;
                 int limit = i + Math.min(length - i, mRightMargin - mCursorCol);

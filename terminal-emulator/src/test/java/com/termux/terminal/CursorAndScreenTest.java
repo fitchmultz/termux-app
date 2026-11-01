@@ -221,6 +221,8 @@ public class CursorAndScreenTest extends TerminalTestCase {
 		withTerminalSized(3, 3).enterString("hi y").assertLinesAre("hi ", "y  ", "   ").enterString("\b\b#").assertLinesAre("hi#", "y  ", "   ");
 		// Initial backspace should do nothing:
 		withTerminalSized(3, 3).enterString("\b\b\b\bhi").assertLinesAre("hi ", "   ", "   ");
+		withTerminalSized(6, 2).enterString("\033[?69h\033[3;6s\033[1G\babc")
+			.assertLinesAre("bc    ", "      ").assertCursorAt(0, 2);
 	}
 
 	public void testCursorSaveRestoreLocation() {
