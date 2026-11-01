@@ -127,6 +127,8 @@ public class UnicodeInputTest extends TerminalTestCase {
 
 	public void testWideCharOverwriting() {
 		withTerminalSized(3, 2).enterString("abc\033[3D枝").assertLinesAre("枝c", "   ");
+		withTerminalSized(6, 2).enterString("枝枝枝\033[Habcde").assertLinesAre("abcde ", "      ").assertCursorAt(0, 5);
+		withTerminalSized(6, 2).enterString("a\u0302bcde\033[Hxyz").assertLinesAre("xyzde ", "      ").assertCursorAt(0, 3);
 	}
 
 	public void testOverlongUtf8Encoding() throws Exception {
