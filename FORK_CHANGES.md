@@ -13,13 +13,14 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- This source branch batches ordinary printable ASCII into row-bounded runs instead of repeating decoding, width lookup, and cell setup for every byte. UTF-8, escapes, line drawing, insert mode, wrapping, and complex Unicode rows retain their existing paths.
 - This source branch schedules terminal flings on Android's animation frames instead of immediately reposting the polling loop. It retains the existing scrolling physics, history bounds, mouse reporting, and pane/session cancellation.
 - Routes multiline IME commits through the existing paste path when bracketed paste is enabled, while keeping ordinary text, single Enter, and unbracketed terminal input unchanged.
 - Adapts upstream `74ab5126` to retain each session's scroll offset across session/pane replacement, activity-view restoration, keyboard/window resizing, and foreground refresh, bounded by remaining history. SCROLL reconciles background/detached output once; cancelled evicted selections follow live output unless scroll-locked. All view refreshes defer unfinished synchronized frames, while normal new output still follows the terminal.
 
 - Ports upstream `47c473f9` to clear stale wrapped-line metadata when an erase reaches the right edge, preserving newlines in copied terminal text.
 - Ports upstream `5532cc4f` to keep UTF-16 row lengths in an `int`, preventing overflow with supplementary combining text in wide terminal rows.
-- Selectively adapts upstream `fd2ab4fc` string-framing corrections: only `ESC \` terminates a DCS, and OSC escape-overflow cannot resume an aborted sequence. Retains existing parser limits and does not add image protocols or fast paths.
+- Selectively adapts upstream `fd2ab4fc` string-framing corrections: only `ESC \` terminates a DCS, and OSC escape-overflow cannot resume an aborted sequence. Retains existing parser limits and does not add image protocols.
 
 - Selectively incorporates upstream `45844885`, `b4a2c32c`, and `084d709f`: prevents fullscreen keyboard-margin predictions from resizing split-screen/pop-up windows, handles root file-share MIME queries, and pairs JNI string releases with the correct arguments. Also normalizes MIME extensions independently of the user's locale in sharing and document-provider paths.
 

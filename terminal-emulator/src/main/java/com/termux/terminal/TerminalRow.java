@@ -158,6 +158,15 @@ public final class TerminalRow {
         mHasNonOneWidthOrSurrogateChars = false;
     }
 
+    void setAscii(int column, byte[] text, int offset, int length, long style) {
+        if (mHasNonOneWidthOrSurrogateChars) {
+            for (int i = 0; i < length; i++) setChar(column + i, text[offset + i], style);
+        } else {
+            for (int i = 0; i < length; i++) mText[column + i] = (char) text[offset + i];
+            Arrays.fill(mStyle, column, column + length, style);
+        }
+    }
+
     // https://github.com/steven676/Android-Terminal-Emulator/commit/9a47042620bec87617f0b4f5d50568535668fe26
     public void setChar(int columnToSet, int codePoint, long style) {
         if (columnToSet  < 0 || columnToSet >= mStyle.length)
