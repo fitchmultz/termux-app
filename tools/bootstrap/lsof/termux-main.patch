@@ -1,0 +1,6 @@
+--- a/src/main.c
++++ b/src/main.c
+@@ -173,2 +173,2 @@
+-    if ((MaxFd = (int)GET_MAX_FD()) < 53)
++    if ((MaxFd = (int)sysconf(_SC_OPEN_MAX)) < 53)
+         MaxFd = 53;

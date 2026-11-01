@@ -1,0 +1,7 @@
+--- a/lib/misc.c
++++ b/lib/misc.c
+@@ -220,3 +220,3 @@
+     /* fallback to SYS_close_range */
+-#    if defined(SYS_close_range)
++#    if defined(SYS_close_range) && !defined(__ANDROID__)
+     if (MaxFd > low && syscall(SYS_close_range, low, MaxFd - 1, 0) == 0)

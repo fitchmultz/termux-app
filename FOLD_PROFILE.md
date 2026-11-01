@@ -21,7 +21,7 @@ PR integration, signed APK publication, and physical validation are separate ste
 
 The integrated Fold profile:
 
-- identifies itself as `Termux Fold` version `0.119.0-fold.12` with monotonic version code `2026103112`;
+- identifies itself as `Termux Fold` version `0.119.0-fold.13` with monotonic version code `2026103113`;
 - builds and packages only `arm64-v8a` with the Android 7 bootstrap variant, requiring Android 7/API 24 or later;
 - compiles against Android 17/API 37.2 using a Java 21 toolchain and Java 17 source/bytecode baseline, while retaining target SDK 28 for direct prefix execution;
 - enables Samsung character-based terminal input;
@@ -70,6 +70,8 @@ Node/Python versioned development environments, compilers, Tcl/Tk, X11, and
 the same-Fold-key Termux:API Android app remain separate. The client alone does
 not enable clipboard/API access or grant Android permissions; only the permissions
 needed for chosen APIs should be granted. See [delivery, trust, reproduction, and maintenance](tools/bootstrap/README.md).
+Fresh prefixes include the Fold lsof eventpoll backport; updating an existing
+prefix requires the [separate package installation](tools/bootstrap/README.md#lsof-eventpoll-backport).
 Source integration is not APK publication or physical offline-bootstrap validation.
 
 ## Installation boundary

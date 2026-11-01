@@ -20,6 +20,7 @@ import snapshot
 
 HERE = Path(__file__).resolve().parent
 PROFILE = json.loads((HERE / "profile.json").read_text())
+LSOF_BACKPORT = json.loads((HERE / "lsof/backport.json").read_text())
 PREFIX = "/data/data/com.termux/files/usr/"
 FIELDS = ("Package", "Version", "Architecture", "Filename", "Size", "SHA256",
           "Depends", "Pre-Depends", "Conflicts", "Breaks")
@@ -203,6 +204,20 @@ def load_lock(path):
     return lock
 
 
+def delivered_packages(lock):
+    records = []
+    for record in lock["packages"]:
+        if record["Package"] == "lsof":
+            require(record["Version"] == LSOF_BACKPORT["base_version"] and
+                    record["SHA256"] == LSOF_BACKPORT["base_sha256"],
+                    "Review the lsof backport against the refreshed official package")
+            record = {**record, "Version": LSOF_BACKPORT["version"], "Filename": LSOF_BACKPORT["filename"],
+                      "Size": LSOF_BACKPORT["size"], "SHA256": LSOF_BACKPORT["sha256"]}
+        records.append(record)
+    require(closure(records) == records, "Delivered package closure differs from the lock")
+    return records
+
+
 def check_debs(packages, files):
     """Check extraction paths before upstream tar runs; no target code is executed."""
     paths, links = set(), set()
@@ -291,6 +306,7 @@ def elf_contract(data, name):
 
 
 def verify(archive_path, lock):
+    packages = delivered_packages(lock)
     with zipfile.ZipFile(archive_path) as archive:
         names = archive.namelist()
         require(len(names) == len(set(names)), "Duplicate ZIP entries")
@@ -322,15 +338,15 @@ def verify(archive_path, lock):
                 require(not name.startswith(("/", "../")), f"Symlink outside prefix: {name}")
             return name
 
-        for command in PROFILE["commands"]:
+        for command in PROFILE["commands"] + ["lsof"]:
             require(resolve(f"bin/{command}") in names, f"Missing command: {command}")
             require(resolve(f"bin/{command}") in executables, f"Command not executable: {command}")
         status = paragraphs(archive.read("var/lib/dpkg/status").decode())
-        require(len(status) == len(lock['packages']) and
+        require(len(status) == len(packages) and
                 {r['Package']: (r['Version'], r['Architecture'], r['Status']) for r in status} ==
-                {r['Package']: (r['Version'], r['Architecture'], 'install ok installed') for r in lock['packages']},
-                "Installed package database differs from lock")
-        for record in lock["packages"]:
+                {r['Package']: (r['Version'], r['Architecture'], 'install ok installed') for r in packages},
+                "Installed package database differs from delivery manifest")
+        for record in packages:
             require(f"var/lib/dpkg/info/{record['Package']}.list" in names, f"Missing dpkg file list: {record['Package']}")
         elf_count, fixtures = 0, []
         for name in names:
@@ -346,7 +362,7 @@ def verify(archive_path, lock):
                 else:
                     require(not any(api > 24 for api in apis), f"ELF requires Android >24: {name}")
                     require(not missing, f"Missing shared library: {name} -> {missing}")
-        for record in lock["packages"]:
+        for record in packages:
             info = f"var/lib/dpkg/info/{record['Package']}"
             for path in archive.read(info + ".list").decode().splitlines():
                 if path.startswith(PREFIX):
@@ -360,21 +376,23 @@ def verify(archive_path, lock):
                 require(hashlib.md5(archive.read(relative)).hexdigest() == digest, f"dpkg checksum mismatch: {relative}")
         for service in ("sshd", "ssh-agent"):
             require(f"var/service/{service}/down" in names, f"Service unexpectedly enabled: {service}")
-        print(f"Verified {len(status)} packages (file lists/checksums), {len(PROFILE['commands'])} commands, {len(links)} symlinks, {elf_count} ARM64 ELFs")
+        print(f"Verified {len(status)} packages (file lists/checksums), {len(PROFILE['commands']) + 1} commands, {len(links)} symlinks, {elf_count} ARM64 ELFs")
         print(f"Production ELF closure/API-24 notes checked; {len(fixtures)} optional installed-test ELFs inspected, not claimed runnable")
         print(f"ZIP bytes={archive_path.stat().st_size}; expanded bytes={sum(i.file_size for i in archive.infolist())}")
 
 
 def build(args):
     lock = load_lock(args.lock)
+    packages = delivered_packages(lock)
     def recover():
         return snapshot.restore(args.lock, HERE / "profile.json", args.cache,
                                 args.cache.parent / "snapshot-archives")
 
     sources = source_files(args.cache, args.offline, recover)
-    files = [fetch(PROFILE["repository"] + "/" + r["Filename"], r["SHA256"], args.cache, args.offline, recover)
-             for r in lock["packages"]]
-    check_debs(lock["packages"], files)
+    files = [fetch(LSOF_BACKPORT["url"] if r["Package"] == "lsof" else PROFILE["repository"] + "/" + r["Filename"],
+                   r["SHA256"], args.cache, args.offline, None if r["Package"] == "lsof" else recover)
+             for r in packages]
+    check_debs(packages, files)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="generate-", dir=args.output.parent) as directory:
         work = Path(directory).resolve()
@@ -383,14 +401,14 @@ def build(args):
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, destination)
         repo = work / "repository"
-        for record, source in zip(lock["packages"], files):
+        for record, source in zip(packages, files):
             destination = repo / record["Filename"]
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, destination)
         index = repo / "dists/stable/main/binary-aarch64/Packages"
         index.parent.mkdir(parents=True)
         index.write_text("\n\n".join("\n".join(f"{key}: {value}" for key, value in r.items())
-                                    for r in lock["packages"]) + "\n\n")
+                                    for r in packages) + "\n\n")
         all_index = repo / "dists/stable/main/binary-all/Packages"
         all_index.parent.mkdir(parents=True)
         all_index.write_text("")

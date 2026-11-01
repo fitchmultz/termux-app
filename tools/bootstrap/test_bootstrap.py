@@ -2,6 +2,7 @@
 import argparse
 import copy
 import io
+import json
 from pathlib import Path
 import subprocess
 import tarfile
@@ -42,6 +43,23 @@ class BootstrapRunnerTests(unittest.TestCase):
         records = [r for r in self.lock["packages"] if r["Package"] != "libexpat"]
         with self.assertRaisesRegex(ValueError, "Missing dependency/package: libexpat"):
             b.closure(records)
+
+    def test_refreshed_lsof_requires_backport_review_before_build(self):
+        with tempfile.TemporaryDirectory(dir=self.work) as directory:
+            work = Path(directory)
+            changed = copy.deepcopy(self.lock)
+            next(r for r in changed["packages"] if r["Package"] == "lsof")["Version"] = "4.99.8"
+            lock = work / "bootstrap.lock.json"
+            lock.write_text(json.dumps(changed))
+            lock.with_suffix(".InRelease").write_bytes((b.HERE / "bootstrap.lock.InRelease").read_bytes())
+            output = work / "bootstrap.zip"
+            output.write_bytes(b"previous verified artifact")
+            result = subprocess.run(["python3", str(b.HERE / "bootstrap.py"), "build", "--offline",
+                                     "--lock", str(lock), "--cache", str(work / "cache"),
+                                     "--output", str(output)], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Review the lsof backport against the refreshed official package", result.stderr)
+            self.assertEqual(output.read_bytes(), b"previous verified artifact")
 
     def test_bad_cached_source_or_package_and_missing_offline_input_preserve_output(self):
         for corrupt in (None, "scripts/generate-bootstraps.sh", "apt"):
