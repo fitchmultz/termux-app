@@ -6,7 +6,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Prioritizes the owner's Z Fold 8 (`SM-F971U1`, Android 17), retains the Ultra (`SM-F976U1`) as a regression target, and welcomes other compatible devices without model-name gating. The signed APK remains ARM64-only.
 - Keeps package ID `com.termux` and prefix `/data/data/com.termux/files/usr`; this is an in-place fork, not a side-by-side package.
-- Uses label `Termux Fold`; this branch's source release profile is `0.119.0-fold.14` (`2026103114`). PR integration, signed publication, and physical validation are separate steps.
+- Uses label `Termux Fold`; this branch's source release profile is `0.119.0-fold.15` (`2026103115`). PR integration, signed publication, and physical validation are separate steps.
 - Packages only `arm64-v8a` with the `apt-android-7` bootstrap; split release APKs are disabled.
 - Retains target SDK 28 for direct execution of programs from the writable Termux prefix. Modern targets require routing execution through Android's system linker plus a separately patched package ecosystem; forced-linker tests currently break Node test workers and `age-keygen`. Android 17 may therefore show an old-app or **Install anyway** warning.
 - Uses a dedicated Android signing identity. Signing material must never be committed or made public, but protected GitHub Actions secrets and signed GitHub Releases are allowed when deliberately configured.
@@ -82,6 +82,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Offline default tools
 
+- Backports lsof's eventpoll crash fix into a separately identified Fold package for fresh prefixes. The original signed Termux package remains locked as the base; the derived package has its own reviewed source, build, and digest. Existing prefixes require an explicit package update; installing the APK does not alter them.
 - Replaces the single upstream bootstrap download with a native Android-7 ARM64 package snapshot: Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, wget, zsh/completions, lsd, bat, git-delta, direnv, git-lfs, and chezmoi join the existing baseline, available offline on fresh installation. Versioning, signed publication, and physical installation remain separate release steps.
 - Authenticates maintenance indices with the pinned Termux Releases public key; locks every package URL/version/architecture/SHA-256 and the upstream generator sources. Build-private generation verifies all inputs and package/control extraction paths, uses only a local snapshot, canonicalizes the compressed archive, validates dpkg files/checksums plus production ELF/API/library closure, and publishes atomically. Adds libmount/libblkid for an undeclared inherited util-linux runtime dependency; keeps optional upstream installed-test fixtures without bundling their compiler/ASan runtimes.
 - This branch recovers unavailable inputs for recorded locks from a content-addressed public archive, verifies the archive and every member against the reviewed lock/profile, and retains the builder's cache checks and offline behavior. Tagged signing restores matching inputs before tests and after clean without changing the tagged source or existing app releases.

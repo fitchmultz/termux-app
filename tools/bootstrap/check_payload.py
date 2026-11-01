@@ -20,9 +20,10 @@ def main():
     # Mutations reach independent artifact contracts, not mock implementations.
     cases = [
         ("bin/jq", None, "Missing command: jq"),
+        ("bin/lsof", None, "Missing command: lsof"),
         ("lib/libmount.so", None, "Missing shared library"),
         ("bin/git", "wrong-arch", "Not little-endian ARM64 ELF"),
-        ("var/lib/dpkg/status", "wrong-version", "Installed package database differs from lock"),
+        ("var/lib/dpkg/status", "wrong-version", "Installed package database differs from delivery manifest"),
     ]
     with tempfile.TemporaryDirectory(dir=args.archive.parent) as directory, zipfile.ZipFile(args.archive) as source:
         for name, mutation, expected in cases:

@@ -1,0 +1,7 @@
+--- a/lib/dialects/linux/dproc.c
++++ b/lib/dialects/linux/dproc.c
+@@ -96,3 +96,3 @@ struct l_fdinfo {
+     int tfds[EPOLL_MAX_TFDS];
+-    size_t tfd_count;
++    ssize_t tfd_count;
+ };

@@ -80,6 +80,9 @@ def main():
     run("zip", "-q", "-j", work / "evidence.zip", work / "evidence.txt")
     with zipfile.ZipFile(work / "evidence.zip") as archive:
         b.require(archive.read("evidence.txt") == b"default-tools-offline\n", "zip content differs")
+    with (work / "evidence.txt").open() as marker:
+        b.require(f"n{marker.name}\n" in run("lsof", "-n", "-P", "-Fn"),
+                  "lsof did not report the open marker while scanning processes")
     b.require(b.sha(live_status) == before, "Live dpkg status changed during smoke checks")
     print("PASS: extracted-payload native commands + local operations; no network/postinst/service execution; live dpkg status unchanged")
 

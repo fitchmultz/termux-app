@@ -28,6 +28,9 @@ Review apt's proposed changes. This uses the user's current repository and
 package versions, not the APK snapshot, and can update dependencies as required.
 A full `pkg upgrade` remains a separate explicit maintenance choice.
 
+The bundled `lsof` fix also requires a separate package update on an existing
+installation. See [lsof eventpoll backport](#lsof-eventpoll-backport).
+
 OpenSSH's official package also contains `sshd` and service definitions: there
 is no separate official client-only package. Neither sshd nor ssh-agent starts
 automatically. Both service definitions retain their `down` files and
@@ -56,12 +59,12 @@ The seven companion roots add only `libcap` and `libgit2` to the previous closur
 The same authenticated **2026-10-24 14:22:36 UTC** repository snapshot retains all
 110 earlier package records unchanged. Those nine companion packages total 14,905,984
 downloaded `.deb` bytes and 53,977,088 declared installed-size bytes; these are
-**not** ZIP sizes. On the Fold, two builds from the authenticated cached inputs were byte-identical:
-SHA-256 `94f3d2546354a7a298021170c41c397ae512fa61070ae1c53013545954620f53`,
-96,430,740 compressed bytes / 244,553,917 expanded file bytes, using Python
-3.15.1 and zlib 1.3.2. The payload verifier checked 121 package inventories,
-28 commands, 1,478 symlinks, and 454 ARM64 ELFs; nine inherited installed-test
-ELFs were inspected but not claimed runnable. The bundled chezmoi executable
+**not** ZIP sizes. Two Fold-native builds of this payload were byte-identical:
+SHA-256 `bf6307625a44465055e7116839085bcdffd88e44ae894d34ab76e8e249fd71e3`,
+96,430,913 compressed bytes / 244,554,131 expanded bytes, using Python 3.15.2
+and zlib 1.3.2. The verifier checked 121 packages, 29 commands, 1,478 symlinks,
+and 454 ARM64 ELFs. Nine inherited installed-test ELFs were inspected but are
+not claimed runnable. The bundled chezmoi executable
 matches the installed 2.73.3-1 binary that runs on this Fold. The whole ZIP
 crosses JNI as one Java byte array; physical fresh-bootstrap heap behavior has
 not been measured.
@@ -86,8 +89,9 @@ The reviewed [Termux build definitions, patches, and upstream source checksums](
 correspond to the pinned source snapshot. Official package license files and
 common-license symlinks are retained under `share/doc/` and `share/LICENSES/`.
 The native Android-7 aarch64 packages (zsh-completions is architecture `all`)
-retain their authenticated hashes and dpkg metadata; no build-host binaries,
-SDK runtime assets, compiler, or runtime patches are substituted into the APK.
+retain their authenticated hashes and dpkg metadata except for the explicitly
+identified lsof backport below. No Linux/glibc host executables, SDK runtime
+assets, or compiler are substituted into the APK.
 
 Actual new-package maintainer scripts have two offline effects:
 
@@ -142,6 +146,51 @@ has the current client, no APT transaction is needed; installing it again cannot
 replace a missing companion APK. Existing configuration and clipboard shims are
 not changed, and live clipboard functionality is not established by these builds.
 
+## lsof eventpoll backport
+
+The official Termux lsof 4.99.7 can crash while inspecting Android processes with
+an inaccessible eventpoll descriptor. That prevents Pi's safe old-release
+cleanup. Fresh bootstraps contain `4.99.7-0fold1`, a Fold-built package based on
+the official Termux 4.99.7 package and lsof's
+[upstream one-line fix](https://github.com/lsof-org/lsof/commit/e1f8076051c1adb02fd7c1a4c824e8f373a1ab7a).
+It is **not an official Termux package**. Its control metadata, version output,
+and `share/doc/lsof/FOLD-BACKPORT` identify the modification. It retains the
+official dependencies, headers, manual, and license. The upstream Termux
+patches used in its build are included alongside the backport.
+
+The official package remains in the authenticated lock. The delivered Fold
+package has a separate reviewed SHA-256 and is fetched from the Fold input
+release, then checked and inspected alongside the other packages before
+extraction. A lock refresh that changes the official lsof version or hash stops
+the build for review. Remove this backport when a reviewed official package
+contains the fix. Official `4.99.7-1` and later versions supersede `4.99.7-0fold1`
+under dpkg version ordering.
+
+To update an **existing** ARM64 Termux installation that already has lsof and
+its dependencies, download the separate package and verify it before installing:
+
+```sh
+curl --fail --location --proto '=https' --proto-redir '=https' \
+  https://github.com/fitchmultz/termux-app/releases/download/fold-bootstrap-inputs/lsof_4.99.7-0fold1_aarch64.deb \
+  -o lsof_4.99.7-0fold1_aarch64.deb &&
+  echo 'da0469d86f7b2506e38d581b1fde94c5a594f15349c35844551462339abb8aa8  lsof_4.99.7-0fold1_aarch64.deb' | sha256sum -c - &&
+  dpkg -i ./lsof_4.99.7-0fold1_aarch64.deb
+```
+
+The package is built on ARM64 Termux without modifying the live prefix. With
+the official [lsof 4.99.7 source distribution](https://github.com/lsof-org/lsof/releases/tag/4.99.7)
+and the locked official `lsof_4.99.7_aarch64.deb` downloaded locally:
+
+```sh
+bash tools/bootstrap/lsof/build.sh lsof-4.99.7.tar.gz lsof_4.99.7_aarch64.deb lsof-fold.deb
+```
+
+The script verifies both input hashes, applies the recorded patches, builds the
+executable and shared library, and repackages them with explicit Fold metadata
+and file checksums. The recorded build used Termux clang `21.1.8-3`, dpkg
+`1.22.6-5`, libandroid-support `29-1`, and libtirpc `1.3.8`. Two separate
+builds produced the package digest above. Its binary has an Android API-24 note.
+
 ## Delivery and trust
 
 - `profile.json` pins a full upstream commit and SHA-256 for the generator,
@@ -174,8 +223,9 @@ not changed, and live clipboard functionality is not established by these builds
   restores that lock's exact inputs: the archive and every member are checked
   against reviewed hashes before the normal builder rechecks its cache. Unknown
   locks retain the original download path; `--offline` never downloads a snapshot.
-  The build constructs a private `file://` repository from locked records and
-  verified packages; upstream cannot fall back to a live apt repository.
+  The build constructs a private `file://` repository from the locked records
+  and the explicitly identified, hash-pinned lsof replacement; upstream cannot
+  fall back to a live apt repository.
 - All generator source, HOME, TMPDIR, repository, unpacked native files, and
   partial archives stay under the requested build directory. No target binary,
   maintainer script, or second-stage script is executed by the build. Package
@@ -199,13 +249,12 @@ not changed, and live clipboard functionality is not established by these builds
   Git hook templates stay executable, ordinary files do not gain execute, and
   `down` files still keep services disabled. Missing/unsafe executable metadata
   fails before installation commits.
-  The Fold-native builds measured above use DEFLATE level 9: 96,430,740
-  compressed bytes / 244,553,917 expanded bytes on Python 3.15.1 and zlib 1.3.2.
+  The Fold-native builds use DEFLATE level 9.
   **Use the same Python/zlib toolchain for byte-for-byte reproduction**; the
   runner prints both versions. CI compares two independent generations, the
   second offline, as well as retaining the two unsigned APK builds. The JNI
   interface returns the compressed ZIP as a Java byte array.
-- Validation checks the exact dpkg package/version/architecture inventory,
+- Validation checks the exact delivered dpkg package/version/architecture inventory,
   package-owned paths and file checksums, requested commands and symlinks, every
   ELF's ARM64 architecture, and every production ELF's NEEDED-library closure and
   available Android ABI notes (no production note above API 24). The official
@@ -250,7 +299,7 @@ python3 tools/bootstrap/check_native_incremental.py "$ANDROID_HOME/ndk/30.0.1624
 On an Android ARM64 build host only, an optional native smoke check extracts the
 actual payload into a **new** private build directory and uses its own libraries,
 HOME and temporary directory. It runs version/help commands, Git initialization,
-JSON/search/filter operations, a local rsync copy, and a ZIP round trip. It also
+JSON/search/filter operations, an lsof process scan, a local rsync copy, and a ZIP round trip. It also
 checks generated Git hook samples' execute permissions, disabled service scripts,
 and non-executable file delivery. It never invokes API/clipboard commands, runs
 postinst, starts a service, connects to a network, or replaces a prefix:

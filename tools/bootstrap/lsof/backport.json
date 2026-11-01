@@ -1,0 +1,9 @@
+{
+  "base_version": "4.99.7",
+  "base_sha256": "6067a81467f8f2e63379fd3d1fc1c6eb6e115f9661d3802192b365a6ceb2fb72",
+  "version": "4.99.7-0fold1",
+  "filename": "pool/main/l/lsof/lsof_4.99.7-0fold1_aarch64.deb",
+  "size": "124588",
+  "sha256": "da0469d86f7b2506e38d581b1fde94c5a594f15349c35844551462339abb8aa8",
+  "url": "https://github.com/fitchmultz/termux-app/releases/download/fold-bootstrap-inputs/lsof_4.99.7-0fold1_aarch64.deb"
+}
