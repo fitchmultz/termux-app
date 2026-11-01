@@ -21,7 +21,7 @@ PR integration, signed APK publication, and physical validation are separate ste
 
 The integrated Fold profile:
 
-- identifies itself as `Termux Fold` version `0.119.0-fold.13` with monotonic version code `2026103113`;
+- identifies itself as `Termux Fold` version `0.119.0-fold.15` with monotonic version code `2026103115`;
 - builds and packages only `arm64-v8a` with the Android 7 bootstrap variant, requiring Android 7/API 24 or later;
 - compiles against Android 17/API 37.2 using a Java 21 toolchain and Java 17 source/bytecode baseline, while retaining target SDK 28 for direct prefix execution;
 - enables Samsung character-based terminal input;

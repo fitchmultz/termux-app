@@ -6,20 +6,21 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Prioritizes the owner's Z Fold 8 (`SM-F971U1`, Android 17), retains the Ultra (`SM-F976U1`) as a regression target, and welcomes other compatible devices without model-name gating. The signed APK remains ARM64-only.
 - Keeps package ID `com.termux` and prefix `/data/data/com.termux/files/usr`; this is an in-place fork, not a side-by-side package.
-- Uses label `Termux Fold`; this branch's source release profile is `0.119.0-fold.13` (`2026103113`). PR integration, signed publication, and physical validation are separate steps.
+- Uses label `Termux Fold`; this branch's source release profile is `0.119.0-fold.15` (`2026103115`). PR integration, signed publication, and physical validation are separate steps.
 - Packages only `arm64-v8a` with the `apt-android-7` bootstrap; split release APKs are disabled.
 - Retains target SDK 28 for direct execution of programs from the writable Termux prefix. Modern targets require routing execution through Android's system linker plus a separately patched package ecosystem; forced-linker tests currently break Node test workers and `age-keygen`. Android 17 may therefore show an old-app or **Install anyway** warning.
 - Uses a dedicated Android signing identity. Signing material must never be committed or made public, but protected GitHub Actions secrets and signed GitHub Releases are allowed when deliberately configured.
 
 ## Fixes
 
+- This source branch batches ordinary printable ASCII into row-bounded runs instead of repeating decoding, width lookup, and cell setup for every byte. UTF-8, escapes, line drawing, insert mode, wrapping, cursor normalization, and complex Unicode rows retain their existing paths.
 - This source branch schedules terminal flings on Android's animation frames instead of immediately reposting the polling loop. It retains the existing scrolling physics, history bounds, mouse reporting, and pane/session cancellation.
 - Routes multiline IME commits through the existing paste path when bracketed paste is enabled, while keeping ordinary text, single Enter, and unbracketed terminal input unchanged.
 - Adapts upstream `74ab5126` to retain each session's scroll offset across session/pane replacement, activity-view restoration, keyboard/window resizing, and foreground refresh, bounded by remaining history. SCROLL reconciles background/detached output once; cancelled evicted selections follow live output unless scroll-locked. All view refreshes defer unfinished synchronized frames, while normal new output still follows the terminal.
 
 - Ports upstream `47c473f9` to clear stale wrapped-line metadata when an erase reaches the right edge, preserving newlines in copied terminal text.
 - Ports upstream `5532cc4f` to keep UTF-16 row lengths in an `int`, preventing overflow with supplementary combining text in wide terminal rows.
-- Selectively adapts upstream `fd2ab4fc` string-framing corrections: only `ESC \` terminates a DCS, and OSC escape-overflow cannot resume an aborted sequence. Retains existing parser limits and does not add image protocols or fast paths.
+- Selectively adapts upstream `fd2ab4fc` string-framing corrections: only `ESC \` terminates a DCS, and OSC escape-overflow cannot resume an aborted sequence. Retains existing parser limits and does not add image protocols.
 
 - Selectively incorporates upstream `45844885`, `b4a2c32c`, and `084d709f`: prevents fullscreen keyboard-margin predictions from resizing split-screen/pop-up windows, handles root file-share MIME queries, and pairs JNI string releases with the correct arguments. Also normalizes MIME extensions independently of the user's locale in sharing and document-provider paths.
 

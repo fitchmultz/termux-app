@@ -576,8 +576,26 @@ public final class TerminalEmulator implements TerminalRendererState {
      * @param length the number of bytes in the array to process
      */
     public void append(byte[] buffer, int length) {
-        for (int i = 0; i < length; i++)
-            processByte(buffer[i]);
+        for (int i = 0; i < length; ) {
+            if (buffer[i] >= 32 && buffer[i] < 127 && mEscapeState == ESC_NONE && mUtf8ToFollow == 0
+                && !mAboutToAutoWrap && !mInsertMode && mCursorCol >= 0 && mCursorCol < mRightMargin
+                && !(mUseLineDrawingUsesG0 ? mUseLineDrawingG0 : mUseLineDrawingG1)) {
+                int end = i + 1;
+                int limit = i + Math.min(length - i, mRightMargin - mCursorCol);
+                while (end < limit && buffer[end] >= 32 && buffer[end] < 127) end++;
+
+                TerminalRow row = mScreen.allocateFullLineIfNecessary(mScreen.externalToInternalRow(mCursorRow));
+                row.setAscii(mCursorCol, buffer, i, end - i, getStyle());
+                mLastEmittedCodePoint = buffer[end - 1];
+                int columnAfterRun = mCursorCol + end - i;
+                if (isDecsetInternalBitSet(DECSET_BIT_AUTOWRAP))
+                    mAboutToAutoWrap = columnAfterRun == mRightMargin;
+                mCursorCol = Math.min(columnAfterRun, mRightMargin - 1);
+                i = end;
+            } else {
+                processByte(buffer[i++]);
+            }
+        }
     }
 
     private void processByte(byte byteToProcess) {
