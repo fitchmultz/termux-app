@@ -204,7 +204,9 @@ public final class ExtraKeysActivity extends AppCompatActivity {
             }
         } catch (JSONException e) { throw new IllegalStateException(e); }
         for (String key : new TreeSet<>(ExtraKeysConstants.PRIMARY_KEY_CODES_FOR_STRINGS.keySet())) choices.putIfAbsent(key, key);
-        for (SpecialButton key : SpecialButton.values()) choices.putIfAbsent(key.name(), key.name());
+        for (SpecialButton key : new SpecialButton[]{SpecialButton.CTRL, SpecialButton.ALT, SpecialButton.SHIFT, SpecialButton.FN}) {
+            choices.putIfAbsent(key.getKey(), key.getKey());
+        }
         for (String key : new String[]{ExtraKeysConstants.ACTION_TEXTBAR, ExtraKeysConstants.ACTION_PASTE, ExtraKeysConstants.ACTION_SCROLL}) choices.putIfAbsent(key, key);
         String[] labels = new String[choices.size() + 1];
         choices.keySet().toArray(labels);
