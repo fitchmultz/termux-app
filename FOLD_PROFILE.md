@@ -30,6 +30,7 @@ The integrated Fold profile:
 - offers a collapsible native multiline Evidence Dock above the extra keys, with per-session drafts and private file staging;
 - places the terminal-session drawer at the logical end/right edge;
 - keeps the default controls in two compact, right-aligned rows across window changes, with Esc, Tab, Sessions, Next, and Keyboard together on the right; preserves custom key matrices;
+- includes a plus key for new sessions and an in-app control editor in the drawer and Terminal I/O settings; app layouts can be reordered, expanded, saved, or reset without editing shell files;
 - uses a compact session-title header without a single-pane focus border; Compose and Split are available at the bottom of the session drawer;
 - starts shells without the termux-tools welcome banner through its native `TERMUX_HUSHLOGIN` switch; Help remains available from the terminal context menu;
 - advertises the terminal emulator's implemented DEC mode 2026 synchronized-output support to tmux.

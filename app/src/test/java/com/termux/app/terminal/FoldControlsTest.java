@@ -146,6 +146,12 @@ public class FoldControlsTest {
             assertTrue(key.getWidth() >= key.getPaint().measureText(key.getText().toString()) + 16);
         }
         TerminalPaneLayoutTest.capture(root, "controls-large-labels");
+        TerminalPaneLayoutTest.size(root, 400, 650);
+        android.widget.HorizontalScrollView scroll = (android.widget.HorizontalScrollView) keys.getParent();
+        assertTrue("Oversized rows scroll instead of shrinking targets", keys.getWidth() > scroll.getWidth());
+        scroll.scrollTo(keys.getWidth(), 0);
+        assertTrue(scroll.getScrollX() > 0);
+        assertTrue(keys.getChildAt(keys.getChildCount() - 1).getRight() - scroll.getScrollX() <= scroll.getWidth());
     }
 
     @Test

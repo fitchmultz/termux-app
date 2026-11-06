@@ -79,8 +79,9 @@ public class ExtraKeysEditorTest {
         assertNull("Drafts are not saved implicitly", ExtraKeysLayout.saved(activity));
         controller.recreate();
         activity = controller.get();
-        TerminalPaneLayoutTest.size(root(activity), 400, 800);
-        TerminalPaneLayoutTest.capture(root(activity), "controls-editor");
+        View decor = activity.getWindow().getDecorView();
+        TerminalPaneLayoutTest.size(decor, 400, 800);
+        TerminalPaneLayoutTest.capture(decor, "controls-editor");
         tap(activity, "Save");
         ExtraKeyButton[][] keys = new ExtraKeysInfo(ExtraKeysLayout.saved(activity), "default",
             ExtraKeysConstants.CONTROL_CHARS_ALIASES).getMatrix();
@@ -109,7 +110,8 @@ public class ExtraKeysEditorTest {
     }
 
     @Test
-    public void customKeyTextSurvivesRotationAndCancelDoesNotSave() {
+    @Config(qualifiers = "w400dp-h800dp-night-mdpi")
+    public void customKeyTextSurvivesRotationAndCancelDoesNotSave() throws Exception {
         ActivityController<ExtraKeysActivity> controller = Robolectric.buildActivity(ExtraKeysActivity.class).setup();
         ExtraKeysActivity activity = controller.get();
         tap(activity, "Add key");
@@ -124,6 +126,9 @@ public class ExtraKeysEditorTest {
         assertEquals("Status", fields.get(1).getText().toString());
         dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
         assertFalse(text(root(activity), "Status").isEmpty());
+        View decor = activity.getWindow().getDecorView();
+        TerminalPaneLayoutTest.size(decor, 400, 800);
+        TerminalPaneLayoutTest.capture(decor, "controls-editor-dark");
         tap(activity, "Cancel");
         assertNull(ExtraKeysLayout.saved(activity));
         controller.pause().stop().destroy();
