@@ -129,7 +129,7 @@ public class FoldControlsTest {
     public void darkControlsStayReachableWithoutLosingState() throws Exception { checkControls(); }
 
     @Test
-    public void largeLabelsKeepTwoRows() {
+    public void largeLabelsExpandTheClusterWithoutClipping() throws Exception {
         TermuxActivity activity = activity();
         View root = activity.findViewById(R.id.activity_termux_root_view);
         TerminalPaneLayoutTest.size(root, 900, 650);
@@ -138,5 +138,29 @@ public class FoldControlsTest {
         TerminalPaneLayoutTest.size(root, 900, 650);
         assertEquals(2, keys.getRowCount());
         assertEquals(96, activity.getTerminalToolbarViewPager().getHeight());
+        for (int i = 0; i < keys.getChildCount(); i++) {
+            TextView key = (TextView) keys.getChildAt(i);
+            assertTrue(key.getWidth() >= key.getPaint().measureText(key.getText().toString()) + 16);
+        }
+        TerminalPaneLayoutTest.capture(root, "controls-large-labels");
+    }
+
+    @Test
+    public void customMatricesKeepTheirRowsLabelsAndFullWidth() throws Exception {
+        TermuxActivity activity = activity();
+        View root = activity.findViewById(R.id.activity_termux_root_view);
+        TerminalPaneLayoutTest.size(root, 900, 650);
+        ExtraKeysView keys = activity.getExtraKeysView();
+        keys.setAdaptiveRows(false);
+        keys.reload(new com.termux.shared.termux.extrakeys.ExtraKeysInfo(
+            "[[ESC, TAB], [LEFT, RIGHT]]", "default",
+            com.termux.shared.termux.extrakeys.ExtraKeysConstants.CONTROL_CHARS_ALIASES), 96);
+        for (int width : new int[]{900, 400, 900}) {
+            TerminalPaneLayoutTest.size(root, width, 650);
+            assertEquals(2, keys.getRowCount());
+            assertEquals(0, keys.getPaddingLeft());
+            assertEquals("↹", ((TextView) keys.getChildAt(1)).getText().toString());
+            assertTrue(keys.getChildAt(0).getWidth() >= (keys.getWidth() - 1) / 2);
+        }
     }
 }
