@@ -47,7 +47,6 @@ public final class TerminalPaneLayout extends LinearLayout {
             final int index = i;
             LinearLayout pane = panes[i] = new LinearLayout(context);
             pane.setOrientation(VERTICAL);
-            pane.setPadding(dp(2), dp(2), dp(2), dp(2));
             TextView title = titles[i] = new TextView(context);
             title.setTextColor(Color.WHITE);
             title.setTextSize(13);
@@ -189,7 +188,7 @@ public final class TerminalPaneLayout extends LinearLayout {
     }
 
     public void showOptions(View anchor, Runnable newSplit) {
-        PopupMenu menu = new PopupMenu(getContext(), anchor);
+        PopupMenu menu = new PopupMenu(getContext(), anchor, Gravity.END);
         menu.getMenu().add(Menu.NONE, 1, Menu.NONE, R.string.split_new);
         if (paired) {
             menu.getMenu().add(Menu.NONE, 2, Menu.NONE, R.string.split_horizontal);
@@ -250,15 +249,18 @@ public final class TerminalPaneLayout extends LinearLayout {
             String name = session == null ? getContext().getString(R.string.split_empty) : session.mSessionName;
             if (TextUtils.isEmpty(name) && session != null) name = session.getTitle();
             if (TextUtils.isEmpty(name)) name = getContext().getString(R.string.split_session);
+            if (singlePaneTitle != null && i == active) singlePaneTitle.setText(name);
             titles[i].setText((i == active ? "● " : "○ ") + (i == 0 ? "A · " : "B · ") + name);
             titles[i].setContentDescription(getContext().getString(i == active ? R.string.split_active_pane : R.string.split_focus_pane, name));
             headers[i].setVisibility(singlePaneTitle == null || isShowingBoth() ? VISIBLE : GONE);
             zoom[i].setVisibility(paired ? VISIBLE : GONE);
             zoom[i].setContentDescription(getContext().getString(isShowingBoth() ? R.string.split_maximize : R.string.split_restore));
-            panes[i].setBackgroundColor(i == active ? Color.rgb(0, 115, 125) : Color.rgb(32, 38, 45));
+            int border = isShowingBoth() ? dp(2) : 0;
+            panes[i].setPadding(border, border, border, border);
+            panes[i].setBackgroundColor(isShowingBoth() && i == active ? Color.rgb(0, 115, 125) : Color.TRANSPARENT);
         }
         if (singlePaneTitle != null) {
-            singlePaneTitle.setText(isShowingBoth() ? getContext().getString(R.string.application_name) : titles[active].getText());
+            if (isShowingBoth()) singlePaneTitle.setText(R.string.application_name);
             singlePaneTitle.setContentDescription(titles[active].getContentDescription());
         }
     }

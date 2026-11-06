@@ -65,37 +65,49 @@ public class FoldControlsTest {
         TerminalPaneLayoutTest.size(root, 900, 650);
         TextView dock = activity.findViewById(R.id.evidence_dock_toggle);
         TextView options = activity.findViewById(R.id.terminal_pane_options);
-        assertEquals("Dock", dock.getText().toString());
-        assertEquals("Panes", options.getText().toString());
+        assertEquals("Compose", dock.getText().toString());
+        assertEquals("Split", options.getText().toString());
         assertEquals(android.graphics.Color.WHITE, dock.getCurrentTextColor());
         assertEquals(android.graphics.Color.WHITE, options.getCurrentTextColor());
         assertTrue(dock.getHeight() >= 48);
         assertTrue(options.getWidth() >= 48);
-        assertEquals("Single-pane terminal has no duplicate header", 2, panes.getActiveTerminal().getTop());
-        assertEquals(48, panes.getTop());
+        assertEquals("Single-pane terminal has no duplicate header or focus border", 0, panes.getActiveTerminal().getTop());
+        assertEquals(32, panes.getTop());
         ExtraKeysView keys = activity.getExtraKeysView();
         assertNotNull(keys);
-        assertEquals(1, keys.getRowCount());
-        assertEquals(48, activity.getTerminalToolbarViewPager().getHeight());
+        assertEquals(2, keys.getRowCount());
+        assertEquals(96, activity.getTerminalToolbarViewPager().getHeight());
         for (int i = 0; i < keys.getChildCount(); i++) {
             assertTrue(keys.getChildAt(i).getWidth() >= 48);
             assertTrue(keys.getChildAt(i).getHeight() >= 48);
         }
-        View ctrl = keys.getChildAt(2);
+        View ctrl = keys.getChildAt(0);
+        int rightInset = keys.getWidth() - keys.getChildAt(5).getRight();
+        int keyWidth = keys.getChildAt(5).getWidth();
+        assertTrue("Wide screens keep controls near the right hand", keys.getChildAt(0).getLeft() > keys.getWidth() / 2);
         ctrl.performClick();
         assertTrue(keys.readSpecialButton(SpecialButton.CTRL, false));
-        assertEquals("↑", ((TextView) keys.getChildAt(8)).getText().toString());
-        assertEquals("↓", ((TextView) keys.getChildAt(9)).getText().toString());
+        assertEquals("↑", ((TextView) keys.getChildAt(2)).getText().toString());
+        assertEquals("↓", ((TextView) keys.getChildAt(8)).getText().toString());
         TerminalPaneLayoutTest.capture(root, "controls-wide-" + (activity.getResources().getConfiguration().uiMode & 48));
         TerminalPaneLayoutTest.size(root, 400, 450);
         assertEquals(2, keys.getRowCount());
         assertEquals(96, activity.getTerminalToolbarViewPager().getHeight());
-        assertSame(ctrl, keys.getChildAt(2));
+        assertSame(ctrl, keys.getChildAt(0));
+        assertEquals(rightInset, keys.getWidth() - keys.getChildAt(5).getRight());
+        assertEquals(keyWidth, keys.getChildAt(5).getWidth());
+        assertEquals("TAB", ((TextView) keys.getChildAt(4)).getText().toString());
+        assertEquals("Next session", keys.getChildAt(10).getContentDescription());
+        assertEquals("Sessions", keys.getChildAt(5).getContentDescription());
         assertTrue(keys.readSpecialButton(SpecialButton.CTRL, false));
         assertSame(first, panes.getActiveTerminal().getCurrentSession());
         TerminalPaneLayoutTest.capture(root, "controls-narrow-" + (activity.getResources().getConfiguration().uiMode & 48));
         TerminalPaneLayoutTest.size(root, 900, 650);
-        assertEquals(1, keys.getRowCount());
+        assertEquals(2, keys.getRowCount());
+        activity.getDrawer().openDrawer(activity.getTerminalSessionDrawerGravity(), false);
+        TerminalPaneLayoutTest.size(root, 900, 650);
+        TerminalPaneLayoutTest.capture(root, "controls-sessions-" + (activity.getResources().getConfiguration().uiMode & 48));
+        activity.getDrawer().closeDrawers();
         panes.openBeside(second);
         panes.setSplitOrientation(LinearLayout.HORIZONTAL);
         TerminalPaneLayoutTest.size(root, 900, 650);
@@ -103,7 +115,7 @@ public class FoldControlsTest {
         assertEquals(50, panes.getActiveTerminal().getTop());
         panes.toggleMaximize();
         TerminalPaneLayoutTest.size(root, 900, 650);
-        assertEquals(2, panes.getActiveTerminal().getTop());
+        assertEquals(0, panes.getActiveTerminal().getTop());
         assertSame(second, panes.getActiveTerminal().getCurrentSession());
         panes.toggleMaximize();
         TerminalPaneLayoutTest.size(root, 900, 650);
@@ -111,10 +123,10 @@ public class FoldControlsTest {
     }
 
     @Test @Config(qualifiers = "w900dp-h1000dp-notnight-mdpi")
-    public void lightControlsStayReadableAndReflowWithoutLosingState() throws Exception { checkControls(); }
+    public void lightControlsStayReachableWithoutLosingState() throws Exception { checkControls(); }
 
     @Test @Config(qualifiers = "w900dp-h1000dp-night-mdpi")
-    public void darkControlsStayReadableAndReflowWithoutLosingState() throws Exception { checkControls(); }
+    public void darkControlsStayReachableWithoutLosingState() throws Exception { checkControls(); }
 
     @Test
     public void largeLabelsKeepTwoRows() {

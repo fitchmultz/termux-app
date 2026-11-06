@@ -1,0 +1,5 @@
+<resources>
+    <string name="extra_sessions">Sessions</string>
+    <string name="extra_keyboard">Show or hide keyboard. Swipe up to compose text.</string>
+    <string name="extra_next_session">Next session</string>
+</resources>

@@ -351,12 +351,12 @@ public final class TermuxPropertyConstants {
 
     /** Defines the key for extra keys */
     public static final String KEY_EXTRA_KEYS =  "extra-keys"; // Default: "extra-keys"
-    //public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[[ESC, TAB, CTRL, ALT, {key: '-', popup: '|'}, DOWN, UP]]"; // Single row
     public static final String DEFAULT_IVALUE_EXTRA_KEYS =
-        "[[ESC, TAB, {key: CTRL, popup: {macro: \"CTRL ALT UP\", display: PREV}}, " +
+        "[[{key: CTRL, popup: {macro: \"CTRL ALT UP\", display: PREV}}, " +
         "{key: ALT, popup: {macro: \"CTRL ALT DOWN\", display: NEXT}}, " +
-        "{macro: \"CTRL ALT DOWN\", display: NEXT}, " + ExtraKeysConstants.ACTION_DRAWER +
-        "], [HOME, LEFT, {key: UP, popup: PGUP}, {key: DOWN, popup: PGDN}, RIGHT, " +
+        "{key: UP, popup: PGUP}, ESC, {key: TAB, display: TAB}, " + ExtraKeysConstants.ACTION_DRAWER +
+        "], [HOME, LEFT, {key: DOWN, popup: PGDN}, RIGHT, " +
+        "{macro: \"CTRL ALT DOWN\", display: NEXT}, " +
         "{key: " + ExtraKeysConstants.ACTION_KEYBOARD + ", popup: " + ExtraKeysConstants.ACTION_TEXTBAR + "}]]";
 
     /** Defines the key for extra keys style */

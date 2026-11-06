@@ -256,8 +256,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setTerminalToolbarView(savedInstanceState);
         mEvidenceDock = new EvidenceDock(this);
         if (mSavedWorkbench != null) mEvidenceDock.restoreState(mSavedWorkbench);
-        findViewById(R.id.evidence_dock_toggle).setOnClickListener(v -> toggleTerminalToolbarTextInput());
-        findViewById(R.id.terminal_pane_options).setOnClickListener(v -> mTerminalPanes.showOptions(v, this::splitWithNewSession));
+        findViewById(R.id.evidence_dock_toggle).setOnClickListener(v -> {
+            getDrawer().closeDrawers();
+            toggleTerminalToolbarTextInput();
+        });
+        findViewById(R.id.terminal_pane_options).setOnClickListener(v -> {
+            getDrawer().closeDrawers();
+            mTerminalPanes.showOptions(getTerminalToolbarContainer().isShown() ? getTerminalToolbarContainer() : mTerminalPanes,
+                this::splitWithNewSession);
+        });
 
         setSettingsButtonView();
 
