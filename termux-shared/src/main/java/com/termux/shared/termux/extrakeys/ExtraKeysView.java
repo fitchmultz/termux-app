@@ -423,13 +423,16 @@ public final class ExtraKeysView extends GridLayout {
                 if (adaptiveRows) {
                     int icon = 0;
                     int description = 0;
-                    if (ExtraKeysConstants.ACTION_DRAWER.equals(buttonInfo.getKey())) {
+                    if (ExtraKeysConstants.ACTION_DRAWER.equals(buttonInfo.getKey()) && !buttonInfo.hasCustomDisplay()) {
                         icon = R.drawable.ic_extra_sessions;
                         description = R.string.extra_sessions;
-                    } else if (ExtraKeysConstants.ACTION_KEYBOARD.equals(buttonInfo.getKey())) {
+                    } else if (ExtraKeysConstants.ACTION_KEYBOARD.equals(buttonInfo.getKey()) && !buttonInfo.hasCustomDisplay()) {
                         icon = R.drawable.ic_extra_keyboard;
                         description = R.string.extra_keyboard;
-                    } else if ("NEXT".equals(buttonInfo.getDisplay())) {
+                    } else if (ExtraKeysConstants.ACTION_NEW_SESSION.equals(buttonInfo.getKey()) && !buttonInfo.hasCustomDisplay()) {
+                        icon = R.drawable.ic_extra_new_session;
+                        description = R.string.extra_new_session;
+                    } else if (buttonInfo.isMacro() && "CTRL ALT DOWN".equals(buttonInfo.getKey())) {
                         description = R.string.extra_next_session;
                     }
                     if (icon != 0) {
@@ -536,7 +539,9 @@ public final class ExtraKeysView extends GridLayout {
                 : button.getTransformationMethod().getTransformation(button.getText(), button);
             cellWidth = Math.max(cellWidth, button.getPaint().measureText(label.toString()) + 16 * density);
         }
-        int left = adaptiveRows ? Math.max(0, width - (int) Math.ceil(cellWidth) * maximumLength(configuredButtons)) : 0;
+        int clusterWidth = (int) Math.ceil(cellWidth) * maximumLength(configuredButtons);
+        setMinimumWidth(adaptiveRows ? Math.max(width, clusterWidth) : width);
+        int left = adaptiveRows ? Math.max(0, width - clusterWidth) : 0;
         if (getPaddingLeft() != left) {
             stopScheduledExecutors();
             if (mPopupWindow != null) dismissPopup();

@@ -21,11 +21,19 @@ The default keys keep the same two rows when folding or rotating. They form a co
 
 | Ctrl / previous session | Alt / next session | Up / PageUp | Esc | Tab | Sessions |
 | --- | --- | --- | --- | --- | --- |
-| Home | Left | Down / PageDown | Right | Next session | Keyboard / Compose |
+| New session (+) | Left | Down / PageDown | Right | Next session | Keyboard / Compose |
 
 A slash indicates the swipe-up action. The navigation arrows stay together; the frequent Esc, Tab, Sessions, Next, and Keyboard controls stay on the right. Sessions and Keyboard use consistent vector icons with accessibility labels. Resizing preserves button instances, latched modifiers, and popup actions.
 
 Check narrow → wide → narrow transitions with the keyboard open and closed on the Fold 8 and Ultra. Verify session identity, unsent drafts, focus, and popup actions remain unchanged. Synthetic render/unit evidence does not replace physical typing and touch checks.
+
+## Customize controls
+
+Choose **Sessions → Customize controls**, or **Settings → Termux → Terminal I/O → Customize controls**. Hold and drag a key before another key, or onto **Add key** at a row's end. Tap a key for accessible move and remove actions. Add rows and choose keys, including Home, or create a literal-text key or space-separated macro.
+
+**Save** applies the layout when you return to the terminal. **Cancel** discards edits. Existing macros, labels, and swipe-up actions stay attached to moved keys. Unsaved rows and custom-key text survive rotation. App layouts stay compact and scroll horizontally when a row exceeds the available width.
+
+App layouts take precedence over `extra-keys` without editing `termux.properties`. **Reset** offers the right-handed Fold default or the file layout; either choice takes effect only after **Save**. Removing every key is allowed. Settings remains available through the session drawer's edge swipe.
 
 ## Evidence Dock
 

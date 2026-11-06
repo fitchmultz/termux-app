@@ -266,6 +266,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 this::splitWithNewSession);
         });
 
+        findViewById(R.id.customize_controls).setOnClickListener(v -> {
+            getDrawer().closeDrawers();
+            startActivity(new Intent(this, com.termux.app.activities.ExtraKeysActivity.class));
+        });
         setSettingsButtonView();
 
         setNewSessionButtonView();
@@ -336,6 +340,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         if (mTermuxTerminalViewClient != null)
             mTermuxTerminalViewClient.onResume();
+
+        if (mTermuxTerminalExtraKeys != null && !mTermuxTerminalExtraKeys.isLayoutCurrent()) reloadExtraKeys();
 
         // Check if a crash happened on last run of the app or if a plugin crashed and show a
         // notification with the crash details if it did
@@ -596,6 +602,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             this, mUseStackedTerminalToolbarTextInput ? null : savedTextInput,
             mUseStackedTerminalToolbarTextInput));
         terminalToolbarViewPager.addOnPageChangeListener(new TerminalToolbarViewPager.OnPageChangeListener(this, terminalToolbarViewPager));
+    }
+
+    private void reloadExtraKeys() {
+        mTermuxTerminalExtraKeys = new TermuxTerminalExtraKeys(this, mTerminalView,
+            mTermuxTerminalViewClient, mTermuxTerminalSessionActivityClient);
+        if (mExtraKeysView != null) {
+            mExtraKeysView.setExtraKeysViewClient(mTermuxTerminalExtraKeys);
+            mExtraKeysView.setAdaptiveRows(mTermuxTerminalExtraKeys.isAdaptiveLayout());
+            mExtraKeysView.setButtonTextAllCaps(mProperties.shouldExtraKeysTextBeAllCaps());
+            mExtraKeysView.reload(mTermuxTerminalExtraKeys.getExtraKeysInfo(), mTerminalToolbarDefaultHeight);
+        }
+        setTerminalToolbarHeight();
     }
 
     private void setTerminalToolbarHeight() {
@@ -1152,10 +1170,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mProperties != null) {
             reloadProperties();
 
-            if (mExtraKeysView != null) {
-                mExtraKeysView.setButtonTextAllCaps(mProperties.shouldExtraKeysTextBeAllCaps());
-                mExtraKeysView.reload(mTermuxTerminalExtraKeys.getExtraKeysInfo(), mTerminalToolbarDefaultHeight);
-            }
+            reloadExtraKeys();
 
             // Update NightMode.APP_NIGHT_MODE
             TermuxThemeUtils.setAppNightMode(mProperties.getNightMode());

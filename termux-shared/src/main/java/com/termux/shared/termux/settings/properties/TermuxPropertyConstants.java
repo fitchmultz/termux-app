@@ -355,7 +355,7 @@ public final class TermuxPropertyConstants {
         "[[{key: CTRL, popup: {macro: \"CTRL ALT UP\", display: PREV}}, " +
         "{key: ALT, popup: {macro: \"CTRL ALT DOWN\", display: NEXT}}, " +
         "{key: UP, popup: PGUP}, ESC, {key: TAB, display: TAB}, " + ExtraKeysConstants.ACTION_DRAWER +
-        "], [HOME, LEFT, {key: DOWN, popup: PGDN}, RIGHT, " +
+        "], [" + ExtraKeysConstants.ACTION_NEW_SESSION + ", LEFT, {key: DOWN, popup: PGDN}, RIGHT, " +
         "{macro: \"CTRL ALT DOWN\", display: NEXT}, " +
         "{key: " + ExtraKeysConstants.ACTION_KEYBOARD + ", popup: " + ExtraKeysConstants.ACTION_TEXTBAR + "}]]";
 

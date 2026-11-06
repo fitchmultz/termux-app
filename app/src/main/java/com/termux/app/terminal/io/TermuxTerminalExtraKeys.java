@@ -23,6 +23,8 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
 
     private ExtraKeysInfo mExtraKeysInfo;
     private boolean adaptiveLayout;
+    private String layoutJson;
+    private boolean appLayout;
 
     final TermuxActivity mActivity;
     final TermuxTerminalViewClient mTermuxTerminalViewClient;
@@ -54,6 +56,10 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
             // Check {@link #getExtraKeysInternalPropertyValueFromValue(String)} and
             // {@link #getExtraKeysStyleInternalPropertyValueFromValue(String)}
             String extrakeys = (String) mActivity.getProperties().getInternalPropertyValue(TermuxPropertyConstants.KEY_EXTRA_KEYS, true);
+            String savedLayout = ExtraKeysLayout.saved(mActivity);
+            appLayout = savedLayout != null;
+            if (appLayout) extrakeys = savedLayout;
+            layoutJson = extrakeys;
             String extraKeysStyle = (String) mActivity.getProperties().getInternalPropertyValue(TermuxPropertyConstants.KEY_EXTRA_KEYS_STYLE, true);
 
             ExtraKeysConstants.ExtraKeyDisplayMap extraKeyDisplayMap = ExtraKeysInfo.getCharDisplayMapForStyle(extraKeysStyle);
@@ -63,7 +69,7 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
             }
 
             mExtraKeysInfo = new ExtraKeysInfo(extrakeys, extraKeysStyle, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
-            adaptiveLayout = new JSONArray(extrakeys).toString().equals(
+            adaptiveLayout = appLayout || new JSONArray(extrakeys).toString().equals(
                 new JSONArray(TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS).toString());
         } catch (JSONException e) {
             Logger.showToast(mActivity, "Could not load and set the \"" + TermuxPropertyConstants.KEY_EXTRA_KEYS + "\" property from the properties file: " + e.toString(), true);
@@ -80,6 +86,12 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
         }
     }
 
+    public boolean isLayoutCurrent() {
+        String fileLayout = (String) mActivity.getProperties().getInternalPropertyValue(TermuxPropertyConstants.KEY_EXTRA_KEYS, true);
+        return appLayout == (ExtraKeysLayout.saved(mActivity) != null)
+            && java.util.Objects.equals(layoutJson, ExtraKeysLayout.effective(mActivity, fileLayout));
+    }
+
     public boolean isAdaptiveLayout() { return adaptiveLayout; }
 
     public ExtraKeysInfo getExtraKeysInfo() {
@@ -88,7 +100,9 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
 
     @Override
     public void onTerminalExtraKeyButtonClick(View view, String key, boolean ctrlDown, boolean altDown, boolean shiftDown, boolean fnDown) {
-        if (ExtraKeysConstants.ACTION_KEYBOARD.equals(key)) {
+        if (ExtraKeysConstants.ACTION_NEW_SESSION.equals(key)) {
+            mTermuxTerminalSessionActivityClient.addNewSession(false, null);
+        } else if (ExtraKeysConstants.ACTION_KEYBOARD.equals(key)) {
             if(mTermuxTerminalViewClient != null)
                 mTermuxTerminalViewClient.onToggleSoftKeyboardRequest();
         } else if (ExtraKeysConstants.ACTION_DRAWER.equals(key)) {

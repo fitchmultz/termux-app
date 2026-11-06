@@ -41,6 +41,8 @@ public class FoldControlsTest {
         ReflectionHelpers.callInstanceMethod(activity, "setTermuxTerminalViewAndClients");
         ReflectionHelpers.callInstanceMethod(activity, "setTerminalToolbarView", ClassParameter.from(Bundle.class, null));
         activity.getTerminalToolbarContainer().setVisibility(View.VISIBLE);
+        View drawer = activity.findViewById(R.id.terminal_sessions_drawer);
+        ((androidx.drawerlayout.widget.DrawerLayout.LayoutParams) drawer.getLayoutParams()).gravity = activity.getTerminalSessionDrawerGravity();
         controller.visible();
         return activity;
     }
@@ -99,6 +101,7 @@ public class FoldControlsTest {
         assertEquals("TAB", ((TextView) keys.getChildAt(4)).getText().toString());
         assertEquals("Next session", keys.getChildAt(10).getContentDescription());
         assertEquals("Sessions", keys.getChildAt(5).getContentDescription());
+        assertEquals("New session", keys.getChildAt(6).getContentDescription());
         assertTrue(keys.readSpecialButton(SpecialButton.CTRL, false));
         assertSame(first, panes.getActiveTerminal().getCurrentSession());
         TerminalPaneLayoutTest.capture(root, "controls-narrow-" + (activity.getResources().getConfiguration().uiMode & 48));
