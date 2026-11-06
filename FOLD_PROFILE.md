@@ -21,7 +21,7 @@ PR integration, signed APK publication, and physical validation are separate ste
 
 The integrated Fold profile:
 
-- identifies itself as `Termux Fold` version `0.119.0-fold.15` with monotonic version code `2026103115`;
+- identifies itself as `Termux Fold` version `0.119.0-fold.16` with monotonic version code `2026110516`;
 - builds and packages only `arm64-v8a` with the Android 7 bootstrap variant, requiring Android 7/API 24 or later;
 - compiles against Android 17/API 37.2 using a Java 21 toolchain and Java 17 source/bytecode baseline, while retaining target SDK 28 for direct prefix execution;
 - enables Samsung character-based terminal input;
@@ -29,8 +29,10 @@ The integrated Fold profile:
 - follows the app's light/dark mode for the terminal palette unless `~/.termux/colors.properties` exists; the default app mode follows Android;
 - offers a collapsible native multiline Evidence Dock above the extra keys, with per-session drafts and private file staging;
 - places the terminal-session drawer at the logical end/right edge;
-- provides two rows of controls on narrow windows and one row when all twelve labels and 48dp touch targets fit; preserves custom key matrices and places Up before Down;
-- combines the session title and readable Dock/Panes actions into one header when only one pane is visible;
+- keeps the default controls in two compact, right-aligned rows across window changes, with Esc, Tab, Sessions, Next, and Keyboard together on the right; preserves custom key matrices;
+- includes a plus key for new sessions and an in-app control editor in the drawer and Terminal I/O settings; app layouts can be reordered, expanded, saved, or reset without editing shell files;
+- uses a compact session-title header without a single-pane focus border; Compose and Split are available at the bottom of the session drawer;
+- starts shells without the termux-tools welcome banner through its native `TERMUX_HUSHLOGIN` switch; Help remains available from the terminal context menu;
 - advertises the terminal emulator's implemented DEC mode 2026 synchronized-output support to tmux.
 
 Properties remain available as recovery switches, but their defaults are the Fold choices rather than upstream's general-purpose choices. Release metadata is centralized in the root `build.gradle` and asserted by the read-only integration workflow so label/version drift fails CI.

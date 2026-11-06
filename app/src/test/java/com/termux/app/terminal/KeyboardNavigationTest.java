@@ -66,7 +66,8 @@ public class KeyboardNavigationTest {
     private View key(TermuxActivity activity, String label) {
         for (int i = 0; i < activity.getExtraKeysView().getChildCount(); i++) {
             View child = activity.getExtraKeysView().getChildAt(i);
-            if (child instanceof TextView && label.contentEquals(((TextView) child).getText())) return child;
+            if (label.equals(child.getContentDescription()) ||
+                (child instanceof TextView && label.contentEquals(((TextView) child).getText()))) return child;
         }
         throw new AssertionError("Missing key " + label);
     }
@@ -90,6 +91,43 @@ public class KeyboardNavigationTest {
         return new String(bytes, 0, count, StandardCharsets.UTF_8);
     }
 
+    @Test public void savedControlsApplyOnReturnWithoutReplacingTheSession() throws Exception {
+        Application app = RuntimeEnvironment.getApplication();
+        TermuxShellManager manager = TermuxShellManager.init(app);
+        manager.mTermuxSessions.clear();
+        TerminalSession terminal = session("one", manager);
+        ActivityController<TermuxActivity> controller = start();
+        TermuxActivity activity = controller.get();
+        idle();
+        controller.pause().stop();
+        assertTrue(new com.termux.app.terminal.io.ExtraKeysLayout("[[ESC]]").save(app));
+        controller.restart().start().resume().visible();
+        TerminalPaneLayoutTest.size(activity.findViewById(com.termux.R.id.activity_termux_root_view), 400, 650);
+        assertEquals(1, activity.getExtraKeysView().getChildCount());
+        assertNotNull(key(activity, "ESC"));
+        assertSame(terminal, activity.getCurrentSession());
+
+        controller.pause().stop();
+        assertTrue(com.termux.app.terminal.io.ExtraKeysLayout.useFile(app));
+        controller.restart().start().resume().visible();
+        TerminalPaneLayoutTest.size(activity.findViewById(com.termux.R.id.activity_termux_root_view), 400, 650);
+        assertNotNull(key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)));
+        int[] created = {0};
+        TermuxTerminalSessionActivityClient client = new TermuxTerminalSessionActivityClient(activity) {
+            @Override public void addNewSession(boolean failsafe, String name) {
+                assertFalse(failsafe);
+                assertNull(name);
+                created[0]++;
+            }
+        };
+        activity.getExtraKeysView().setExtraKeysViewClient(new com.termux.app.terminal.io.TermuxTerminalExtraKeys(
+            activity, activity.getTerminalView(), activity.getTermuxTerminalViewClient(), client));
+        key(activity, "New session").performClick();
+        assertEquals(1, created[0]);
+        assertSame(terminal, activity.getCurrentSession());
+        controller.pause().stop().destroy();
+    }
+
     @Test public void returnThroughActivityLifecycleKeepsKeyboardHidden() {
         Application app = RuntimeEnvironment.getApplication();
         TermuxShellManager manager = TermuxShellManager.init(app);
@@ -101,7 +139,7 @@ public class KeyboardNavigationTest {
         InputMethodManager input = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
         idle();
         assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
-        key(activity, "⌨").performClick();
+        key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
         assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
         controller.pause().stop().restart().start().resume().visible().windowFocusChanged(true);
         idle();
@@ -109,12 +147,12 @@ public class KeyboardNavigationTest {
         assertTrue(activity.getTerminalView().hasFocus());
         assertTrue(activity.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A)));
         assertEquals("a", input(terminal));
-        key(activity, "⌨").performClick();
+        key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
         assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
         controller.pause().resume().visible().windowFocusChanged(true);
         idle();
         assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
-        key(activity, "⌨").performClick();
+        key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
         assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
         controller.pause().stop().destroy();
     }
@@ -134,7 +172,7 @@ public class KeyboardNavigationTest {
             InputMethodManager input = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
             idle();
             assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
-            key(activity, "⌨").performClick();
+            key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
             assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
             controller.pause().stop().restart().start().resume().visible().windowFocusChanged(true);
             idle();
@@ -162,14 +200,14 @@ public class KeyboardNavigationTest {
             controller.pause().stop().restart().start().resume().visible().windowFocusChanged(true);
             idle();
             assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
-            key(activity, "⌨").performClick();
+            key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
             assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
             controller.pause().stop().restart().start().resume().visible().windowFocusChanged(true);
             idle();
             assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
             activity.getPreferences().setSoftKeyboardEnabled(false);
             controller.pause().resume().visible().windowFocusChanged(true);
-            key(activity, "⌨").performClick();
+            key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
             assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
             assertFalse(activity.getPreferences().isSoftKeyboardEnabled());
         } finally {
@@ -193,18 +231,18 @@ public class KeyboardNavigationTest {
         try {
             InputMethodManager input = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
             idle();
-            key(activity, "⌨").performClick();
+            key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
             assertFalse(activity.getPreferences().isSoftKeyboardEnabled());
             assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
             controller.pause().stop().restart().start().resume().visible().windowFocusChanged(true);
             idle();
             assertFalse(activity.getPreferences().isSoftKeyboardEnabled());
             assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
-            key(activity, "⌨").performClick();
+            key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
             idle();
             assertTrue(activity.getPreferences().isSoftKeyboardEnabled());
             assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
-            key(activity, "⌨").performClick();
+            key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
             assertFalse(activity.getPreferences().isSoftKeyboardEnabled());
         } finally {
             if (previous == null) values.remove(key); else values.put(key, previous);
@@ -223,7 +261,7 @@ public class KeyboardNavigationTest {
         InputMethodManager input = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
         idle();
         assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
-        key(activity, "⌨").performClick();
+        key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
         assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
         controller.pause().resume().visible().windowFocusChanged(true);
         idle();
@@ -241,7 +279,7 @@ public class KeyboardNavigationTest {
         TermuxActivity activity = controller.get();
         InputMethodManager input = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
         input.showSoftInput(activity.getTerminalView(), 0);
-        key(activity, "⌨").performClick();
+        key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
         assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
         idle();
         assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
@@ -284,7 +322,7 @@ public class KeyboardNavigationTest {
         assertNotNull(activity.getTerminalView().mEmulator);
         assertEquals(2, activity.getTermuxService().getTermuxSessionsSize());
         assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
-        key(activity, "⌨").performClick();
+        key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
         assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
         key(activity, "NEXT").performClick();
         idle();
@@ -294,7 +332,7 @@ public class KeyboardNavigationTest {
         assertFalse(Shadows.shadowOf(input).isSoftInputVisible());
         assertTrue(activity.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A)));
         assertEquals("a", input(second));
-        key(activity, "⌨").performClick();
+        key(activity, activity.getString(com.termux.shared.R.string.extra_keyboard)).performClick();
         assertTrue(Shadows.shadowOf(input).isSoftInputVisible());
         key(activity, "NEXT").performClick();
         idle();

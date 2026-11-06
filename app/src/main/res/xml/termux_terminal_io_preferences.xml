@@ -1,5 +1,15 @@
 <PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <Preference
+        app:key="customize_controls"
+        app:title="@string/controls_title"
+        app:summary="@string/controls_summary">
+        <intent android:action="android.intent.action.MAIN"
+            android:targetPackage="com.termux"
+            android:targetClass="com.termux.app.activities.ExtraKeysActivity"
+            xmlns:android="http://schemas.android.com/apk/res/android" />
+    </Preference>
+
     <PreferenceCategory
         app:key="keyboard"
         app:title="@string/termux_keyboard_header">

@@ -1,0 +1,28 @@
+<resources>
+    <string name="controls_title">Customize controls</string>
+    <string name="controls_summary">Reorder, add, or remove terminal keys</string>
+    <string name="controls_instructions">Drag keys to reorder; drop on Add key to append. Tap a key to move or remove it. Save applies your changes. App layouts override extra-keys in termux.properties; Reset can restore the file layout.</string>
+    <string name="controls_add_row">Add row</string>
+    <string name="controls_reset">Reset…</string>
+    <string name="controls_fold_default">Use right-handed Fold default</string>
+    <string name="controls_use_file">Use termux.properties layout</string>
+    <string name="controls_save">Save</string>
+    <string name="controls_row">Row %1$d</string>
+    <string name="controls_add_key">Add key</string>
+    <string name="controls_remove_row">Remove empty row</string>
+    <string name="controls_empty">No keys. Add a row to start, or reset the layout. You can always return here from Settings → Termux → Terminal I/O.</string>
+    <string name="controls_left">Move left</string>
+    <string name="controls_right">Move right</string>
+    <string name="controls_move_row">Move to row…</string>
+    <string name="controls_remove">Remove key</string>
+    <string name="controls_sessions">Sessions</string>
+    <string name="controls_keyboard">Keyboard</string>
+    <string name="controls_custom">Custom key or macro…</string>
+    <string name="controls_key_hint">Key name or literal text</string>
+    <string name="controls_label_hint">Button label (optional)</string>
+    <string name="controls_macro">Macro: space-separated keys, such as CTRL c</string>
+    <string name="controls_discard">Discard unsaved control changes?</string>
+    <string name="controls_discard_action">Discard</string>
+    <string name="controls_invalid">The current key layout could not be read. Check extra-keys in termux.properties; no changes were saved.</string>
+    <string name="controls_save_failed">Could not save your controls. Your edits are still here; try Save again.</string>
+</resources>

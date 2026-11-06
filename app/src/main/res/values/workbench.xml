@@ -2,7 +2,7 @@
 <resources>
     <item name="terminal_view" type="id" />
     <item name="terminal_view_secondary" type="id" />
-    <string name="split_options">Panes</string>
+    <string name="split_options">Split</string>
     <string name="split_beside">Open beside current</string>
     <string name="split_new">Split with a new session</string>
     <string name="split_horizontal">Left / right</string>
@@ -18,7 +18,7 @@
     <string name="split_active_pane">Active pane: %1$s</string>
     <string name="split_focus_pane">Focus pane: %1$s</string>
     <string name="evidence_dock">Evidence Dock</string>
-    <string name="evidence_dock_short">Dock</string>
+    <string name="evidence_dock_short">Compose</string>
     <string name="evidence_target">Draft for %1$s</string>
     <string name="evidence_hint">Compose here. Nothing reaches the terminal until Insert or Send.</string>
     <string name="evidence_files">Add files</string>

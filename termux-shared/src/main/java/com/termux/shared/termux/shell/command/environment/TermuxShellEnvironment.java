@@ -77,6 +77,8 @@ public class TermuxShellEnvironment extends AndroidShellEnvironment {
 
         environment.put(ENV_HOME, TermuxConstants.TERMUX_HOME_DIR_PATH);
         environment.put(ENV_PREFIX, TermuxConstants.TERMUX_PREFIX_DIR_PATH);
+        // termux-tools login supports this switch without modifying the user's shell files.
+        environment.put("TERMUX_HUSHLOGIN", "1");
 
         // If failsafe is not enabled, then we keep default PATH and TMPDIR so that system binaries can be used
         if (!isFailSafe) {

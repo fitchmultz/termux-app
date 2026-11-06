@@ -30,14 +30,16 @@
 
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="32dp"
                     android:orientation="horizontal"
                     android:gravity="end"
                     android:background="#161B22">
                     <TextView
                         android:id="@+id/terminal_session_title"
                         android:layout_width="0dp"
-                        android:layout_height="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="32dp"
                         android:layout_weight="1"
                         android:gravity="center_vertical"
                         android:paddingHorizontal="10dp"
@@ -45,23 +47,6 @@
                         android:textSize="13sp"
                         android:singleLine="true"
                         android:ellipsize="end" />
-                    <com.google.android.material.button.MaterialButton
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        android:textColor="?attr/extraKeysButtonTextColor"
-                        android:id="@+id/evidence_dock_toggle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="match_parent"
-                        android:text="@string/evidence_dock_short"
-                        android:contentDescription="@string/evidence_dock"
-                        android:textAllCaps="false" />
-                    <com.google.android.material.button.MaterialButton
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        android:textColor="?attr/extraKeysButtonTextColor"
-                        android:id="@+id/terminal_pane_options"
-                        android:layout_width="wrap_content"
-                        android:layout_height="match_parent"
-                        android:text="@string/split_options"
-                        android:textAllCaps="false" />
                 </LinearLayout>
 
                 <com.termux.app.terminal.TerminalPaneLayout
@@ -105,6 +90,42 @@
                     android:layout_weight="1"
                     android:choiceMode="singleChoice"
                     android:longClickable="true" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:background="#161B22"
+                    android:gravity="end"
+                    android:orientation="horizontal">
+                    <com.google.android.material.button.MaterialButton
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:textColor="?attr/extraKeysButtonTextColor"
+                        android:id="@+id/evidence_dock_toggle"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="match_parent"
+                        android:text="@string/evidence_dock_short"
+                        android:contentDescription="@string/evidence_dock"
+                        android:textAllCaps="false" />
+                    <com.google.android.material.button.MaterialButton
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:textColor="?attr/extraKeysButtonTextColor"
+                        android:id="@+id/terminal_pane_options"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="match_parent"
+                        android:text="@string/split_options"
+                        android:textAllCaps="false" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/customize_controls"
+                    style="?android:attr/buttonBarButtonStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="@string/controls_title"
+                    android:textAllCaps="false" />
 
                 <LinearLayout
                     style="?android:attr/buttonBarStyle"

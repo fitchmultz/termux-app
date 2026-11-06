@@ -6,7 +6,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Prioritizes the owner's Z Fold 8 (`SM-F971U1`, Android 17), retains the Ultra (`SM-F976U1`) as a regression target, and welcomes other compatible devices without model-name gating. The signed APK remains ARM64-only.
 - Keeps package ID `com.termux` and prefix `/data/data/com.termux/files/usr`; this is an in-place fork, not a side-by-side package.
-- Uses label `Termux Fold`; this branch's source release profile is `0.119.0-fold.15` (`2026103115`). PR integration, signed publication, and physical validation are separate steps.
+- Uses label `Termux Fold`; this branch's source release profile is `0.119.0-fold.16` (`2026110516`). PR integration, signed publication, and physical validation are separate steps.
 - Packages only `arm64-v8a` with the `apt-android-7` bootstrap; split release APKs are disabled.
 - Retains target SDK 28 for direct execution of programs from the writable Termux prefix. Modern targets require routing execution through Android's system linker plus a separately patched package ecosystem; forced-linker tests currently break Node test workers and `age-keygen`. Android 17 may therefore show an old-app or **Install anyway** warning.
 - Uses a dedicated Android signing identity. Signing material must never be committed or made public, but protected GitHub Actions secrets and signed GitHub Releases are allowed when deliberately configured.
@@ -24,7 +24,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Selectively incorporates upstream `45844885`, `b4a2c32c`, and `084d709f`: prevents fullscreen keyboard-margin predictions from resizing split-screen/pop-up windows, handles root file-share MIME queries, and pairs JNI string releases with the correct arguments. Also normalizes MIME extensions independently of the user's locale in sharing and document-provider paths.
 
-- Makes Dock/Panes labels readable in both app themes, combines the single-visible-pane title with those actions, and preserves separate focus headers when both panes are visible.
+- Keeps Compose and Split readable in both themes at the bottom of the session drawer. The compact shared header shows the session title without single-pane focus decoration; split panes retain separate focus headers.
 
 - Includes upstream `3b66f87`: rejects file-based RUN_COMMAND error results until the external-app policy has passed; Android's RUN_COMMAND permission remains required.
 
@@ -38,6 +38,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Features
 
+- Adds a native control editor in the session drawer and Terminal I/O settings. Drag or tap to reorder, move between rows, add keys/macros, remove keys, and reset. Saved app layouts override the file matrix explicitly; returning to the file layout leaves termux.properties untouched. Editor drafts survive activity recreation. Oversized app layouts scroll horizontally without shrinking touch targets. The default plus key starts a session through the existing new-session path; Home remains available in the editor.
 - Adds native two-pane sessions with independent terminal views, active-pane input routing, draggable sizing, layout/swap/maximize controls, and compact-window collapse without ending the hidden session. Compact transitions are applied before measurement so the remaining pane fills the window.
 - Adds a per-session Evidence Dock with native multiline composition, private file imports, Android share intake, saved-draft recovery, and explicit Insert versus confirmed Send. App-owned import state survives activity replacement; draft persistence and completion are committed together. Saved drafts can be explicitly recovered or deleted, and real-stream tests cover atomic import success/failure. Pending share selections survive recreation, while completed shares are not replayed. Imports never execute commands or upload content.
 - Rejects multiline insertion when the receiving program has not enabled bracketed paste, and omits clipboard payloads from OSC 52 error logs.
@@ -56,7 +57,8 @@ This is the canonical concise inventory of intentional differences from the audi
 - This source branch keeps the soft keyboard hidden on return from another app and does not open it merely to switch existing sessions. It cancels pending show requests when the keyboard is hidden and clears a carried-over IME on the returning window, while retaining existing status-bar inset handling. Initial launch, new sessions, and deliberate keyboard controls remain available; set `show-soft-keyboard-on-navigation = true` in `~/.termux/termux.properties` and run `termux-reload-settings` to restore the old automatic requests. Existing startup-hide and keyboard-disable settings still take precedence.
 - Enables Samsung character-based terminal input for immediate command typing.
 - Makes the Evidence Dock available alongside extra keys, initially collapsed, and places the session drawer at logical `end` (right in this profile).
-- Uses `ESC`, `TAB`, `CTRL/PREV`, `ALT/NEXT`, `NEXT`, `DRAWER`; then `HOME`, `LEFT`, `UP/PGUP`, `DOWN/PGDN`, `RIGHT`, `KEYBOARD/TEXTBAR`. The default matrix reflows to one row only when every label and at least 48dp per touch target fit. Custom matrices keep their configured rows; toolbar height respects a 48dp minimum. Reflow preserves the same button instances, modifiers, macros, and popups.
+- Uses two stable, compact right-aligned rows: `CTRL/PREV`, `ALT/NEXT`, `UP/PGUP`, `ESC`, `TAB`, `DRAWER`; then `NEW_SESSION`, `LEFT`, `DOWN/PGDN`, `RIGHT`, `NEXT`, `KEYBOARD/TEXTBAR`. Width follows rendered labels and 48dp minimum targets. Custom matrices retain their rows and full-width layout. Vector Sessions/Keyboard icons and accessibility descriptions replace tiny glyphs. Resizing preserves button instances, modifiers, macros, and popups.
+- Starts shells with the termux-tools `TERMUX_HUSHLOGIN=1` switch, without editing shell files or the packaged banner. Help remains in the terminal context menu; `env -u TERMUX_HUSHLOGIN login` displays the banner unless `~/.hushlogin` also suppresses it.
 - Keeps explicit keyboard controls because full-screen TUIs such as Pi use terminal mouse tracking and consume terminal taps.
 
 ## Contracts, tests, and repository policy

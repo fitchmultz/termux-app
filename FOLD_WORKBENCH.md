@@ -4,12 +4,12 @@
 
 No tmux is required. Each pane owns its terminal view, PTY size, scroll position, selection, and text size.
 
-- The shared header shows the session title alongside readable **Dock** and **Panes** actions. One visible pane needs no duplicate pane header; two visible panes retain their separate focus/maximize headers.
-- **Panes → Split with a new session** creates the second terminal.
+- The compact shared header shows the session title. The **Sessions** menu at the bottom right opens the drawer, with **Compose** and **Split** actions near its bottom. Two visible panes retain their separate focus/maximize headers.
+- **Split → Split with a new session** creates the second terminal.
 - To use an existing session, long-press its drawer row and choose **Open beside current**.
-- Tap a terminal or its header to select the destination for hardware input and extra keys. Keyboard session-switch shortcuts also move focus; delayed gestures from the previous pane are cancelled. The active pane has a teal border and a filled-circle header marker.
-- Drag the divider, or use **Panes → Resize split** for an accessible slider. Each pane retains at least 25% of the split.
-- **Panes** also provides left/right, top/bottom, swap, and keep-active-only actions.
+- Tap a terminal or its header to select the destination for hardware input and extra keys. Keyboard session-switch shortcuts also move focus; delayed gestures from the previous pane are cancelled. When both panes are visible, the active pane has a teal border and a filled-circle header marker. A single visible terminal has neither.
+- Drag the divider, or use **Split → Resize split** for an accessible slider. Each pane retains at least 25% of the split.
+- **Split** also provides left/right, top/bottom, swap, and keep-active-only actions.
 - The header's maximize button expands its pane; pressing it again restores the pair.
 - On a wide-to-narrow window transition (below 600 dp), only the active pane is shown. Widening the window restores the pair. An explicit Restore split or Open beside action also permits splitting a narrow window.
 - Hiding, maximizing, swapping, or removing a pane from the layout does **not** exit its session. The existing confirmed **Exit session** action does.
@@ -17,13 +17,27 @@ No tmux is required. Each pane owns its terminal view, PTY size, scroll position
 
 ## Adaptive extra keys
 
-The default keys use two rows on narrow windows and a single row when all twelve labels fit with at least 48dp-wide targets. The decision uses measured window width and rendered label size, including font scaling, not the device model. Row height is at least 48dp. Up precedes Down, with PageUp/PageDown retained as their swipe-up actions. Button instances and latched modifiers survive reflow; user-defined matrices keep their configured rows.
+The default keys keep the same two rows when folding or rotating. They form a compact right-aligned group rather than stretching across the inner display. Width follows the rendered labels and at least 48dp touch targets; row height is at least 48dp. Custom matrices retain their configured rows and full-width layout.
+
+| Ctrl / previous session | Alt / next session | Up / PageUp | Esc | Tab | Sessions |
+| --- | --- | --- | --- | --- | --- |
+| New session (+) | Left | Down / PageDown | Right | Next session | Keyboard / Compose |
+
+A slash indicates the swipe-up action. The navigation arrows stay together; the frequent Esc, Tab, Sessions, Next, and Keyboard controls stay on the right. Sessions and Keyboard use consistent vector icons with accessibility labels. Resizing preserves button instances, latched modifiers, and popup actions.
 
 Check narrow → wide → narrow transitions with the keyboard open and closed on the Fold 8 and Ultra. Verify session identity, unsent drafts, focus, and popup actions remain unchanged. Synthetic render/unit evidence does not replace physical typing and touch checks.
 
+## Customize controls
+
+Choose **Sessions → Customize controls**, or **Settings → Termux → Terminal I/O → Customize controls**. Hold and drag a key before another key, or onto **Add key** at a row's end. Tap a key for accessible move and remove actions. Add rows and choose keys, including Home, or create a literal-text key or space-separated macro.
+
+**Save** applies the layout when you return to the terminal. **Cancel** discards edits. Existing macros, labels, and swipe-up actions stay attached to moved keys. Unsaved rows and custom-key text survive rotation. App layouts stay compact and scroll horizontally when a row exceeds the available width.
+
+App layouts take precedence over `extra-keys` without editing `termux.properties`. **Reset** offers the right-handed Fold default or the file layout; either choice takes effect only after **Save**. Removing every key is allowed. Settings remains available through the session drawer's edge swipe.
+
 ## Evidence Dock
 
-Open **Evidence Dock** above the terminals, or use the existing **TEXTBAR** extra-key popup. It starts collapsed so it does not consume terminal space until needed.
+Choose **Sessions → Compose**, or swipe up on the Keyboard key, to open **Evidence Dock** above the extra keys. It starts collapsed so it does not consume terminal space until needed.
 
 The displayed target is a **Termux session**, not a Pi agent identity or an individual tmux pane. Inside tmux, input still goes to that session's currently active tmux pane. There is no Posthorse dependency or agent coordination in the APK.
 

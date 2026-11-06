@@ -110,6 +110,12 @@
             tools:targetApi="n" />
 
         <activity
+            android:name=".app.activities.ExtraKeysActivity"
+            android:exported="false"
+            android:label="@string/controls_title"
+            android:theme="@style/Theme.TermuxApp.DayNight.NoActionBar" />
+
+        <activity
             android:name=".app.activities.SettingsActivity"
             android:exported="true"
             android:label="@string/title_activity_termux_settings"

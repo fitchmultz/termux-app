@@ -209,7 +209,6 @@ public final class ExtraKeysView extends GridLayout {
     protected int mLongPressCount;
     private ExtraKeyButton[][] configuredButtons;
     private boolean adaptiveRows;
-    private boolean singleRow;
 
 
     public ExtraKeysView(Context context, AttributeSet attrs) {
@@ -392,7 +391,6 @@ public final class ExtraKeysView extends GridLayout {
 
         stopScheduledExecutors();
         if (mPopupWindow != null) dismissPopup();
-        singleRow = false;
 
         for(SpecialButtonState state : mSpecialButtons.values())
             state.buttons = new ArrayList<>();
@@ -422,6 +420,34 @@ public final class ExtraKeysView extends GridLayout {
                 button.setTextColor(mButtonTextColor);
                 button.setAllCaps(mButtonTextAllCaps);
                 button.setPadding(0, 0, 0, 0);
+                if (adaptiveRows) {
+                    int icon = 0;
+                    int description = 0;
+                    if (ExtraKeysConstants.ACTION_DRAWER.equals(buttonInfo.getKey()) && !buttonInfo.hasCustomDisplay()) {
+                        icon = R.drawable.ic_extra_sessions;
+                        description = R.string.extra_sessions;
+                    } else if (ExtraKeysConstants.ACTION_KEYBOARD.equals(buttonInfo.getKey()) && !buttonInfo.hasCustomDisplay()) {
+                        icon = R.drawable.ic_extra_keyboard;
+                        description = R.string.extra_keyboard;
+                    } else if (ExtraKeysConstants.ACTION_NEW_SESSION.equals(buttonInfo.getKey()) && !buttonInfo.hasCustomDisplay()) {
+                        icon = R.drawable.ic_extra_new_session;
+                        description = R.string.extra_new_session;
+                    } else if (buttonInfo.isMacro() && "CTRL ALT DOWN".equals(buttonInfo.getKey())) {
+                        description = R.string.extra_next_session;
+                    }
+                    if (icon != 0) {
+                        button.setText("");
+                        button.setIconResource(icon);
+                        button.setIconSize(Math.round(24 * getResources().getDisplayMetrics().density));
+                        button.setIconPadding(0);
+                        button.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
+                        button.setIconTint(android.content.res.ColorStateList.valueOf(mButtonTextColor));
+                    }
+                    if (description != 0) {
+                        button.setContentDescription(getContext().getString(description));
+                        androidx.appcompat.widget.TooltipCompat.setTooltipText(button, getContext().getString(description));
+                    }
+                }
 
                 button.setOnClickListener(view -> {
                     performExtraKeyButtonHapticFeedback(view, buttonInfo, button);
@@ -502,9 +528,9 @@ public final class ExtraKeysView extends GridLayout {
         requestLayout();
     }
 
-    /** Reposition existing buttons so latched modifiers and popup actions survive resizing. */
+    /** Keep the default controls in a compact right-hand cluster without moving keys between rows. */
     public void fitRows(int width) {
-        if (configuredButtons == null || configuredButtons.length < 2) return;
+        if (configuredButtons == null) return;
         float density = getResources().getDisplayMetrics().density;
         float cellWidth = 48 * density;
         for (int i = 0; i < getChildCount(); i++) {
@@ -513,26 +539,14 @@ public final class ExtraKeysView extends GridLayout {
                 : button.getTransformationMethod().getTransformation(button.getText(), button);
             cellWidth = Math.max(cellWidth, button.getPaint().measureText(label.toString()) + 16 * density);
         }
-        boolean fits = adaptiveRows && getChildCount() > 0 && width >= Math.ceil(cellWidth) * getChildCount();
-        if (fits == singleRow) return;
-        stopScheduledExecutors();
-        if (mPopupWindow != null) dismissPopup();
-        setRowCount(UNDEFINED);
-        setColumnCount(UNDEFINED);
-        int index = 0;
-        for (int row = 0; row < configuredButtons.length; row++) {
-            for (int col = 0; col < configuredButtons[row].length; col++) {
-                View button = getChildAt(index);
-                LayoutParams params = (LayoutParams) button.getLayoutParams();
-                params.rowSpec = GridLayout.spec(fits ? 0 : row, GridLayout.FILL, 1.f);
-                params.columnSpec = GridLayout.spec(fits ? index : col, GridLayout.FILL, 1.f);
-                button.setLayoutParams(params);
-                index++;
-            }
+        int clusterWidth = (int) Math.ceil(cellWidth) * maximumLength(configuredButtons);
+        setMinimumWidth(adaptiveRows ? Math.max(width, clusterWidth) : width);
+        int left = adaptiveRows ? Math.max(0, width - clusterWidth) : 0;
+        if (getPaddingLeft() != left) {
+            stopScheduledExecutors();
+            if (mPopupWindow != null) dismissPopup();
+            setPadding(left, 0, 0, 0);
         }
-        setRowCount(fits ? 1 : configuredButtons.length);
-        setColumnCount(fits ? getChildCount() : maximumLength(configuredButtons));
-        singleRow = fits;
     }
 
     public void onExtraKeyButtonClick(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
