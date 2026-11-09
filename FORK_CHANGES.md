@@ -29,7 +29,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Keeps bitmap-map field, constructor and import consistent after removing insertion-order eviction, fixing the genuine Cursor compile finding without restoring the rejected quota.
 
-- Test-only composing-preference fixture completes the first real PRIVATE preferences load before dual-mode construction and verifies backend identity/key absence. Default-OFF and immediate true/false readbacks stay intact; no production preference I/O, fake backend, seeded setting, or post-setter idle is introduced.
+- Test-only composing-preference and finished-session Activity fixtures complete the first real PRIVATE preferences load before dual-mode construction and verify backend identity. The Activity case also checks immediate enabled readback and the real Activity's enabled preference before rebinding; default-OFF and immediate true/false preference coverage remain intact. No production preference I/O, fake backend, seeded setting, or post-setter idle is introduced.
 
 - Reconciles opt-in composing preference changes even after an OFF connection was invalidated, with guarded/coalesced restart requests and stale legacy-draft cancellation only for admitted ON replacement. Collapsed/clipped composing regions finalize retained drafts once instead of hiding text ahead of terminal navigation/deletion; ordinary OFF behavior remains unchanged.
 

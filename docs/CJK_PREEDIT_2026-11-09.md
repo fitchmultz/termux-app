@@ -188,6 +188,11 @@ empty commit, clearing/seeding settings, fake backend, sleep, post-setter idle,
 production workaround, or claim that already-overlapping loaders are drained.
 The earlier empty-commit candidate was superseded and is not applied.
 
+The finished-session-removal Activity fixture uses the same initial-load ordering
+and checks backend identity, immediate enabled readback and the real Activity's
+enabled preference before exercising rebinding. Its restart, stale-commit rejection
+and replacement-session input assertions remain unchanged.
+
 This one-file fixture increment is independently source-reviewed. Only fresh-
 head full CI can establish recovery; final-pair Pi Durable/Cursor reviews remain
 mandatory. No actual user preferences or phone/runtime configuration were touched.
