@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.Application;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
@@ -35,11 +36,13 @@ import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.Shadows;
+import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.shadows.ShadowInputMethodManager;
+import org.robolectric.shadows.ShadowPaint;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
@@ -82,6 +85,18 @@ public class TerminalImeComposingTest {
         static void clear() { restarts.clear(); extracted = null; }
     }
 
+    /**
+     * API24's legacy Paint shadow leaves float font spacing at zero. These input-only tests
+     * still need a real attached, measured and focused view/session graph. Supply spacing
+     * from the configured text size, not native glyph metrics or patched renderer fields.
+     * Native API28/37 rendering tests never select this shadow.
+     */
+    @Implements(value = Paint.class, minSdk = 24, maxSdk = 24)
+    public static class Api24LayoutPaint extends ShadowPaint {
+        @Implementation protected float getFontSpacing() { return getTextSize(); }
+    }
+
+    private ActivityController<Activity> controller;
     private Activity activity;
     private TerminalView terminal, other;
     private TerminalSession session, otherSession;
@@ -89,7 +104,8 @@ public class TerminalImeComposingTest {
     private boolean enabled, enforce = true;
 
     @Before public void setUp() {
-        activity = Robolectric.buildActivity(Activity.class).setup().get();
+        controller = Robolectric.buildActivity(Activity.class).setup();
+        activity = controller.get();
         Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD,
             "com.samsung.android.honeyboard/.service.HoneyBoardService");
         LinearLayout layout = new LinearLayout(activity);
@@ -398,7 +414,9 @@ public class TerminalImeComposingTest {
         assertSyntheticZeroLengthMarkerUsesTerminalBackspace();
     }
 
-    @Test @Config(sdk = 24) @GraphicsMode(GraphicsMode.Mode.LEGACY)
+    @Test
+    @Config(sdk = 24, shadows = {TerminalImePasteTest.NoPty.class, RecordingImm.class, Api24LayoutPaint.class})
+    @GraphicsMode(GraphicsMode.Mode.LEGACY)
     public void emptyPreeditDeletionAlsoUsesOnlyMinimumSdkInputApis() {
         assertEmptyComposingApisUseTerminalBackspace();
         assertSyntheticZeroLengthMarkerUsesTerminalBackspace();
@@ -428,7 +446,9 @@ public class TerminalImeComposingTest {
         assertEquals("", received(session));
     }
 
-    @Test @Config(sdk = 24) @GraphicsMode(GraphicsMode.Mode.LEGACY)
+    @Test
+    @Config(sdk = 24, shadows = {TerminalImePasteTest.NoPty.class, RecordingImm.class, Api24LayoutPaint.class})
+    @GraphicsMode(GraphicsMode.Mode.LEGACY)
     public void composingModelUsesOnlyMinimumSdkInputApis() {
         enabled = true;
         InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
@@ -491,6 +511,175 @@ public class TerminalImeComposingTest {
         assertNull(preview());
         assertEquals("", received(session));
         assertEquals("", received(otherSession));
+    }
+
+    private void assertWindowFocusRecovery(boolean composing) {
+        enabled = composing;
+        controller.windowFocusChanged(true);
+        assertTrue(terminal.hasWindowFocus());
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("old draft", 1);
+        InputMethodManager imm = activity.getSystemService(InputMethodManager.class);
+        assertFalse(Shadows.shadowOf(imm).isSoftInputVisible());
+        RecordingImm.clear();
+
+        // Synthetic root-focus callbacks, not a notification-shade or full system-IMM test.
+        // The controller updates real AttachInfo before dispatch and drains its posted work.
+        controller.windowFocusChanged(false);
+        assertFalse(terminal.hasWindowFocus());
+        assertTrue(terminal.hasFocus());
+        assertNull(preview());
+        assertTrue(RecordingImm.restarts.isEmpty());
+        terminal.refreshImeComposingPreference();
+        assertTrue(RecordingImm.restarts.isEmpty());
+        if (composing) assertFalse(old.commitText("late", 1));
+        else assertEquals("", old.getTextAfterCursor(1, 0).toString());
+
+        controller.windowFocusChanged(true);
+        assertTrue(terminal.hasWindowFocus());
+        assertEquals(1, RecordingImm.restarts.size());
+        assertSame(terminal, RecordingImm.restarts.get(0));
+        assertFalse(Shadows.shadowOf(imm).isSoftInputVisible());
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
+
+        // Only after proving production requested restart, supply Android's replacement callback.
+        // The recording shadow does not emulate system IMM rebinding or keyboard visibility policy.
+        EditorInfo attrs = new EditorInfo();
+        InputConnection current = terminal.onCreateInputConnection(attrs);
+        old.closeConnection();
+        assertEquals("", received(session));
+        if (composing) {
+            assertEquals(0, attrs.initialSelStart);
+            current.setComposingText("new draft", 1);
+            assertEquals("new draft", preview());
+            current.finishComposingText();
+            assertEquals("new draft", received(session));
+        } else {
+            assertEquals(1, attrs.initialSelStart);
+            assertEquals("x", current.getTextBeforeCursor(1, 0).toString());
+            assertEquals("x", current.getTextAfterCursor(1, 0).toString());
+            current.commitText("new target", 1);
+            assertEquals("new target", received(session));
+        }
+        assertTerminalBackspace(current, false);
+    }
+
+    @Test public void windowFocusRegainRequestsComposingRecoveryWithoutReplayingDraftOrShowingKeyboard() {
+        assertWindowFocusRecovery(true);
+    }
+
+    @Test public void windowFocusRegainRequestsHoneyboardMetadataRecoveryWithoutShowingKeyboard() {
+        assertWindowFocusRecovery(false);
+    }
+
+    @Test
+    @Config(sdk = 24, shadows = {TerminalImePasteTest.NoPty.class, RecordingImm.class, Api24LayoutPaint.class})
+    @GraphicsMode(GraphicsMode.Mode.LEGACY)
+    public void windowFocusRecoveryAlsoUsesOnlyMinimumSdkInputApis() {
+        assertWindowFocusRecovery(true);
+        assertWindowFocusRecovery(false);
+    }
+
+    @Test public void windowFocusRecoveryDefersBackgroundAndNullTargetsAndKeepsFinalRapidSession() {
+        enabled = true;
+        controller.windowFocusChanged(true);
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("old draft", 1);
+        RecordingImm.clear();
+        controller.windowFocusChanged(false);
+        terminal.attachSession(null);
+        controller.windowFocusChanged(true);
+        assertNull(terminal.getCurrentSession());
+        assertTrue(RecordingImm.restarts.isEmpty());
+
+        controller.windowFocusChanged(false);
+        terminal.attachSession(otherSession);
+        terminal.attachSession(session);
+        idle();
+        assertFalse(terminal.hasWindowFocus());
+        assertTrue(RecordingImm.restarts.isEmpty());
+        assertFalse(old.commitText("late", 1));
+        controller.windowFocusChanged(true);
+        assertEquals(1, RecordingImm.restarts.size());
+        assertSame(terminal, RecordingImm.restarts.get(0));
+        assertSame(session, terminal.getCurrentSession());
+        InputConnection current = terminal.onCreateInputConnection(new EditorInfo());
+        old.closeConnection();
+        current.commitText("final target", 1);
+        assertEquals("final target", received(session));
+        assertEquals("", received(otherSession));
+    }
+
+    @Test public void windowFocusRecoveryDoesNotStealNativeEditorOrPaneFocus() {
+        enabled = true;
+        controller.windowFocusChanged(true);
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("old draft", 1);
+        RecordingImm.clear();
+        controller.windowFocusChanged(false);
+        assertTrue(other.requestFocus());
+        controller.windowFocusChanged(true);
+        assertTrue(other.hasFocus());
+        assertFalse(RecordingImm.restarts.contains(terminal));
+        RecordingImm.clear();
+
+        controller.windowFocusChanged(false);
+        assertTrue(editor.requestFocus());
+        InputConnection nativeInput = editor.onCreateInputConnection(new EditorInfo());
+        nativeInput.setComposingText("native draft", 1);
+        controller.windowFocusChanged(true);
+        assertTrue(editor.hasFocus());
+        assertTrue(RecordingImm.restarts.isEmpty());
+        old.closeConnection();
+        nativeInput.finishComposingText();
+        assertEquals("native draft", editor.getText().toString());
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
+    }
+
+    @Test public void reattachedViewThatMissedWindowGainCanStillRebindAfterSessionNavigation() {
+        enabled = true;
+        controller.windowFocusChanged(true);
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("old draft", 1);
+        controller.windowFocusChanged(false);
+        LinearLayout parent = (LinearLayout) terminal.getParent();
+        int index = parent.indexOfChild(terminal);
+        LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) terminal.getLayoutParams();
+        parent.removeView(terminal);
+        controller.windowFocusChanged(true);
+        parent.addView(terminal, index, params);
+        assertTrue(terminal.requestFocus());
+        assertTrue(terminal.hasWindowFocus());
+        InputConnection reattached = terminal.onCreateInputConnection(new EditorInfo());
+        reattached.setComposingText("reattached draft", 1);
+        RecordingImm.clear();
+        terminal.attachSession(otherSession);
+        idle();
+        assertEquals(1, RecordingImm.restarts.size());
+        assertSame(terminal, RecordingImm.restarts.get(0));
+        old.closeConnection();
+        reattached.closeConnection();
+        InputConnection current = terminal.onCreateInputConnection(new EditorInfo());
+        current.commitText("reattached target", 1);
+        assertEquals("", received(session));
+        assertEquals("reattached target", received(otherSession));
+    }
+
+    @Test public void windowFocusRecoveryDoesNotAddNonHoneyboardLegacyRestart() {
+        Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD,
+            "com.example.ime/.Keyboard");
+        controller.windowFocusChanged(true);
+        InputConnection legacy = terminal.onCreateInputConnection(new EditorInfo());
+        legacy.setComposingText("legacy draft", 1);
+        RecordingImm.clear();
+        controller.windowFocusChanged(false);
+        controller.windowFocusChanged(true);
+        assertTrue(RecordingImm.restarts.isEmpty());
+        legacy.commitText("legacy commit", 1);
+        assertEquals("legacy commit", received(session));
+        assertNull(preview());
     }
 
     @Test public void deferredRestartCannotDiscardNewPreeditOnTheSameConnection() {

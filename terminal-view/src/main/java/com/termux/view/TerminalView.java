@@ -100,6 +100,8 @@ public final class TerminalView extends View {
     private boolean mImeComposingEnabled;
     /** Carry feature-connection restart intent through temporary null and rapid session changes. */
     private boolean mRestartInputAfterSessionChange;
+    /** Defer feature rebinding after a known window-focus loss until the matching gain callback. */
+    private boolean mInputConnectionWindowFocusLost;
     private String mComposingText;
     private int mComposingCursor = -1;
 
@@ -110,6 +112,20 @@ public final class TerminalView extends View {
         mInputConnectionGeneration++;
         mImeComposingEnabled = false;
         setComposingTextPreview(null, -1);
+    }
+
+    private void restartInvalidatedFeatureInputConnection() {
+        if (!mRestartInputAfterSessionChange || (mInputConnectionWindowFocusLost && !hasWindowFocus()) ||
+            mInputConnection != null || mTermSession == null || !hasFocus() || !isAttachedToWindow()) return;
+        long generation = mInputConnectionGeneration;
+        TerminalSession session = mTermSession;
+        post(() -> {
+            if (generation != mInputConnectionGeneration || mInputConnection != null || mTermSession != session ||
+                (mInputConnectionWindowFocusLost && !hasWindowFocus()) || !hasFocus() || !isAttachedToWindow() ||
+                !mClient.isTerminalViewSelected()) return;
+            InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) imm.restartInput(TerminalView.this);
+        });
     }
 
     private void setComposingTextPreview(String text, int cursor) {
@@ -405,7 +421,6 @@ public final class TerminalView extends View {
      */
     public boolean attachSession(TerminalSession session) {
         if (session == mTermSession) return false;
-        boolean restartFocusedInput = mRestartInputAfterSessionChange && hasFocus() && isAttachedToWindow();
         mKittyKeyPresses.clear();
         invalidateInputConnection();
         stopTextSelectionMode();
@@ -423,15 +438,7 @@ public final class TerminalView extends View {
         setVerticalScrollBarEnabled(session != null);
         invalidate();
         // Rebind only feature editors after null/rapid session changes; never request keyboard showing.
-        if (restartFocusedInput && session != null) {
-            long generation = mInputConnectionGeneration;
-            post(() -> {
-                if (generation != mInputConnectionGeneration || mInputConnection != null || mTermSession != session ||
-                    !hasFocus() || !isAttachedToWindow() || !mClient.isTerminalViewSelected()) return;
-                InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
-                if (imm != null) imm.restartInput(TerminalView.this);
-            });
-        }
+        restartInvalidatedFeatureInputConnection();
 
         return true;
     }
@@ -1438,8 +1445,15 @@ public final class TerminalView extends View {
     public void onWindowFocusChanged(boolean hasWindowFocus) {
         super.onWindowFocusChanged(hasWindowFocus);
         if (!hasWindowFocus) {
+            mInputConnectionWindowFocusLost = true;
             mKittyKeyPresses.clear();
             invalidateInputConnection();
+        } else {
+            boolean restoreInvalidatedInput = mInputConnectionWindowFocusLost;
+            mInputConnectionWindowFocusLost = false;
+            // Non-IME windows can leave Android serving the invalidated connection on return.
+            // Rebind the selected feature editor without asking the keyboard to become visible.
+            if (restoreInvalidatedInput && hasWindowFocus()) restartInvalidatedFeatureInputConnection();
         }
     }
 

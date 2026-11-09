@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- After an observed window-focus loss, request guarded IMM rebinding for an invalidated composing/Honeyboard connection on actual focused return, including missed-gain reattachment. Keep generation/session/selection cancellation and native-editor/ordinary-legacy isolation; do not request keyboard showing or replay canceled drafts. API24 input fixtures use explicit synthetic legacy layout spacing, not production font clamps or rendering claims.
+
 - Requires a valid nonempty composing span before ON-mode deletion edits the local Editable; absent/empty markers retain terminal Backspace fallback. Natural empty/equal AOSP operations are expected to be unmarked, not a claimed zero-span reproducer. The retained zero-marker regression is separately synthetic; OFF and active supplementary-text behavior are preserved.
 
 - Restarts focused Honeyboard virtual editors, or opt-in real composing editors, after session navigation, carrying intent across temporary null/rapid replacements and guarding deferred work by connection generation, selection and focus. Clears stale Honeyboard drafts before BaseInputConnection closure; OFF-mode ordinary IME closure remains unchanged. Regression dispatch is explicitly a test-local asynchronous direct-target IMM bridge, not full system/ViewRoot emulation.
@@ -78,6 +80,10 @@ This is the canonical concise inventory of intentional differences from the audi
 - Keeps explicit keyboard controls because full-screen TUIs such as Pi use terminal mouse tracking and consume terminal taps.
 
 ## Contracts, tests, and repository policy
+
+- Honeyboard API24 input coverage uses a method-scoped legacy Paint layout-spacing shim because Robolectric 4.17 leaves font spacing zero. It preserves the attached/focused InputConnection/IMM/PTY-queue test path and assertions without runtime clamps, forced renderer fields or font/pixel-fidelity claims; native API28/37 is unchanged.
+
+- The negotiated-input drawer regression advances the real DrawerLayout animation in its manually laid-out Robolectric fixture instead of assuming looper idling supplies draw traversals. Shortcut dispatch, pane/release and terminal-byte assertions stay intact; no runtime drawer behavior changes.
 
 - Uses the same fixed public release-asset API fallback for the exact pinned custom lsof URL/SHA pair after browser transport failure. This repairs a separately observed HTTP504 after successful snapshot recovery; common checksum/offline/cache fail-closed behavior and all package/content pins remain unchanged.
 

@@ -86,3 +86,45 @@ The merged production View matches the independently reviewed CJK correction
 apart from one explanatory restart comment; composing-or-Honeyboard restart
 intent and stale-draft guards retain their existing superset behavior. Real
 final-head CI and both independent reviews remain required.
+
+
+## Window-focus recovery correction and actual runtime limits
+
+A non-IME window such as the expanded notification shade can take window focus
+without changing Android's served IME view. The prior focus-loss handler
+invalidated the feature InputConnection, but there was no true-focus-gain
+restart: Android could keep the stale served connection and composing-mode
+input would be rejected indefinitely. This is addressed by retaining known-loss
+intent and requesting IMM restart only for an invalidated composing/Honeyboard
+connection on actual selected/focused return or eligible reattachment.
+
+The queued request rechecks generation, current connection, exact session,
+attachment, view focus, known-loss window focus and selected-terminal status.
+Null/rapid session replacements preserve intent while obsolete work is rejected.
+Native editor and ordinary legacy connections do not acquire new restart policy;
+canceled drafts are not replayed. `restartInput()` is not a keyboard-show request.
+
+New tests drive `ActivityController.windowFocusChanged()` so real AttachInfo
+window-focus state changes, rather than manually invoking a View callback. They
+cover ON/Honeyboard recovery, missed-gain detach/reattach, null/rapid replacements,
+stale callbacks and editor/pane/legacy negatives. The recording IMM establishes
+**restart requests**, not complete served-view rebinding, notification-shade
+behavior or physical keyboard-visibility acceptance.
+
+At prior head `4c5c77499a36d1070de723f209f2795182ac0d22`, M1
+[run42589920309](https://github.com/fitchmultz/termux-app/actions/runs/42589920309)
+executed243 app cases:239 passed,4 failed,zero errors/skips. Failures were the
+inherited drawer assertion and three API24 cases (one Honeyboard, two CJK)
+that failed in common layout setup on zero Robolectric LEGACY font line
+spacing. Their actual test bodies and IMM assertions were **not reached**.
+Existing native API28/37 passes are not execution evidence for the new focus
+regressions.
+
+The inherited drawer/Honeyboard corrections are integrated. All three CJK
+minimum-SDK methods—including the new focus-recovery case—now select an
+API24-only Paint shim supplying synthetic layout spacing from the configured
+text size, retaining `NoPty`, `RecordingImm`, LEGACY graphics, actual layout,
+all test bodies and queue assertions. Native API28/37 configuration is unchanged.
+The shim is not font or pixel fidelity, and production font policy is unchanged.
+Both increments are independently source-reviewed; new-head full CI and fresh
+Pi Durable/Cursor reviews remain mandatory.

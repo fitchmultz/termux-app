@@ -73,3 +73,24 @@ routing remains the subject under test; no hand-written US fallback map,
 production seam, dependency update or physical-layout qualification was added.
 Native Android synthetic-event coverage is configured for SDK28/37; final-head
 CI execution and both independent review gates remain mandatory.
+
+
+## Executed 7609 input coverage and drawer fixture repair
+
+Both M1 Android runs at `7609fab25b4b458d47ac35c61ab0a66b7389b324`
+([push](https://github.com/fitchmultz/termux-app/actions/runs/42587758569),
+[PR](https://github.com/fitchmultz/termux-app/actions/runs/42587750827)) reached
+`app:testDebugUnitTest`: 191 executions, one failure each. All 78
+`KittyKeyboardInputTest` API28/37 cases passed in each run, establishing actual
+execution of the corrected Robolectric keymap fixture. Overall CI was **not**
+passing: the separate negotiated Fold-routing test failed only when checking the
+fully-open drawer, after its preceding input/pane assertions.
+
+That test manually measures/layouts the views. Advancing only the main looper
+does not provide the draw traversals that call `DrawerLayout.computeScroll()`
+for its `ViewDragHelper` animation. The fixture now supplies those actual
+animation calls with bounded 16ms looper advances, retaining the physical
+shortcut dispatch, fully-open drawer assertion and no-terminal-bytes check. It
+does not call `openDrawer` after dispatch or force drawer state. No production
+code or layout policy changes. This correction is source-reviewed; successful
+execution still requires new-head CI and both independent reviews.
