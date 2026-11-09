@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Isolates a Kitty source-pixel crop before filtered scaling, after requested/padded geometry admission. Android's fast filtered source-rectangle draw otherwise samples pixels outside the crop; the native SDK28/37 regression reproduced `0xff1def0f` instead of a selected pure-green pixel. The shared PNG/RGB/RGBA path preserves filtering quality, cached original pixels and immutable published ownership; regressions require the entire green fit and transparent padding, not a relaxed color threshold. Fresh native execution is pending.
+
 - Kitty `C=1` clips an anchored placement at the bottom before publication, rather than scrolling text inside/full-width margins while merely preserving cursor coordinates. Pinned Kitty `screen.c` scrolls only after cursor movement; regressions retain sentinels above the placement and verify cursor/transcript counters.
 
 - Ordinary wide-text insertion and generated blanks remove obsolete bitmap payloads before renderer/geometry discard can ghost an image or erase text. Valid existing text attributes stay intact; recursive cleanup restores the actual incoming image slice and snapshots collateral styles before mutation.

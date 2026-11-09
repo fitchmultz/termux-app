@@ -341,7 +341,12 @@ public class TerminalBitmap {
         double scale = Math.min((double) width / cropWidth, (double) height / cropHeight);
         float drawWidth = (float) (cropWidth * scale), drawHeight = (float) (cropHeight * scale);
         float dx = (width - drawWidth) / 2, dy = (height - drawHeight) / 2;
-        new Canvas(result).drawBitmap(source, new Rect(left, top, right, bottom),
+        // A filtered source Rect still samples neighboring pixels outside the selected region.
+        // Isolate the crop so filtering clamps to its edges, not to the full cached image.
+        // Both allocations follow geometry admission; this crop cannot exceed the valid source.
+        Bitmap cropped = left == 0 && top == 0 && right == source.getWidth() && bottom == source.getHeight()
+            ? source : Bitmap.createBitmap(source, left, top, cropWidth, cropHeight);
+        new Canvas(result).drawBitmap(cropped, null,
             new RectF(dx, dy, dx + drawWidth, dy + drawHeight), new Paint(Paint.FILTER_BITMAP_FLAG));
         return result;
     }

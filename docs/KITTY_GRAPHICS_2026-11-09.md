@@ -46,8 +46,15 @@ signature/decode bounds are checked before allocation. PNG dimensions come from
 the actual decoded source, never the client's optional `s/v`. Crop coordinates
 are applied to that original source before scaling. Requested and padded geometry
 are checked with wide arithmetic before drawing; the raw PR's tiny-source
-`c=2048,r=1024` scaling-before-admission bug is not imported. Allocation failures
-are rejected without image/exception payload logging. No app-total/RSS promise.
+`c=2048,r=1024` scaling-before-admission bug is not imported. A proper source
+subrectangle is isolated only **after** these checks, then filtered at the existing
+quality. Android's [source-rectangle bitmap draw](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-9.0.0_r1/libs/hwui/SkiaCanvas.cpp#L588-L598)
+uses Skia's fast constraint, which [allows filtering outside that rectangle](https://android.googlesource.com/platform/external/skia/+/android-9.0.0_r1/include/core/SkCanvas.h#1419).
+The physical crop clamps filtering to selected pixels rather than contaminating
+it with adjacent source pixels; it cannot exceed the already-validated decoded
+source. This enforces crop-before-scale, not a pixel-identical Kitty GPU claim.
+Allocation failures are rejected without image/exception payload logging. No
+app-total/RSS promise.
 
 Reusable immutable sources belong to each live screen buffer; placements use the
 existing unsigned16 bitmap slots, image cells and renderer. Completed DEC2026
@@ -87,6 +94,33 @@ The production fullscreen writer at that same Pi pin (`tui-alt-screen.ts` lines
 this frontend needs no separate overlay protocol or change to Pi. Captures
 are synthetic test content rendered by production Android code, not Fold device
 screenshots. Source fixture hashes and actual run/artifact links belong in the PR.
-At preparation, authored new tests are **not yet run**. Full current-head Android
-checks and genuine Cursor/Pi Durable review remain pending; no historical green
-result is represented as new-head execution. Parent owns integration/release.
+## Native qualification checkpoint
+
+- [Baseline M1 run42628156467](https://github.com/fitchmultz/termux-app/actions/runs/42628156467)
+  at `4ecee689de7cb94f1e4dc090877d25e594240c05`: the identical native capture
+  fixture passed both API28/37 cases and produced both PNGs in
+  [reports artifact13680811883](https://github.com/fitchmultz/termux-app/actions/runs/42628156467/artifacts/13680811883).
+  The overall run **failed** on the existing
+  `KeyboardNavigationTest.composingConnectionRestartsAfterActualFinishedSessionRemoval`
+  assertion; it is not a green baseline suite.
+- [Initial candidate M1 run42629264130](https://github.com/fitchmultz/termux-app/actions/runs/42629264130)
+  at `d86c54d9a303af164686ed3fcecaed03c6c46b78`: **failed**, with two failures
+  among 424 app cases. Both were the API28/37 executions of
+  `pngCropUsesSourcePixelsNotDeclaredSizeAndChecksScaleBeforeAllocation`.
+  A crop selecting one green pixel produced `0xff1def0f` under filtered scaling.
+  The original full-image bilinear weights at the assertion's source sample
+  `(1.4375,0.5625)` predict that exact value; the Android/Skia source above explains
+  the outside-crop sampling. The fix isolates the crop after admission, retaining
+  exact-green assertions and additionally checking the entire 8x8 fit,
+  transparent padding, PNG/RGB/RGBA and unmodified cached original reuse.
+- That failed candidate run separately passed both actual pinned-Pi pixel
+  acceptance cases and both native capture cases, with PNGs in
+  [reports artifact13680758640](https://github.com/fitchmultz/termux-app/actions/runs/42629264130/artifacts/13680758640)
+  (ZIP SHA-256 `62834b0959034232edc84bcb15f0086642490e3538be0516ffbe9a671d5888cb`).
+  These establish actual producer/parser/renderer pixels, not a green overall
+  run or a completed release-APK verification. The baseline keyboard failure did
+  not recur in this candidate run; no cause or input fix is inferred.
+
+Fresh full M1 execution and genuine Cursor/Pi Durable review of the crop-fix head
+remain pending; no historical result is represented as new-head qualification.
+Parent owns normal main integration/conflicts, final-pair checks and release.

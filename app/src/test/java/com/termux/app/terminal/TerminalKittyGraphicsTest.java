@@ -160,18 +160,43 @@ public class TerminalKittyGraphicsTest {
     }
 
     @Test public void pngCropUsesSourcePixelsNotDeclaredSizeAndChecksScaleBeforeAllocation() {
-        Output output = new Output();
-        TerminalEmulator terminal = terminal(output);
-        append(terminal, command("a=t,f=100,i=1,s=1,v=1;" + png()));
-        output.take();
-        append(terminal, command("a=p,i=1,x=1,y=0,w=99,h=1,c=1,r=1,C=1"));
-        assertEquals(0xff00ff00, pixels(terminal, 0, 0).getPixel(3, 8));
-        long style = terminal.getScreen().getStyleAt(0, 0);
-        append(terminal, command("a=p,i=1,c=2048,r=1024,C=1"));
-        assertTrue(output.take().contains("EINVAL"));
-        assertEquals(style, terminal.getScreen().getStyleAt(0, 0));
-        append(terminal, "SAFE");
-        assertEquals("SAFE", terminal.getScreen().getSelectedText(0, 0, 3, 0));
+        // The same crop/filter path handles all formats. PNG s/v deliberately disagree with its
+        // decoded 2x2 source; raw RGB/RGBA must declare their actual dimensions.
+        String[] uploads = {
+            command("a=t,f=100,i=1,s=1,v=1;" + png()),
+            raw("a=t,f=24,i=1,s=2,v=2", 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255),
+            raw("a=t,f=32,i=1,s=2,v=2", 255, 0, 0, 255, 0, 255, 0, 255,
+                0, 0, 255, 255, 255, 255, 255, 255)
+        };
+        for (String upload : uploads) {
+            Output output = new Output();
+            TerminalEmulator terminal = terminal(output);
+            append(terminal, upload);
+            output.take();
+            append(terminal, command("a=p,i=1,x=1,y=0,w=99,h=1,c=1,r=1,C=1"));
+            Bitmap crop = pixels(terminal, 0, 0);
+            assertEquals(8, crop.getWidth());
+            assertEquals(16, crop.getHeight());
+            // The selected one green pixel must not blend with red/blue/white outside its crop.
+            // An 8x8 aspect fit is vertically centered in the requested 8x16 rectangle.
+            for (int y = 0; y < 16; y++)
+                for (int x = 0; x < 8; x++)
+                    assertEquals("Crop pixel " + x + "," + y,
+                        y >= 4 && y < 12 ? 0xff00ff00 : 0, crop.getPixel(x, y));
+            long style = terminal.getScreen().getStyleAt(0, 0);
+            append(terminal, command("a=p,i=1,c=2048,r=1024,C=1"));
+            assertTrue(output.take().contains("EINVAL"));
+            assertEquals(style, terminal.getScreen().getStyleAt(0, 0));
+            append(terminal, "SAFE");
+            assertEquals("SAFE", terminal.getScreen().getSelectedText(0, 0, 3, 0));
+            // Crop isolation must leave the cached original pixels available for later reuse.
+            append(terminal, "\033[3;1H" + command("a=p,i=1,C=1"));
+            Bitmap original = pixels(terminal, 2, 0);
+            assertEquals(0xffff0000, original.getPixel(0, 0));
+            assertEquals(0xff00ff00, original.getPixel(1, 0));
+            assertEquals(0xff0000ff, original.getPixel(0, 1));
+            assertEquals(0xffffffff, original.getPixel(1, 1));
+        }
     }
 
     @Test public void namedPlacementReplacementDeleteAndReuseKeepOtherReferences() {
