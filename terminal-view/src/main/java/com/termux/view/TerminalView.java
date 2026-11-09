@@ -233,24 +233,11 @@ public final class TerminalView extends View {
         return modifiers;
     }
 
-    private boolean isKittyReleaseEvent(KeyEvent event) {
-        return event != null && event.getAction() == KeyEvent.ACTION_DOWN &&
-            (mEmulator.getKittyKeyboardFlags() & KeyHandler.KITTY_REPORT_EVENTS) != 0 &&
-            !KeyHandler.isKittyRecoveryKey(event.getKeyCode());
-    }
-
-    private boolean isUnrelatedKittyRepeat(KeyEvent event) {
-        if (!isKittyReleaseEvent(event) || event.getRepeatCount() == 0) return false;
-        KittyKeyPress press = mKittyKeyPresses.get(kittyKeyId(event));
-        // An unrelated physical gesture must not appropriate or replace an existing promise.
-        return press != null && (!isCurrentKittyKey(press) || press.downTime != event.getDownTime());
-    }
-
     private KittyKeyPress prepareKittyKey(KeyEvent event, KeyHandler.KittyKey textKey, int modifiers, String releaseCode) {
-        // The first admitted event owns its identity and promise, even if it is a repeat after
-        // the initial DOWN was rejected. Later repeats never replace that accepted identity.
-        if (!isKittyReleaseEvent(event) ||
-            (event.getRepeatCount() > 0 && mKittyKeyPresses.containsKey(kittyKeyId(event)))) return null;
+        // Repeats reuse the initial promise and identity, even when their own admission fails.
+        if (event == null || event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() != 0 ||
+            (mEmulator.getKittyKeyboardFlags() & KeyHandler.KITTY_REPORT_EVENTS) == 0 ||
+            KeyHandler.isKittyRecoveryKey(event.getKeyCode())) return null;
         // UP uses live modifiers. Encode the largest supported variant, including Shift's captured
         // alternate field; no arbitrary byte margin or changed DOWN-modifier semantics is used.
         int allModifiers = KeyHandler.KEYMOD_SHIFT | KeyHandler.KEYMOD_ALT | KeyHandler.KEYMOD_CTRL |
@@ -263,7 +250,6 @@ public final class TerminalView extends View {
     }
 
     private void writeKittyKey(String code, KeyEvent event, KeyHandler.KittyKey textKey, int modifiers, String releaseCode) {
-        if (isUnrelatedKittyRepeat(event)) return;
         KittyKeyPress press = prepareKittyKey(event, textKey, modifiers, releaseCode);
         if (press == null) {
             mTermSession.tryWrite(code);
@@ -274,7 +260,6 @@ public final class TerminalView extends View {
     }
 
     private void writeKittyCodePoint(boolean altDown, int codePoint, KeyEvent event, KeyHandler.KittyKey textKey, int modifiers) {
-        if (isUnrelatedKittyRepeat(event)) return;
         KittyKeyPress press = prepareKittyKey(event, textKey, modifiers, null);
         if (press == null) {
             mTermSession.tryWriteCodePoint(altDown, codePoint);
