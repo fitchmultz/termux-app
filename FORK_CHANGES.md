@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Replaces the remaining image-margin test subclass of final TerminalBuffer with composition around the existing production placement/callback API. Production finality is preserved; no test-only seam or allocator quota is added.
+
 - Keeps bitmap-map field, constructor and import consistent after removing insertion-order eviction, fixing the genuine Cursor compile finding without restoring the rejected quota.
 
 - Wrapped-word lookup checks adjacent row boundaries in linear work instead of repeatedly serializing the growing transcript span; long wrapped-line regressions exercise the public final buffer directly in both directions without test-only inheritance or a timing policy.

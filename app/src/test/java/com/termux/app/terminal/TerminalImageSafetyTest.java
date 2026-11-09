@@ -47,26 +47,21 @@ public class TerminalImageSafetyTest {
         int encodedCapacity() { return mEncodedImage.capacity(); }
     }
 
-    private static final class MarginBuffer extends TerminalBuffer {
-        final boolean scroll;
+    /** Exercise the production final buffer via its real placement API, not inheritance. */
+    private static final class MarginFixture {
+        final TerminalBuffer buffer;
         int scrolls;
-        MarginBuffer(Logs logs, boolean scroll) {
-            super(logs, 5, 30, 6);
-            this.scroll = scroll;
-            blockSet(0, 0, 5, 6, 'P', 0);
-            blockSet(0, 0, 5, 1, 'H', 0);
-            blockSet(0, 4, 5, 2, 'F', 0);
-        }
-        @Override public int getImageRightMargin() { return 3; }
-        @Override public int getImageBottomMargin() { return 4; }
-        @Override public boolean canScrollImage() { return scroll; }
-        @Override public boolean scrollForImage() {
-            if (!scroll) return false;
-            // Match the emulator's LR-margin scrolling, preserving all surrounding cells.
-            blockCopy(1, 2, 2, 2, 1, 1);
-            blockSet(1, 3, 2, 1, ' ', 0);
-            scrolls++;
-            return true;
+        MarginFixture(Logs logs, boolean scroll) {
+            buffer = new TerminalBuffer(logs, 5, 30, 6);
+            buffer.blockSet(0, 0, 5, 6, 'P', 0);
+            buffer.blockSet(0, 0, 5, 1, 'H', 0);
+            buffer.blockSet(0, 4, 5, 2, 'F', 0);
+            buffer.beginImagePlacement(3, 4, scroll ? () -> {
+                // The owner callback performs the LR-margin copy, preserving surrounding cells.
+                buffer.blockCopy(1, 2, 2, 2, 1, 1);
+                buffer.blockSet(1, 3, 2, 1, ' ', 0);
+                scrolls++;
+            } : null);
         }
     }
 
@@ -420,14 +415,16 @@ public class TerminalImageSafetyTest {
 
     @Test
     public void imagePlacementUsesMarginCallbackAndClipsWhenScrollingIsUnavailable() {
-        MarginBuffer scrolling = new MarginBuffer(logs, true);
+        MarginFixture scrollingFixture = new MarginFixture(logs, true);
+        TerminalBuffer scrolling = scrollingFixture.buffer;
         Bitmap source = Bitmap.createBitmap(4, 2, Bitmap.Config.ARGB_8888);
         source.eraseColor(Color.RED);
         TerminalBitmap placed = TerminalBitmap.build(scrolling, 0, source, 2, 3, 1, 1);
+        scrolling.endImagePlacement();
         assertNotNull(placed);
         assertEquals(1, placed.getBitmap().getWidth());
         assertEquals(2, placed.getBitmap().getHeight());
-        assertEquals(1, scrolling.scrolls);
+        assertEquals(1, scrollingFixture.scrolls);
         assertEquals(1, placed.getBufferScrollLines()); // Informational; callback owns accounting.
         assertEquals(1, placed.getScrollLines());
         assertEquals(0, TextStyle.getTerminalBitmapY(scrolling.getStyleAt(2, 2)));
@@ -437,15 +434,17 @@ public class TerminalImageSafetyTest {
         assertEquals("P", scrolling.getSelectedText(0, 3, 0, 3));
         assertEquals("PP", scrolling.getSelectedText(3, 3, 4, 3));
 
-        MarginBuffer clipped = new MarginBuffer(logs, false);
+        MarginFixture clippedFixture = new MarginFixture(logs, false);
+        TerminalBuffer clipped = clippedFixture.buffer;
         Bitmap tall = Bitmap.createBitmap(1, 4, Bitmap.Config.ARGB_8888);
         tall.eraseColor(Color.BLUE);
         TerminalBitmap image = TerminalBitmap.build(clipped, 0, png(tall), 2, 3, 1, 1, -1, -1, true);
+        clipped.endImagePlacement();
         assertNotNull(image);
         assertEquals(1, image.getBitmap().getHeight());
         assertEquals(Color.BLUE, image.getBitmap().getPixel(0, 0));
         assertArrayEquals(new int[] {1, 1}, image.getCursorDelta());
-        assertEquals(0, clipped.scrolls);
+        assertEquals(0, clippedFixture.scrolls);
         assertEquals(0, image.getBufferScrollLines());
         assertEquals("HHHHH", clipped.getSelectedText(0, 0, 4, 0));
         assertEquals("FFFFF", clipped.getSelectedText(0, 4, 4, 4));
