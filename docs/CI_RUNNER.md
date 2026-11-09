@@ -1,12 +1,14 @@
-# M1 Actions runner
+# Home Linux Actions runners
 
 Jobs in `run_tests.yml`, `bootstrap_validation.yml`, `signed_release.yml`, and
-`termux_api_companion.yml` are configured for `[self-hosted, Linux, ARM64]`.
-The owner supplies one repository Linux worker in a persistent Ubuntu 24.04
-ARM64 VM on a private M1 Mac. Its single job slot serializes these jobs.
+`termux_api_companion.yml` are configured for `[self-hosted, Linux, home-linux]`.
+The owner's runner fleet serves that label from repository workers in a
+persistent Ubuntu 24.04 x64 VM on a private Linux desktop by default and in the
+persistent Ubuntu 24.04 ARM64 VM on a private M1 Mac as the automatic backup.
+The fleet, not this repository, decides which host is eligible; every job accepts
+either runner architecture.
 This configuration does not re-enable Actions: the owner does that separately.
-If that runner is offline or busy, jobs queue; there is **no hosted fallback**.
-The required ARM64 library mounts make an x86_64-hosted fallback incompatible.
+If no eligible runner is idle, jobs queue; there is **no hosted fallback**.
 
 ## Execution environment
 
@@ -16,20 +18,27 @@ Every job uses `--platform linux/amd64` with:
 ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 ```
 
-The existing VM's Rosetta/binfmt support executes the amd64 userland and Android
-host tools. The Actions runner itself remains ARM64. Its normal injected Node
-runtime uses two read-only host-library mounts:
+On the x64 runner, the amd64 userland, the runner's injected Node and the Android
+host tools run natively. On the M1, the VM's Rosetta/binfmt support executes the
+amd64 userland and Android host tools, while the runner and its injected Node
+remain ARM64. That Node needs Ubuntu's ARM64 loader and C/C++ runtime inside the
+container, so when `RUNNER_ARCH=ARM64` each job's first shell step, before any
+JavaScript action:
 
-```text
-/lib/ld-linux-aarch64.so.1:/lib/ld-linux-aarch64.so.1:ro
-/lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu:ro
-```
+- adds the `arm64` dpkg architecture;
+- restricts the image's existing Ubuntu sources to `Architectures: amd64`;
+- adds Ubuntu's `ubuntu-ports` `main` component for `arm64` only (`noble`,
+  `noble-updates`, `noble-security`), authenticated by the image's Ubuntu
+  archive keyring; and
+- installs `libc6:arm64`, `libstdc++6:arm64`, and `libgcc-s1:arm64`.
 
-No workflow hardcodes a runner Node directory. The image is immutable, but the
-mounted runtime libraries and runner software still belong to the maintained
-host; this is not a wholly hermetic machine image. Steps assert `RUNNER_OS=Linux`,
-`RUNNER_ARCH=ARM64`, and userland `uname -m=x86_64`. Bash is the run shell, with
-`SHELL=/bin/bash` for the retained NDK's shell inspection.
+X64 runners skip this setup. No host library is mounted. No workflow hardcodes a
+runner Node directory. The image is immutable, but runner software belongs to the
+maintained host and the ARM64 runtime packages come from Ubuntu's current signed
+archive; this is not a wholly hermetic machine image. Steps assert
+`RUNNER_OS=Linux`, `RUNNER_ARCH` of `X64` or `ARM64`, and userland
+`uname -m=x86_64`. Bash is the run shell, with `SHELL=/bin/bash` for the
+retained NDK's shell inspection.
 
 Java setup explicitly selects Temurin **x64**, retaining major 21 for the main
 project/SDK/API consumer and major 11 for the unchanged companion producers.
@@ -101,15 +110,16 @@ use the init script. Companion source rounds and signers do not use this seed.
 Signers have no repository checkout, Gradle invocation or cache restore. Their
 candidate/output directories are below their new job root, not an old workspace.
 Signing policy and validators remain reviewed workflow literals; APK/manifest
-artifacts are data, never executable scripts. The companion's strict schema 3
-records the registered runner separately from container/platform/Java execution
-and still verifies selected SDK/JDK records and actual verification-tool hashes.
+artifacts are data, never executable scripts. The companion's strict schema 4
+records the `home-linux` route and the build runner's `X64` or `ARM64`
+architecture separately from container/platform/Java execution and still
+verifies selected SDK/JDK records and actual verification-tool hashes.
 Container identity supplements those hashes; it does not replace them.
 
-A **fresh job/container is not a fresh machine**. The VM, runner workspace,
-mounted storage and tool cache persist. Traps and `always()` steps remove key and
-password files on ordinary completion/failure/cancellation; a hard termination
-can leave files requiring runner cleanup. Container root can also leave
+A **fresh job/container is not a fresh machine**. Each host's VM, runner
+workspace, mounted storage and tool cache persist. Traps and `always()` steps
+remove key and password files on ordinary completion/failure/cancellation; a hard
+termination can leave files requiring runner cleanup. Container root can also leave
 root-owned bind-mounted files, so runner ownership/temporary-file cleanup remains
 an infrastructure responsibility. No new ephemeral-host or separate-machine
 signing requirement is implied.
@@ -205,15 +215,17 @@ and physical installation remain separate decisions; see the
 
 ## Qualification
 
-The migration's M1 mechanism probe ran the runner's ARM64 Node 24 and an amd64
-shell/`uname` in the same pinned container with the read-only library mounts.
-Additional probes installed x64 Java 11/21 and the retained SDK/NDK packages,
-then launched the ordinary NDK 21.1/r30 wrappers/compilers and APK tools. These
-checks establish the mechanism and installer/tool-launch compatibility, **not**
-a passing Actions run, Android build, signer, publication or device result.
+An M1 mechanism probe ran the runner's ARM64 Node 24 and an amd64 shell/`uname`
+in the same pinned container after installing the container-local Ubuntu ARM64
+runtime above, without host library mounts. Earlier M1 probes installed x64 Java
+11/21 and the retained SDK/NDK packages, then launched the ordinary NDK 21.1/r30
+wrappers/compilers and APK tools. These checks establish the mechanism and
+installer/tool-launch compatibility, **not** a passing Actions run, Android
+build, signer, publication or device result on either host.
 Historical hosted results in the dependency/companion audits remain historical
-evidence for their stated revisions. Full current-revision runner gates and a separately authorized
-signing invocation remain unverified until actually run after owner re-enablement.
+evidence for their stated revisions. Full current-revision runner gates on each
+host and separately authorized signing invocations remain unverified until
+actually run after owner re-enablement.
 Physical installation/backup/recovery and Fold acceptance remain separate
 owner-controlled steps; never execute SDK x86_64 tools on ARM64 Termux to replace
 that qualification.
