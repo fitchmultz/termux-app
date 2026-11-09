@@ -129,5 +129,6 @@ jobs:
           name: fold-test-reports
           path: |
             app/build/reports/tests/workbench/*.png
+            app/build/reports/tests/workbench/pi-input-sdk-*.json
             **/build/test-results/**/*.xml
           retention-days: 3

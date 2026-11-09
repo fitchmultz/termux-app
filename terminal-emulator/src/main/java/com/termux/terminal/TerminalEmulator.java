@@ -2932,9 +2932,9 @@ public final class TerminalEmulator implements TerminalRendererState {
 
         // Then: Implement bracketed paste mode if enabled:
         boolean bracketed = isDecsetInternalBitSet(DECSET_BIT_BRACKETED_PASTE_MODE);
-        if (bracketed) mSession.write("\033[200~");
+        // One admission event: a full input ring must not leave a partial paste frame behind.
+        if (bracketed) text = "\033[200~" + text + "\033[201~";
         mSession.write(text);
-        if (bracketed) mSession.write("\033[201~");
     }
 
     /** Immutable, visible-row-only presentation retained during one synchronized frame. */

@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Kitty physical DOWN admission atomically protects encoder-bounded future UP capacity inside the existing input ring. Matching releases consume their original session-owned promise once even while ordinary input remains FULL; only an admitted initial DOWN owns a future release; ordinary repeat bytes remain unchanged and cannot create or revive release ownership after initial rejection or context cancellation. Context/lifecycle cancellation returns capacity without stale delivery, while IME-only rebinding retains valid physical releases. CI preserves the synthetic keyboard-capture JSON in addition to PNG/XML reports.
+
 - Test-only composing-preference fixture completes the first real PRIVATE preferences load before dual-mode construction and verifies backend identity/key absence. Default-OFF and immediate true/false readbacks stay intact; no production preference I/O, fake backend, seeded setting, or post-setter idle is introduced.
 
 - Reconciles opt-in composing preference changes even after an OFF connection was invalidated, with guarded/coalesced restart requests and stale legacy-draft cancellation only for admitted ON replacement. Collapsed/clipped composing regions finalize retained drafts once instead of hiding text ahead of terminal navigation/deletion; ordinary OFF behavior remains unchanged.
@@ -56,6 +58,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Adapts upstream PR5390 OSC 8 cell metadata for labeled links, including the Fold ASCII fast path, Unicode/reflow/history, and immutable synchronized-frame targets. With the existing transcript-click setting enabled, tapping a label opens its URI through Android's existing URL handler; ordinary detected URLs and disabled-click behavior remain unchanged.
 - Uses the renderer's completed-screen scroll clamp for link taps, so a scrollback offset during DEC 2026 cannot redirect a visible label or ordinary URL to another row.
+
+- Adapts upstream PR5409 into session-owned nonblocking, all-or-none input admission with the exact source-backed 4-MiB byte-ring capacity, one existing FIFO writer and admission receipts. Explicit/emulator paste is one sanitized/framed event; per-codepoint IME/CJK commits are not made transactional. FULL/CLOSED rejection is visible for active Activity clients without logging payloads. Positive-child gated waiter/setup cleanup retains three healthy transport threads and no constructor-started worker. See [source, ownership and execution limits](docs/RESPONSIVE_INPUT_2026-11-09.md).
 
 - Adds default-OFF direct-terminal IME Composing Preview with real spans/selection, mutually exclusive Samsung metadata, completed-frame cursor/palette/style rendering and connection/session guards. Uncommitted enabled preedit is canceled—not replayed—on invalidation; existing clients default false and the real editor stays untouched. See [source, safety policy and verification limits](docs/CJK_PREEDIT_2026-11-09.md).
 

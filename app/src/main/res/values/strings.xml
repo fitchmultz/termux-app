@@ -240,4 +240,8 @@
     <!-- Donate Preference -->
     <string name="donate_preference_title">Donate</string>
 
+    <!-- Input admission failures never display or log the rejected payload. -->
+    <string name="terminal_input_rejected_full">Input was not sent: terminal input buffer is full. Wait for the program to read input, then retry.</string>
+    <string name="terminal_input_rejected_closed">Input was not sent because this terminal session is not accepting input.</string>
+
 </resources>
