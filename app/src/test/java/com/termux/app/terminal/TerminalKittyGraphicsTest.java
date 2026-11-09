@@ -2,6 +2,7 @@ package com.termux.app.terminal;
 
 import android.app.Application;
 import android.graphics.Bitmap;
+import android.graphics.Typeface;
 import android.util.Base64;
 
 import com.termux.terminal.TerminalBuffer;
@@ -9,6 +10,7 @@ import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalOutput;
 import com.termux.terminal.TerminalRendererState;
 import com.termux.terminal.TextStyle;
+import com.termux.view.TerminalRenderer;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -17,6 +19,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.Assert.*;
@@ -75,6 +78,32 @@ public class TerminalKittyGraphicsTest {
         for (int row = 0; row < terminal.getRows(); row++)
             for (int col = 0; col < terminal.getColumns(); col++)
                 assertFalse(TextStyle.isTerminalBitmap(terminal.getScreen().getStyleAt(row, col)));
+    }
+
+    @Test public void actualPinnedPiUploadCropDeleteReuseReachesAndroidParserAndRenderer() throws Exception {
+        Output output = new Output();
+        TerminalEmulator terminal = new TerminalEmulator(output, 80, 40, 8, 16, 100, null);
+        byte[] fixture;
+        try (InputStream input = getClass().getResourceAsStream("/pi-kitty-preview.ansi")) {
+            assertNotNull(input);
+            fixture = input.readAllBytes();
+        }
+        terminal.append(fixture, fixture.length);
+        assertEquals(0, output.replies.size());
+        assertEquals(88, pixels(terminal, 6, 2).getWidth());
+        assertEquals(128, pixels(terminal, 6, 2).getHeight());
+        assertEquals(48, pixels(terminal, 16, 2).getHeight());
+        assertEquals(48, pixels(terminal, 22, 2).getHeight());
+        // The unchanged capture fixture checks its exact source hash/text/cursor on both heads.
+        // Here only the candidate must show pixels in an otherwise text-free preview rectangle.
+        Bitmap frame = TerminalKittyImageRenderingTest.renderWorkbench(480);
+        TerminalRenderer renderer = new TerminalRenderer(16, Typeface.MONOSPACE);
+        int changed = 0;
+        for (int y = 12 + 7 * renderer.getFontLineSpacing(); y < 12 + 13 * renderer.getFontLineSpacing(); y++)
+            for (int x = 12 + (int) Math.ceil(3 * renderer.getFontWidth());
+                 x < 12 + (int) Math.floor(12 * renderer.getFontWidth()); x++)
+                if (frame.getPixel(x, y) != 0xff101923) changed++;
+        assertTrue("Actual Pi pixels must reach the native renderer, not only be swallowed as APC", changed > 100);
     }
 
     @Test public void defaultTransmitAndRawRgbRgbaUseActualChannelOrder() {

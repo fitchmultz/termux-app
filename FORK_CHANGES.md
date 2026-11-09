@@ -105,6 +105,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Contracts, tests, and repository policy
 
+- Candidate-only Kitty acceptance consumes the exact pinned production Pi stream through Android, checks full/cropped cached placement geometry after delete/reuse, and requires non-background preview pixels from the unchanged native capture fixture. The baseline fixture retains only baseline-compatible assertions; no parser/renderer substitution or test seam is added. New native methods remain unrun at preparation.
+
 - Inline-image pixel/Canvas assertions run only on Robolectric-supported native graphics API28/37. An explicit API24 LEGACY case tests parser recovery and cell-size replies without allocating/rendering bitmaps; production minimum SDK24 is unchanged.
 
 - Honeyboard API24 input coverage uses a method-scoped legacy Paint layout-spacing shim because Robolectric 4.17 leaves font spacing zero. It preserves the attached/focused InputConnection/IMM/PTY-queue test path and assertions without runtime clamps, forced renderer fields or font/pixel-fidelity claims; native API28/37 is unchanged.
