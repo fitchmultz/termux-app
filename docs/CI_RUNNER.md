@@ -116,6 +116,13 @@ signing requirement is implied.
 
 ## Workflow and release boundaries
 
+Fold checks retain both `fold/**` push and `fold/main` pull-request triggers.
+Their shared concurrency key uses the source repository and source branch for
+both events. With `cancel-in-progress: true`, a new push or PR run replaces older
+work for that source branch, including the duplicate run for the same commit.
+Different fork repositories and main remain separate. This uses GitHub's
+[native concurrency behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+
 PR workflows still run `pull_request`, not `pull_request_target`, with read-only
 repository access and no signing environment. PR-controlled workflow/build/test
 code executes on the self-hosted service; the private location does not make it

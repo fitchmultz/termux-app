@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Groups Fold checks by source repository and branch, so push and PR runs cancel superseded work together while preserving branch/main checks and keeping fork branches independent.
+
 - Kitty physical DOWN admission atomically protects encoder-bounded future UP capacity inside the existing input ring. Matching releases consume their original session-owned promise once even while ordinary input remains FULL; only an admitted initial DOWN owns a future release; ordinary repeat bytes remain unchanged and cannot create or revive release ownership after initial rejection or context cancellation. Context/lifecycle cancellation returns capacity without stale delivery, while IME-only rebinding retains valid physical releases. CI preserves the synthetic keyboard-capture JSON in addition to PNG/XML reports.
 
 - Test-only composing-preference fixture completes the first real PRIVATE preferences load before dual-mode construction and verifies backend identity/key absence. Default-OFF and immediate true/false readbacks stay intact; no production preference I/O, fake backend, seeded setting, or post-setter idle is introduced.
