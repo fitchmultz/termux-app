@@ -3,7 +3,6 @@ package com.termux.terminal;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.LinkedHashMap;
 
 import android.graphics.Bitmap;
 import android.graphics.Rect;
@@ -69,9 +68,6 @@ public final class TerminalBuffer {
      */
     public static final int TERMINAL_BITMAP__NUM_END = 65536;
 
-    /** Bound retained images per buffer; two panes/synchronized snapshots need heap headroom too. */
-    public static final long MAX_RETAINED_BITMAP_BYTES = TerminalBitmap.MAX_BITMAP_SIZE;
-
 
 
 
@@ -99,7 +95,7 @@ public final class TerminalBuffer {
         mTotalRows = totalRows;
         mScreenRows = screenRows;
         mLines = new TerminalRow[totalRows];
-        mTerminalBitmaps = new LinkedHashMap<>();
+        mTerminalBitmaps = new HashMap<>();
         mTerminalBitmapsLastGC = SystemClock.uptimeMillis();
         if (initializeVisibleRows)
             blockSet(0, 0, columns, screenRows, ' ', TextStyle.NORMAL);
@@ -206,11 +202,12 @@ public final class TerminalBuffer {
         int y1 = y;
         int y2 = y;
         // y1 may expand into transcript rows (negative external rows) so that
-        // tapping the visible tail of a wrapped line still finds its head.
-        while (y1 > -getActiveTranscriptRows() && !getSelectedText(0, y1 - 1, mColumns, y, true, true).contains("\n")) {
+        // tapping the visible tail of a wrapped line still finds its head. Only the next
+        // adjacent boundary is new: re-serializing the growing whole span is quadratic.
+        while (y1 > -getActiveTranscriptRows() && !getSelectedText(0, y1 - 1, mColumns, y1, true, true).contains("\n")) {
             y1--;
         }
-        while (y2 < mScreenRows && !getSelectedText(0, y, mColumns, y2 + 1, true, true).contains("\n")) {
+        while (y2 < mScreenRows - 1 && !getSelectedText(0, y2, mColumns, y2 + 1, true, true).contains("\n")) {
             y2++;
         }
 
@@ -668,7 +665,7 @@ public final class TerminalBuffer {
         if (terminalBitmap == null || terminalBitmap.getBitmap() == null) {
             return 0;
         }
-        retainTerminalBitmap(bitmapNum, terminalBitmap);
+        mTerminalBitmaps.put(bitmapNum, terminalBitmap);
         return terminalBitmap.mScrollLines;
     }
 
@@ -748,7 +745,7 @@ public final class TerminalBuffer {
         if (terminalBitmap == null || terminalBitmap.getBitmap() == null) {
             return new int[] {0, 0};
         }
-        retainTerminalBitmap(bitmapNum, terminalBitmap);
+        mTerminalBitmaps.put(bitmapNum, terminalBitmap);
         return terminalBitmap.mCursorDelta;
     }
 
@@ -778,27 +775,6 @@ public final class TerminalBuffer {
             scrollDownOneLine(0, mScreenRows, TextStyle.NORMAL);
         }
         return true;
-    }
-
-    private void retainTerminalBitmap(int bitmapNum, TerminalBitmap bitmap) {
-        mTerminalBitmaps.put(bitmapNum, bitmap);
-        long retained = 0;
-        for (TerminalBitmap value : mTerminalBitmaps.values())
-            retained += value.getBitmap().getAllocationByteCount();
-        // Evict oldest images rather than risking the process/PTYs on image-heavy scrollback.
-        // Never recycle pixels: a completed synchronized frame may still hold this immutable image.
-        while (retained > MAX_RETAINED_BITMAP_BYTES && !mTerminalBitmaps.isEmpty()) {
-            int oldest = mTerminalBitmaps.keySet().iterator().next();
-            TerminalBitmap removed = mTerminalBitmaps.remove(oldest);
-            retained -= removed.getBitmap().getAllocationByteCount();
-            for (TerminalRow row : mLines) {
-                if (row == null || !row.mHasTerminalBitmap) continue;
-                for (int col = 0; col < mColumns; col++) {
-                    if (TextStyle.getTerminalBitmapNum(row.getStyle(col)) == oldest)
-                        row.setChar(col, ' ', TextStyle.NORMAL);
-                }
-            }
-        }
     }
 
     public synchronized void doTerminalBitmapsGC(int timeDelta) {

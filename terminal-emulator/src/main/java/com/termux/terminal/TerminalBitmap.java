@@ -6,6 +6,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.os.Build;
 
 /**
  * A terminal bitmap for images.
@@ -15,30 +16,39 @@ public class TerminalBitmap {
     public static final String LOG_TAG = "TerminalBitmap";
 
     /**
-     * Budget for one ARGB_8888 bitmap, not for the complete terminal image cache.
+     * Upstream's default Android draw-byte limit, NOT a heap allowance or RSS guarantee.
+     * Android can permit larger device-specific values; no hidden API/getprop query is needed
+     * to retain these defaults. Ordinary allocations may still fail with OutOfMemoryError.
      *
-     * Android's RecordingCanvas limit (at least 100 MiB) is a draw limit, not an allocation
-     * budget for an app without largeHeap. Use at most 16 MiB (enough for a 2560x1440 image),
-     * and at most one eighth of the normal process heap. Decoding/resizing can briefly need
-     * both a source and a destination bitmap; encoded data and terminal snapshots also need
-     * headroom. TerminalBuffer must separately bound its aggregate retained image memory.
+     * 100 MiB: Android 7 DisplayListCanvas.MAX_BITMAP_SIZE and Android 14 RecordingCanvas.
+     * 150 MiB: Android 15 RecordingCanvas.getPanelFrameSize(), retained by Android 16.
+     * - https://android.googlesource.com/platform/frameworks/base/+/android-7.0.0_r1/core/java/android/view/DisplayListCanvas.java#40
+     * - https://android.googlesource.com/platform/frameworks/base/+/android-14.0.0_r1/graphics/java/android/graphics/RecordingCanvas.java#43
+     * - https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/graphics/java/android/graphics/RecordingCanvas.java#43
+     * - https://github.com/termux/termux-app/blob/3b270134a50ee50804fc722f6e17d3eac7e12407/terminal-emulator/src/main/java/com/termux/terminal/TerminalBitmap.java#L102-L112
      */
-    public static final int MAX_BITMAP_SIZE = (int) Math.min(16L * 1024 * 1024,
-        TerminalImageBudget.MAX_BYTES / 2);
+    public static final int MAX_BITMAP_SIZE = Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM ?
+        150 * 1024 * 1024 : 100 * 1024 * 1024;
 
-    /** Skia/Canvas's maximum bitmap axis, independent of the byte-size limit. */
+    /**
+     * Skia/Canvas's maximum software bitmap axis, independent of the draw-byte limit.
+     * https://android.googlesource.com/platform/frameworks/base/+/android-14.0.0_r1/graphics/java/android/graphics/Canvas.java#75
+     */
     public static final int MAX_BITMAP_DIMENSION = 32766;
 
-    /** Bitmap IDs and cell offsets occupy 16 bits each in TextStyle. */
+    /**
+     * Bitmap IDs and cell offsets occupy 16 bits each in TextStyle's packed layout.
+     * https://github.com/termux/termux-app/blob/3b270134a50ee50804fc722f6e17d3eac7e12407/terminal-emulator/src/main/java/com/termux/terminal/TextStyle.java#L94-L105
+     */
     public static final int MAX_BITMAP_NUMBER = 0xffff;
     public static final int MAX_BITMAP_CELLS = 0xffff;
 
     /**
-     * Bound compressed input separately from decoded pixels. Its base64 representation is
-     * at most half MAX_BITMAP_SIZE characters (plus no unbounded multipart accumulation).
-     * Even with UTF-16 storage, the builder, decode string and byte[] need heap headroom.
+     * Retain upstream's image-data byte maximum; pixel dimensions are checked separately.
+     * https://github.com/termux/termux-app/commit/3b270134a50ee50804fc722f6e17d3eac7e12407
+     * (commit description: iTerm image data cannot exceed TerminalBitmap.MAX_BITMAP_SIZE).
      */
-    public static final int MAX_IMAGE_DATA_SIZE = (MAX_BITMAP_SIZE / 8) * 3;
+    public static final int MAX_IMAGE_DATA_SIZE = MAX_BITMAP_SIZE;
 
 
     protected final TerminalSessionClient mClient;
@@ -81,20 +91,14 @@ public class TerminalBitmap {
     private static boolean isBitmapValid(Bitmap bitmap) {
         return bitmap != null && !bitmap.isRecycled() &&
             isBitmapSizeValid(bitmap.getWidth(), bitmap.getHeight()) &&
-            bitmap.getAllocationByteCount() <= MAX_BITMAP_SIZE &&
-            TerminalImageBudget.GLOBAL.trySetCharge(bitmap, bitmap.getAllocationByteCount());
+            bitmap.getByteCount() <= MAX_BITMAP_SIZE;
     }
 
-    /** All helper pixel allocations reserve globally before calling Android's allocator. */
+    /** Check drawable geometry/byte math before calling Android's ordinary allocator. */
     static Bitmap allocateBitmap(int width, int height) {
         if (!isBitmapSizeValid(width, height)) return null;
-        try (TerminalImageBudget.Reservation reservation =
-                 TerminalImageBudget.GLOBAL.tryReserve((long) width * height * 4)) {
-            if (reservation == null) return null;
-            Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            if (!reservation.commitToBitmap(bitmap) || !isBitmapValid(bitmap)) return null;
-            return bitmap;
-        }
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        return isBitmapValid(bitmap) ? bitmap : null;
     }
 
     private static void checkPlacement(TerminalBuffer terminalBuffer, int bitmapNum,
@@ -156,10 +160,6 @@ public class TerminalBitmap {
                 throw new IllegalArgumentException("Invalid image data or requested dimensions");
             }
 
-            if (!TerminalImageBudget.GLOBAL.trySetCharge(image, image.length)) {
-                throw new IllegalArgumentException("Image data exceeds global memory budget");
-            }
-
             // Always inspect the header first, even when neither size was requested. A small
             // compressed image is not evidence that its decoded bitmap will fit in memory.
             BitmapFactory.Options bounds = new BitmapFactory.Options();
@@ -167,8 +167,7 @@ public class TerminalBitmap {
             BitmapFactory.decodeByteArray(image, 0, image.length, bounds);
             int imageWidth = bounds.outWidth;
             int imageHeight = bounds.outHeight;
-            if (imageWidth <= 0 || imageHeight <= 0 ||
-                imageWidth > MAX_BITMAP_DIMENSION || imageHeight > MAX_BITMAP_DIMENSION) {
+            if (imageWidth <= 0 || imageHeight <= 0) {
                 throw new IllegalArgumentException("Invalid image header");
             }
 
@@ -184,7 +183,7 @@ public class TerminalBitmap {
             // Preflight both the requested size and the padded terminal size, before decoding.
             // Large sources remain usable with an explicitly requested, bounded downsample.
             if (!isBitmapSizeValid(newWidth, newHeight)) {
-                throw new IllegalArgumentException("Requested image dimensions exceed bitmap budget");
+                throw new IllegalArgumentException("Requested image dimensions exceed draw limits");
             }
             long maxWidth = (long) (terminalBuffer.getImageRightMargin() - x) * cellWidth;
             long visibleWidth = Math.min(newWidth, maxWidth);
@@ -195,7 +194,7 @@ public class TerminalBitmap {
             }
             if (!isBitmapSizeValid(finalWidth, finalHeight) ||
                 finalWidth / cellWidth > MAX_BITMAP_CELLS || finalHeight / cellHeight > MAX_BITMAP_CELLS) {
-                throw new IllegalArgumentException("Padded image dimensions exceed bitmap budget");
+                throw new IllegalArgumentException("Padded image dimensions exceed draw limits");
             }
 
             // Use the largest power-of-two sample which does not undershoot the requested
@@ -216,24 +215,17 @@ public class TerminalBitmap {
                 decodedHeight = ((long) imageHeight + sample - 1) / sample;
             }
             if (!isBitmapSizeValid(decodedWidth, decodedHeight)) {
-                throw new IllegalArgumentException("Decoded image dimensions exceed bitmap budget");
+                throw new IllegalArgumentException("Decoded image dimensions exceed draw limits");
             }
 
             BitmapFactory.Options options = new BitmapFactory.Options();
             options.inSampleSize = sample;
             options.inPreferredConfig = Bitmap.Config.ARGB_8888;
             options.inScaled = false;
-            Bitmap decoded;
-            try (TerminalImageBudget.Reservation reservation =
-                     TerminalImageBudget.GLOBAL.tryReserve(decodedWidth * decodedHeight * 4)) {
-                if (reservation == null) throw new IllegalArgumentException("Image decode exceeds global memory budget");
-                decoded = BitmapFactory.decodeByteArray(image, 0, image.length, options);
-                // Record actual memory immediately, even if a decoder returned an unexpected
-                // color config/size. The weak charge remains until that bitmap is collected.
-                if (!reservation.commitToBitmap(decoded) || !isBitmapValid(decoded)) {
-                    throw new IllegalArgumentException("Invalid decoded bitmap");
-                }
-            }
+            Bitmap decoded = BitmapFactory.decodeByteArray(image, 0, image.length, options);
+            // Verify actual geometry/byte count too: the preferred config and header are
+            // not promises about a decoder's result. Allocation OOM is handled by the caller.
+            if (!isBitmapValid(decoded)) throw new IllegalArgumentException("Invalid decoded bitmap");
 
             Bitmap bitmap;
             if (decoded.getWidth() == finalWidth && decoded.getHeight() == finalHeight &&
@@ -243,7 +235,7 @@ public class TerminalBitmap {
                 // Draw the visible left portion directly into the padded destination. This
                 // needs no intermediate cropped/scaled bitmap or full-size int[] pixel copy.
                 bitmap = allocateBitmap((int) finalWidth, (int) finalHeight);
-                if (bitmap == null) throw new IllegalArgumentException("Image resize exceeds global memory budget");
+                if (bitmap == null) throw new IllegalArgumentException("Invalid resized image dimensions");
                 Canvas canvas = new Canvas(bitmap);
                 canvas.drawBitmap(decoded, null, new RectF(0, 0, (int) newWidth, (int) newHeight),
                     new Paint(Paint.FILTER_BITMAP_FLAG));
@@ -296,7 +288,7 @@ public class TerminalBitmap {
         int cropWidth = (int) Math.min(bitmapWidth, (long) width * cellWidth);
         if (cropWidth < bitmapWidth || bitmapHeight < bitmap.getHeight()) {
             bitmap = resizeBitmap(LOG_TAG, "image crop", terminalBuffer.getClient(), bitmap, cropWidth, bitmapHeight);
-            if (bitmap == null) throw new IllegalArgumentException("Image crop exceeds global memory budget");
+            if (bitmap == null) throw new IllegalArgumentException("Invalid cropped image dimensions");
         }
 
         // No bitmap allocations after the screen has begun to change. Never recycle or mutate

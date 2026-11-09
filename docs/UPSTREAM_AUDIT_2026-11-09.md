@@ -67,8 +67,13 @@ Unmerged candidates below are distinguished from master commits above.
 | [#5238](https://github.com/termux/termux-app/pull/5238) | **Do not wholesale import its stale graphics/Kitty stack.** Independently adapt invalid decode-bounds rejection (`9add03d0`), final-column cursor correction (`13318246`), and overlapping renderer fix. Kitty is a distinct unmerged protocol, not a prerequisite for Sixel/iTerm. Its Fold resize report informs the explicit placement invalidation policy below. |
 | #5265, #5264, #5345 | **Already covered.** Simultaneous real Android input/extra keys, confirmed rename/exit menu, and UTF-16 overflow regression exist in Fold with lifecycle protections. |
 | #5312, #5387, #5391 | **Do not replace current policy.** Fold already has SCROLL behavior and readable theme-aware controls; persistent scroll indicator or terminal-palette-linked toolbar is separate UX, not a missing fix. |
-| #5242, #5287, #5366, #5256 | **Not qualified for this release.** CJK terminal preedit/negotiated Kitty keyboard or changed Samsung arrows require distinct composition/focus/protocol acceptance. Unconditional modified-Enter-to-LF changes existing key semantics; do not substitute it for negotiated support. Preserve the already working real EditText and direct typing. |
-| #5316, #5390, #5409 | **Not selected.** Custom narrow TIFF decoding adds validation/subsampling risk; PNG and Sixel cover the selected preview path. OSC8 metadata and asynchronous input-writer redesign need separate lifecycle/storage/performance qualification, not blind unmerged adoption. |
+| [#5366](https://github.com/termux/termux-app/pull/5366) `a9f40a5b813146091b41d0a130043bd0740beff8` | **Selected in a separate input change.** Pi requests Kitty flags 7 and distinguishes Enter/Shift+Enter; repair literal IME controls so synthetic Ctrl+M is not misencoded. Preserve active-pane routing, shortcut precedence, reset/screens and press/release lifecycle. |
+| [#5287](https://github.com/termux/termux-app/pull/5287) `1f74c023a20bdcdfdddf9ce7773e3e89bbb02a40` | **Adapt separately.** Honeyboard arrow suppression occurs before DPAD delivery. Virtual surrounding-text metadata must belong to the current terminal InputConnection, never real editor text or stale callbacks. |
+| [#5242](https://github.com/termux/termux-app/pull/5242) `851315d0525483321f6eaa11c7aefe27f43390d7` | **Adapt opt-in direct-terminal preedit separately.** It adds real CJK composition beyond the existing editor; reconcile its actual composing selection with Honeyboard's virtual model, gate the entire alternate behavior, and use completed presentation state. Raw head does not preserve these Fold contracts. |
+| [#5256](https://github.com/termux/termux-app/pull/5256) `4738aef079cd460e41df7ec97554e1624c7717cf` | **Do not globally remap modified Enter.** It collapses Shift/Ctrl/Ctrl+Shift identities and drops Alt in combinations for every legacy shell/TUI. Negotiated Kitty provides Pi's newline capability without that semantic loss; Ctrl+J remains available. |
+| [#5390](https://github.com/termux/termux-app/pull/5390) `6fb4ee65d468c21882fa27b9305e622c6a2f8905` | **Adapt separately as a usable OSC8 capability.** Pi emits hidden Markdown destinations and wrapped file targets. Metadata alone is invisible: integrate existing explicit Android URL actions, ASCII writes and immutable completed-frame resolution; preserve mouse-reporting ownership and safe target inspection. |
+| [#5316](https://github.com/termux/termux-app/pull/5316) `6ec101ab65948bfc31c05775771f2bb4d9a92292` | **Adapt the real Chafa subset, not the raw decoder.** Validate strip/tag/sample bounds before allocation, decode at requested sampling and convert unassociated RGBA correctly. Preserve native DNG handling; do not claim general TIFF support. Pi's ordinary raster route does not require TIFF, but Chafa iTerm output does. |
+| [#5409](https://github.com/termux/termux-app/pull/5409) | **Separate source review in progress.** Evaluate actual large-input/backpressure and process-lifecycle behavior rather than excluding an asynchronous writer merely for lack of tests. Final source-based decision will be recorded before release. |
 | [#5223](https://github.com/termux/termux-app/pull/5223) `7a046b64833a7e95242e4bea0e2e0cefdcad46db` | **Retain audited alternative.** Fold's pinned `login → bash -l → /etc/profile → profile.d` path reaches second stage; HUSHLOGIN suppresses only the banner. This is not installer-synchronous and retains its failure lock. Do not import prefix deletion/uninstall recovery. Fresh-prefix physical acceptance remains separate. |
 
 New gesture, automatic IME and separate-Android-task proposals are not silently
@@ -92,13 +97,16 @@ upstream maintainer approval or passing upstream tests is inferred from a PR tit
 - Validate dimensions with checked wide arithmetic and actual Android bitmap
   limits, bound encoded multipart input and decoded/retained pixel memory, and
   reject malformed data without logging private image/clipboard payloads.
-  Per-bitmap admission is at most `min(16MiB, heap/8)`; app-global weak-identity
-  accounting is `min(64MiB, heap/4)`, including pending Sixel, multipart/control
-  capacity, decoding/scaling reservations and shared completed-frame pixels.
-  This is allocation admission, not a hard bound on native RSS or opaque decoder
-  internals/display-list lifetimes. `largeHeap` stays off; physical heap acceptance
-  remains separate. Margin-aware placement and completion must not scroll an
-  unrelated DECSTBM/DECLRMM region or double-count transcript movement.
+  Keep the selected upstream Android draw-byte defaults: 100MiB before Android 15,
+  150MiB from Android 15, and Canvas's 32,766-pixel software axis bound. Exact
+  Android/upstream source links are in `TerminalBitmap.java`; these are draw limits,
+  not heap allowances. Retain upstream's encoded-data maximum cumulatively across
+  multipart input. The earlier candidate-only 16/64MiB heap-fraction policies,
+  weak global registry/reservations and per-buffer eviction quota were removed:
+  they had no established product/platform source. Ordinary allocator failures are
+  caught and rejected; no app-total/native-RSS guarantee or `largeHeap` is claimed.
+  Margin-aware placement and completion must not scroll an unrelated DECSTBM/DECLRMM
+  region or double-count transcript movement.
 - Live image placements are invalidated on column or cell-pixel geometry changes
   rather than reflowing image slices as `+` text. Ordinary text/history/cursor
   behavior remains; completed synchronized snapshots retain their old pixels.
@@ -109,6 +117,50 @@ upstream maintainer approval or passing upstream tests is inferred from a PR tit
   by production Android code**, not Fold8 screenshots or physical validation.
   The exact same baseline-compatible fixture runs against unchanged Fold16 and
   the candidate. Protocol and pixel assertions supplement visual inspection.
+
+## Actual Pi image route, not automatic Termux discovery
+
+At the inspected public Pi pin
+[`cd74c5a3615635c61e68c52922debcda7ed53b51`](https://github.com/fitchmultz/pi/commit/cd74c5a3615635c61e68c52922debcda7ed53b51),
+`packages/tui/src/terminal-image.ts` does not recognize a Termux identity. Unknown
+terminals and tmux default to no images. Its native `PI_IMAGE_PROTOCOL=iterm2`
+override selects the existing iTerm emitter; no ITERM/TERM_PROGRAM spoof is needed.
+The actual CLI accepts `--tui-mode regular`; fullscreen deliberately disables iTerm
+images. With the existing `terminal.showImages` enabled (default true), launch:
+
+```sh
+PI_IMAGE_PROTOCOL=iterm2 pi --tui-mode regular
+```
+
+This is a per-invocation route, not a shared settings/dotfile change. It assumes
+`terminal.images` is unset/`"auto"`; an explicit `"kitty"` or false setting overrides
+capability detection, and `terminal.showImages:false` still wins. No one-shot
+show-images override exists at this pin, so this task changes neither setting.
+Use a fresh ordinary invocation: restored working-session mode is applied after
+the CLI/default mode. In compact view, expand the relevant tool output to display
+its images. The public pin is research provenance, not proof of the installed
+phone revision.
+
+The unchanged production module was actually executed with existing Node24 on the
+M1. Default unknown/tmux detection returned null; the native override selected
+iTerm, including under the simulated tmux environment. `renderImage()` emitted the
+75,193-byte test fixture (SHA-256
+`f0d3895a147106b072d7110a534486d737383141aa36991157d008613a51296e`).
+`app/src/test/resources/pi-emitter-proof.json` records source blob/hash, environment
+results and geometry. Native Android parser/renderer tests consume those exact
+bytes, rather than substituting a hand-written protocol model. This is not a full
+interactive Pi/phone execution or proof of tmux forwarding.
+
+Test direct Termux first. An environment override cannot make tmux forward an
+unsupported image protocol; tmux/passthrough/version behavior remains separate.
+No Node/package/adapter or global Pi setting is modified. A simple existing
+coreutils route for a local PNG is also available after the app update:
+
+```sh
+printf '\033]1337;File=inline=1:'
+base64 -w 0 ./preview.png
+printf '\a'
+```
 
 ## Bootstrap, companion and runtime boundaries
 
@@ -153,6 +205,11 @@ provenance and reproducibility update, not a silent production-source overlay.
    APK replacement may stop Termux processes: save work, choose **Update**, never
    uninstall or replace the real prefix for a test. No physical result is inferred
    from CI or the synthetic native renders.
+
+Correctness now has its independent [PR36](https://github.com/fitchmultz/termux-app/pull/36)
+including locked-input transport recovery; it is not held behind graphics. Input,
+OSC8 and Chafa adaptations have separate implementation/review scopes. No capability
+is represented as merged merely because it is selected above.
 
 Final PR/run/release evidence belongs in the PR delivery record, not invented
 success assertions in this source audit.

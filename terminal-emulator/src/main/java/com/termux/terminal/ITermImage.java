@@ -11,8 +11,13 @@ public class ITermImage {
 
     public static final String LOG_TAG = "ITermImage";
 
-    /** Includes every encoded character across ALL FilePart commands, including whitespace. */
-    public static final int MAX_ENCODED_IMAGE_SIZE = (TerminalBitmap.MAX_IMAGE_DATA_SIZE / 3) * 4;
+    /**
+     * Apply upstream's existing OSC image-payload maximum to the whole multipart transfer,
+     * including whitespace, not independently to each FilePart. This is not an iTerm protocol
+     * or app-heap guarantee: upstream sets MAX_BITMAP_SIZE plus header space for OSC 1337.
+     * https://github.com/termux/termux-app/blob/3b270134a50ee50804fc722f6e17d3eac7e12407/terminal-emulator/src/main/java/com/termux/terminal/TerminalEmulator.java#L2704-L2714
+     */
+    public static final int MAX_ENCODED_IMAGE_SIZE = TerminalBitmap.MAX_BITMAP_SIZE;
 
 
     /** The {@link Enum} that defines {@link ITermImage} state. */
@@ -50,7 +55,7 @@ public class ITermImage {
     protected boolean mInline = false;
     protected boolean mPreserveAspectRatio = true;
 
-    // Start empty. Every capacity increase is admitted before allocating a replacement.
+    // Start empty; replacement capacity never exceeds the upstream encoded-payload limit.
     protected StringBuilder mEncodedImage = new StringBuilder(0);
     protected byte[] mDecodedImage;
 
@@ -88,15 +93,11 @@ public class ITermImage {
         return mPreserveAspectRatio;
     }
 
-    /** Returns an admitted copy, or null if the extra copy would exceed the global budget. */
+    /** Returns a copy, or null if the ordinary allocation fails. Never log this payload. */
     public synchronized String getEncodedImage() {
-        if (mEncodedImage.length() == 0) return "";
-        try (TerminalImageBudget.Reservation reservation =
-                 TerminalImageBudget.GLOBAL.tryReserve(2L * mEncodedImage.length())) {
-            if (reservation == null) return null;
-            String encoded = mEncodedImage.toString();
-            return reservation.commitTo(encoded, 2L * encoded.length()) ? encoded : null;
-        } catch (RuntimeException | OutOfMemoryError e) {
+        try {
+            return mEncodedImage.toString();
+        } catch (OutOfMemoryError e) {
             return null;
         }
     }
@@ -128,31 +129,21 @@ public class ITermImage {
     private void clearEncodedImage() {
         mEncodedImage.setLength(0);
         mEncodedImage.trimToSize();
-        TerminalImageBudget.GLOBAL.release(mEncodedImage);
     }
 
-    private boolean ensureEncodedCapacity(int required) {
-        if (required <= mEncodedImage.capacity()) return true;
+    private void ensureEncodedCapacity(int required) {
+        if (required <= mEncodedImage.capacity()) return;
         int capacity = (int) Math.min(MAX_ENCODED_IMAGE_SIZE,
             Math.max(required, 2L * mEncodedImage.capacity() + 2));
-        try (TerminalImageBudget.Reservation reservation =
-                 TerminalImageBudget.GLOBAL.tryReserve(2L * capacity)) {
-            if (reservation == null) return false;
-            StringBuilder replacement = new StringBuilder(capacity);
-            if (!reservation.commitTo(replacement, 2L * replacement.capacity())) {
-                replacement.trimToSize();
-                TerminalImageBudget.GLOBAL.release(replacement);
-                return false;
-            }
-            // The old builder remains charged while both arrays are needed for this copy.
-            replacement.append(mEncodedImage);
-            StringBuilder previous = mEncodedImage;
-            mEncodedImage = replacement;
-            previous.setLength(0);
-            previous.trimToSize();
-            TerminalImageBudget.GLOBAL.release(previous);
-            return true;
-        }
+        StringBuilder replacement = new StringBuilder(capacity);
+        replacement.append(mEncodedImage);
+        clearEncodedImage();
+        mEncodedImage = replacement;
+    }
+
+    private static boolean canAppendEncodedImage(int currentLength, int additionalLength) {
+        return currentLength >= 0 && additionalLength >= 0 && currentLength <= MAX_ENCODED_IMAGE_SIZE &&
+            additionalLength <= MAX_ENCODED_IMAGE_SIZE - currentLength;
     }
 
     protected synchronized boolean setStateFailed(String error) {
@@ -161,7 +152,6 @@ public class ITermImage {
         if (error != null) Logger.logError(mClient, LOG_TAG, error);
         if (!setState(ImageState.FAILED)) return false;
         clearEncodedImage();
-        TerminalImageBudget.GLOBAL.release(mDecodedImage);
         mDecodedImage = null;
         return true;
     }
@@ -220,8 +210,8 @@ public class ITermImage {
             numberEnd--;
         }
         if (numberEnd <= start || factor <= 0) throw new IllegalArgumentException("Invalid image dimension");
-        // Parse directly from the caller's admitted builder. Even a million leading zeros
-        // or an unknown million-character key must not allocate an uncharged substring.
+        // Parse directly from the caller's builder. Even a million leading zeros or an
+        // unknown million-character key must not allocate a full-size substring copy.
         long number = 0;
         for (int i = start; i < numberEnd; i++) {
             char digit = value.charAt(i);
@@ -302,7 +292,7 @@ public class ITermImage {
             return false;
         }
         int length = oscArgs.length() - index;
-        if (length > MAX_ENCODED_IMAGE_SIZE - mEncodedImage.length()) {
+        if (!canAppendEncodedImage(mEncodedImage.length(), length)) {
             setStateFailed("Encoded image exceeds aggregate size limit");
             return false;
         }
@@ -316,12 +306,9 @@ public class ITermImage {
             }
         }
         try {
-            // No substring copy, no implicit builder growth, and both aggregate/per-app
-            // admission checks precede collection of any additional payload.
-            if (!ensureEncodedCapacity(mEncodedImage.length() + length)) {
-                setStateFailed("Encoded image exceeds global memory budget");
-                return false;
-            }
+            // No substring copy or unchecked aggregate growth. Keep builder capacity
+            // within the existing upstream maximum, including across many FilePart calls.
+            ensureEncodedCapacity(mEncodedImage.length() + length);
             mEncodedImage.append(oscArgs, index, oscArgs.length());
             return true;
         } catch (RuntimeException | OutOfMemoryError e) {
@@ -367,52 +354,28 @@ public class ITermImage {
 
     public synchronized boolean decodeImage() {
         if (!ensureState(ImageState.IMAGE_READ, "decodeImage")) return false;
-        byte[] encoded = null;
         try {
             int length = mEncodedImage.length();
             if (length < 1 || length > MAX_ENCODED_IMAGE_SIZE) {
                 setStateFailed("Encoded image is empty or exceeds size limit");
                 return false;
             }
-            // Use explicit ASCII staging instead of a UTF-16 String plus an implicit
-            // getBytes() copy inside Base64.decode(String). Every allocation is admitted.
-            try (TerminalImageBudget.Reservation reservation = TerminalImageBudget.GLOBAL.tryReserve(length)) {
-                if (reservation == null) {
-                    setStateFailed("Base64 input staging exceeds global memory budget");
-                    return false;
-                }
-                encoded = new byte[length];
-                if (!reservation.commitTo(encoded, encoded.length)) {
-                    setStateFailed("Base64 input staging exceeds global memory budget");
-                    return false;
-                }
-                for (int i = 0; i < length; i++) encoded[i] = (byte) mEncodedImage.charAt(i);
-                clearEncodedImage();
+            // Explicit ASCII staging avoids a UTF-16 String plus the implicit getBytes()
+            // copy in Base64.decode(String). Release the collector before base64 decoding.
+            byte[] encoded = new byte[length];
+            for (int i = 0; i < length; i++) encoded[i] = (byte) mEncodedImage.charAt(i);
+            clearEncodedImage();
+            // Android accepts unpadded/line-wrapped base64; whitespace is not a quartet.
+            byte[] decoded = Base64.decode(encoded, Base64.DEFAULT);
+            if (decoded == null || decoded.length < 2 || decoded.length > TerminalBitmap.MAX_IMAGE_DATA_SIZE) {
+                setStateFailed("Decoded image is empty or exceeds size limit");
+                return false;
             }
-
-            // Android accepts unpadded/line-wrapped base64. Its decoder can allocate a
-            // maximum-size output AND a trimmed copy, so reserve both until it returns.
-            long maxDecoded = ((length + 3L) / 4) * 3;
-            try (TerminalImageBudget.Reservation reservation = TerminalImageBudget.GLOBAL.tryReserve(2 * maxDecoded)) {
-                if (reservation == null) {
-                    setStateFailed("Base64 output staging exceeds global memory budget");
-                    return false;
-                }
-                byte[] decoded = Base64.decode(encoded, Base64.DEFAULT);
-                if (decoded == null || !reservation.commitTo(decoded, decoded.length) ||
-                    decoded.length < 2 || decoded.length > TerminalBitmap.MAX_IMAGE_DATA_SIZE) {
-                    TerminalImageBudget.GLOBAL.release(decoded);
-                    setStateFailed("Decoded image is empty or exceeds size limit");
-                    return false;
-                }
-                mDecodedImage = decoded;
-                return setState(ImageState.IMAGE_DECODED);
-            }
+            mDecodedImage = decoded;
+            return setState(ImageState.IMAGE_DECODED);
         } catch (RuntimeException | OutOfMemoryError e) {
             setStateFailed("Failed to decode base64 image");
             return false;
-        } finally {
-            TerminalImageBudget.GLOBAL.release(encoded);
         }
     }
 

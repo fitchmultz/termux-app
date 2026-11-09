@@ -23,7 +23,7 @@ public class TerminalSixel {
     /** A sixel is a group of six pixels in a vertical column. */
     public static final int SIXEL__LINE_LEN = 6;
 
-    /** Extra capacity when receiving more image data, subject to the allocation budget. */
+    /** Upstream's extra capacity when receiving data, subject to drawable dimensions/bytes. */
     public static final int SIXEL__BITMAP_RESIZE_EXTRA_DIMENSION = 100;
 
     /** A repeat cannot exceed the largest drawable bitmap axis, regardless of compression. */
@@ -67,7 +67,7 @@ public class TerminalSixel {
         try {
             Bitmap bitmap = TerminalBitmap.allocateBitmap(bitmapWidth, bitmapHeight);
             if (bitmap == null) {
-                Logger.logError(client, LOG_TAG, "Initial sixel allocation exceeds global memory budget");
+                Logger.logError(client, LOG_TAG, "Invalid initial sixel bitmap dimensions");
                 return null;
             }
             bitmap.eraseColor(0);
@@ -139,7 +139,7 @@ public class TerminalSixel {
         long requiredWidth = (long) mCurX + repeat;
         long requiredHeight = (long) mCurY + SIXEL__LINE_LEN;
         if (!TerminalBitmap.isBitmapSizeValid(Math.max(mWidth, requiredWidth), Math.max(mHeight, requiredHeight))) {
-            Logger.logError(mClient, LOG_TAG, "Sixel data exceeds bitmap dimensions or memory budget");
+            Logger.logError(mClient, LOG_TAG, "Sixel data exceeds drawable bitmap dimensions or byte count");
             return false;
         }
 

@@ -291,7 +291,6 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     /** The terminal control arguments string buffer, like for OSC, DCS, APC commands. */
     private StringBuilder mTerminalControlArgs = new StringBuilder(TERMINAL_CONTROL_ARGS__INITIAL_CAPACITY);
-    private boolean mControlArgsImageCharged;
 
 
 
@@ -3367,11 +3366,8 @@ public final class TerminalEmulator implements TerminalRendererState {
         int maxLength = clipboard ? MAX_OSC_52_STRING_LENGTH : mTerminalControlArgsMaxLength;
         if (mTerminalControlArgs.length() + Character.charCount(b) <= maxLength) {
             try {
-                // Charge image input capacity before growth, including its temporary old/new
-                // arrays. Clipboard and ordinary control bounds retain their separate policy.
-                boolean image = ESC_DCS__SIXEL || mOscType == 1337;
                 int needed = mTerminalControlArgs.length() + Character.charCount(b);
-                if ((image || needed > mTerminalControlArgs.capacity()) && !ensureTerminalControlArgsCapacity(needed)) {
+                if (needed > mTerminalControlArgs.capacity() && !ensureTerminalControlArgsCapacity(needed)) {
                     abortControlString(b);
                     return false;
                 }
@@ -3404,8 +3400,6 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     /** Clear {@link #mTerminalControlArgs}. */
     private void clearTerminalControlArgs() {
-        if (mControlArgsImageCharged) TerminalImageBudget.GLOBAL.release(mTerminalControlArgs);
-        mControlArgsImageCharged = false;
         mTerminalControlArgsMaxLength = TERMINAL_CONTROL_ARGS__DEFAULT_MAX_LENGTH;
 
         if (mTerminalControlArgs.capacity() <= TERMINAL_CONTROL_ARGS__INITIAL_CAPACITY) {
@@ -3443,27 +3437,9 @@ public final class TerminalEmulator implements TerminalRendererState {
      * @param capacity The new capacity.
      */
     private boolean ensureTerminalControlArgsCapacity(int capacity) {
-        boolean image = ESC_DCS__SIXEL || mOscType == 1337;
-        if (image && !mControlArgsImageCharged) {
-            if (!TerminalImageBudget.GLOBAL.trySetCharge(mTerminalControlArgs, 2L * mTerminalControlArgs.capacity()))
-                return false;
-            mControlArgsImageCharged = true;
-        }
-        if (capacity <= mTerminalControlArgs.capacity()) return true;
-        long growth = Math.max((long) capacity, 2L * mTerminalControlArgs.capacity() + 2);
-        if (growth > Integer.MAX_VALUE) return false;
-        if (!image) {
-            try {
-                mTerminalControlArgs.ensureCapacity((int) growth);
-                return true;
-            } catch (RuntimeException | OutOfMemoryError failure) {
-                return false;
-            }
-        }
-        try (TerminalImageBudget.Reservation reservation = TerminalImageBudget.GLOBAL.tryReserve(2 * growth)) {
-            if (reservation == null) return false;
-            mTerminalControlArgs.ensureCapacity((int) growth);
-            return reservation.commitTo(mTerminalControlArgs, 2L * mTerminalControlArgs.capacity());
+        try {
+            mTerminalControlArgs.ensureCapacity(capacity);
+            return true;
         } catch (RuntimeException | OutOfMemoryError failure) {
             return false;
         }

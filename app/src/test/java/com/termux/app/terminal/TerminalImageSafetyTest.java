@@ -3,6 +3,7 @@ package com.termux.app.terminal;
 import android.app.Application;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.os.Build;
 import android.util.Base64;
 
 import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
@@ -10,7 +11,6 @@ import com.termux.terminal.ITermImage;
 import com.termux.terminal.TerminalBitmap;
 import com.termux.terminal.TerminalBuffer;
 import com.termux.terminal.TerminalEmulator;
-import com.termux.terminal.TerminalImageBudget;
 import com.termux.terminal.TerminalOutput;
 import com.termux.terminal.TerminalSixel;
 import com.termux.terminal.TextStyle;
@@ -21,13 +21,11 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.util.ReflectionHelpers;
+import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
 import java.io.ByteArrayOutputStream;
-import java.lang.ref.Reference;
-import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.zip.CRC32;
 
 import static org.junit.Assert.*;
@@ -47,7 +45,6 @@ public class TerminalImageSafetyTest {
         Image(Logs logs, boolean multipart) { super(logs, multipart); }
         int encodedLength() { return mEncodedImage.length(); }
         int encodedCapacity() { return mEncodedImage.capacity(); }
-        Object encodedOwner() { return mEncodedImage; }
     }
 
     private static final class MarginBuffer extends TerminalBuffer {
@@ -107,18 +104,16 @@ public class TerminalImageSafetyTest {
     }
 
     @Test
-    public void checkedLongBudgetsRejectOverflowAndCanvasLimits() {
-        assertTrue(TerminalBitmap.MAX_BITMAP_SIZE <= 16L * 1024 * 1024);
-        assertTrue(TerminalBitmap.MAX_BITMAP_SIZE <= Runtime.getRuntime().maxMemory() / 8);
-        assertTrue(TerminalImageBudget.MAX_BYTES <= 64L * 1024 * 1024);
-        assertTrue(TerminalImageBudget.MAX_BYTES <= Runtime.getRuntime().maxMemory() / 4);
+    public void checkedLongDimensionsRespectAndroidDrawLimits() {
+        assertEquals(Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM ?
+            150 * 1024 * 1024 : 100 * 1024 * 1024, TerminalBitmap.MAX_BITMAP_SIZE);
         assertTrue(TerminalBitmap.isBitmapSizeValid(1, 1));
         assertFalse(TerminalBitmap.isBitmapSizeValid(0, 1));
         assertFalse(TerminalBitmap.isBitmapSizeValid(1, -1));
         assertFalse(TerminalBitmap.isBitmapSizeValid(Integer.MAX_VALUE, Integer.MAX_VALUE));
         assertFalse(TerminalBitmap.isBitmapSizeValid(Long.MAX_VALUE, Long.MAX_VALUE));
         assertFalse(TerminalBitmap.isBitmapSizeValid(TerminalBitmap.MAX_BITMAP_DIMENSION + 1L, 1));
-        int width = 1024;
+        int width = 4096;
         int height = TerminalBitmap.MAX_BITMAP_SIZE / (width * 4);
         assertTrue(TerminalBitmap.isBitmapSizeValid(width, height));
         assertFalse(TerminalBitmap.isBitmapSizeValid(width, height + 1L));
@@ -193,14 +188,14 @@ public class TerminalImageSafetyTest {
         assertNull(TerminalBitmap.build(buffer, 0, colors(), 0, -1, 2, 2));
         assertNull(TerminalBitmap.build(buffer, 0, png(colors()), 0, 0, Integer.MAX_VALUE, 2, -1, -1, true));
 
-        // Keep a valid PNG header/CRC but claim an undrawable source axis. Even an explicitly
-        // small requested output must not send this header to the pixel decoder.
+        // Keep a valid PNG header/CRC but request the full undrawable width. Header
+        // preflight must reject it before pixel decode; requested downsampling is separate.
         byte[] hugeHeader = png(colors());
         ByteBuffer.wrap(hugeHeader).putInt(16, 65536);
         CRC32 crc = new CRC32();
         crc.update(hugeHeader, 12, 17);
         ByteBuffer.wrap(hugeHeader).putInt(29, (int) crc.getValue());
-        assertNull(TerminalBitmap.build(buffer, 0, hugeHeader, 0, 0, 2, 2, 1, 1, true));
+        assertNull(TerminalBitmap.build(buffer, 0, hugeHeader, 0, 0, 2, 2, -1, -1, true));
         assertEquals(originalStyle, buffer.getStyleAt(0, 0));
         assertEquals("X", buffer.getSelectedText(0, 0, 0, 0));
     }
@@ -321,27 +316,34 @@ public class TerminalImageSafetyTest {
         assertEquals(0, multi.encodedLength());
     }
 
+    private static boolean canAppendEncoded(int current, int additional) {
+        return ReflectionHelpers.callStaticMethod(ITermImage.class, "canAppendEncodedImage",
+            ClassParameter.from(int.class, current), ClassParameter.from(int.class, additional));
+    }
+
     @Test
-    public void multipartAggregateLimitIsEnforcedBeforeAppendingAndReleasesFailedData() {
+    public void multipartAggregateArithmeticAndFailureReleaseStaging() {
+        // Verify the real upstream-limit boundary without allocating a 100/150 MiB fixture.
+        int maximum = ITermImage.MAX_ENCODED_IMAGE_SIZE;
+        assertEquals(TerminalBitmap.MAX_BITMAP_SIZE, maximum);
+        assertTrue(canAppendEncoded(0, maximum));
+        assertTrue(canAppendEncoded(maximum - 1, 1));
+        assertTrue(canAppendEncoded(maximum, 0));
+        assertFalse(canAppendEncoded(maximum, 1));
+        assertFalse(canAppendEncoded(maximum - 1, 2));
+        assertFalse(canAppendEncoded(1, Integer.MAX_VALUE));
+        assertFalse(canAppendEncoded(-1, 1));
+        assertFalse(canAppendEncoded(1, -1));
+
         Image multi = new Image(logs, true);
         assertTrue(multi.readArguments(emulator(), new StringBuilder("inline=1"), 0) >= 0);
-        char[] chars = new char[4096];
-        Arrays.fill(chars, 'A');
-        StringBuilder part = new StringBuilder().append(chars);
-        int total = 0;
-        while (total < ITermImage.MAX_ENCODED_IMAGE_SIZE) {
-            int count = Math.min(part.length(), ITermImage.MAX_ENCODED_IMAGE_SIZE - total);
-            assertTrue(multi.readImage(count == part.length() ? part : new StringBuilder().append(chars, 0, count), 0));
-            total += count;
-        }
-        assertEquals(ITermImage.MAX_ENCODED_IMAGE_SIZE, multi.encodedLength());
-        assertEquals(2L * multi.encodedCapacity(), TerminalImageBudget.GLOBAL.getCharge(multi.encodedOwner()));
-        assertFalse(multi.readImage(new StringBuilder("A"), 0));
+        assertTrue(multi.readImage(new StringBuilder("AQI="), 0));
+        assertEquals(4, multi.encodedLength());
+        assertFalse(multi.readImage(new StringBuilder("_"), 0));
         assertEquals(ITermImage.ImageState.FAILED, multi.getCurrentState());
         assertEquals(ITermImage.ImageState.IMAGE_READING, multi.getPreviousState());
         assertEquals(0, multi.encodedLength());
         assertEquals(0, multi.encodedCapacity());
-        assertEquals(0, TerminalImageBudget.GLOBAL.getCharge(multi.encodedOwner()));
         assertNull(multi.getDecodedImage());
         assertFalse(multi.setMultiPartImageRead());
         assertFalse(multi.decodeImage());
@@ -449,79 +451,4 @@ public class TerminalImageSafetyTest {
         assertEquals("FFFFF", clipped.getSelectedText(0, 4, 4, 4));
     }
 
-    @Test
-    public void globalAdmissionUsesIdentityAndReservesBeforeAllocation() {
-        TerminalImageBudget budget = new TerminalImageBudget(32);
-        Object first = new String("equal");
-        Object second = new String("equal");
-        assertTrue(first.equals(second));
-        assertTrue(budget.trySetCharge(first, 8));
-        assertTrue(budget.trySetCharge(second, 8));
-        assertEquals(16, budget.getChargedBytes());
-        assertTrue(budget.trySetCharge(first, 8));
-        assertEquals(16, budget.getChargedBytes());
-        assertFalse(budget.trySetCharge(first, Long.MAX_VALUE));
-        assertEquals(8, budget.getCharge(first));
-
-        try (TerminalImageBudget.Reservation reservation = budget.tryReserve(16)) {
-            assertNotNull(reservation);
-            assertEquals(32, budget.getChargedBytes());
-            assertNull(budget.tryReserve(1)); // Refused before any Android allocation occurs.
-            assertFalse(budget.trySetCharge(new Object(), 1));
-            Bitmap bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888);
-            assertEquals(16, bitmap.getAllocationByteCount());
-            assertTrue(reservation.commitToBitmap(bitmap));
-            assertEquals(16, budget.getCharge(bitmap));
-            assertTrue(budget.trySetCharge(bitmap, bitmap.getAllocationByteCount()));
-            assertEquals(32, budget.getChargedBytes()); // Same snapshot bitmap counted once.
-            assertNull(budget.tryReserve(1));
-            budget.release(first);
-            assertEquals(24, budget.getChargedBytes());
-            budget.release(second);
-            assertEquals(16, budget.getChargedBytes());
-            Reference.reachabilityFence(bitmap);
-        }
-    }
-
-    @Test
-    public void reservationsReleaseOnFailureAndUnexpectedActualBytesFailClosed() {
-        TerminalImageBudget budget = new TerminalImageBudget(8);
-        try (TerminalImageBudget.Reservation reservation = budget.tryReserve(8)) {
-            assertNotNull(reservation);
-            assertEquals(8, budget.getChargedBytes());
-        }
-        assertEquals(0, budget.getChargedBytes());
-        try (TerminalImageBudget.Reservation reservation = budget.tryReserve(4)) {
-            assertNotNull(reservation);
-            Bitmap unexpected = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888);
-            assertFalse(reservation.commitToBitmap(unexpected));
-            // An unexpectedly large native result is still allocated. Keep its weak charge,
-            // reject publication, and prevent another allocation until it is collected.
-            assertEquals(16, budget.getCharge(unexpected));
-            assertEquals(16, budget.getChargedBytes());
-            assertNull(budget.tryReserve(1));
-            Reference.reachabilityFence(unexpected);
-        }
-    }
-
-    @Test
-    public void weakIdentityChargesAreExpungedWithoutKeepingOwnersStrong() {
-        TerminalImageBudget budget = new TerminalImageBudget(8);
-        Object owner = new Object();
-        assertTrue(budget.trySetCharge(owner, 8));
-        Map<?, ?> charges = ReflectionHelpers.getField(budget, "mCharges");
-        assertEquals(1, charges.size());
-        Object key = charges.keySet().iterator().next();
-        assertTrue(key instanceof WeakReference);
-        WeakReference<?> weak = (WeakReference<?>) key;
-        assertSame(owner, weak.get());
-        assertEquals(Long.valueOf(8), charges.get(key)); // Value carries no strong owner.
-        // Deterministically exercise the ReferenceQueue path; do not request GC or depend on
-        // timing/native finalizers in a graphics test. This simulates the GC clearing a key.
-        weak.clear();
-        assertTrue(weak.enqueue());
-        assertEquals(0, budget.getChargedBytes());
-        assertTrue(charges.isEmpty());
-        Reference.reachabilityFence(owner);
-    }
 }

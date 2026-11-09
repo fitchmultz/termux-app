@@ -6,7 +6,6 @@ import android.graphics.Canvas;
 import android.graphics.Typeface;
 import android.util.Base64;
 
-import com.termux.terminal.TerminalBitmap;
 import com.termux.terminal.TerminalBuffer;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalOutput;
@@ -21,6 +20,10 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.Assert.*;
@@ -82,6 +85,32 @@ public class TerminalInlineImagesTest {
         canvas.drawColor(terminal.getRendererState().getPalette()[TextStyle.COLOR_INDEX_BACKGROUND]);
         renderer.render(terminal, canvas, 0, -1, -1, -1, -1);
         return frame;
+    }
+
+    /** Fixture emitted by the unchanged production Pi module at the pin in pi-emitter-proof.json. */
+    @Test public void actualPiItermEmissionReachesNativeParserAndRenderer() throws Exception {
+        byte[] payload;
+        try (InputStream input = getClass().getResourceAsStream("/pi-iterm2-preview.ansi")) {
+            assertNotNull(input);
+            payload = input.readAllBytes();
+        }
+        byte[] hash = MessageDigest.getInstance("SHA-256").digest(payload);
+        StringBuilder digest = new StringBuilder();
+        for (byte value : hash) digest.append(String.format(java.util.Locale.ROOT, "%02x", value & 255));
+        assertEquals("f0d3895a147106b072d7110a534486d737383141aa36991157d008613a51296e", digest.toString());
+        TerminalEmulator terminal = terminal(new Output());
+        terminal.append(payload, payload.length);
+        append(terminal, "PI_SOURCE_OK");
+        Bitmap pixels = terminal.getScreen().getSixelBitmap(firstImage(terminal.getScreen()));
+        assertEquals(64, pixels.getWidth());
+        assertEquals(96, pixels.getHeight());
+        assertEquals(0xff101923, pixels.getPixel(0, 0));
+        assertEquals("PI_SOURCE_OK", terminal.getScreen().getSelectedText(8, 5, 19, 5));
+        File image = new File("build/reports/tests/workbench/pi-iterm2-user-flow.png");
+        assertTrue(image.getParentFile().isDirectory() || image.getParentFile().mkdirs());
+        try (FileOutputStream output = new FileOutputStream(image)) {
+            assertTrue(render(terminal).compress(Bitmap.CompressFormat.PNG, 100, output));
+        }
     }
 
     @Test public void singleAndMultipartImagesDecodeAndReportCellSize() {
@@ -171,7 +200,6 @@ public class TerminalInlineImagesTest {
         append(terminal, "\033Pq\"1;1;4294967296;1#1~" + ST + "OK");
         assertTrue(terminal.getScreen().getTranscriptText().contains("OK"));
         assertTrue(terminal.getCursorCol() >= 0 && terminal.getCursorCol() < terminal.getColumns());
-        assertTrue(TerminalBitmap.MAX_BITMAP_SIZE <= Runtime.getRuntime().maxMemory() / 8);
     }
     @Test public void imagePlacementReportsEveryScrollAndKeepsFinalColumnCursor() {
         TerminalEmulator terminal = terminal(new Output());

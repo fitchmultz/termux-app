@@ -34,7 +34,7 @@ The integrated Fold profile:
 - uses a compact session-title header without a single-pane focus border; Compose and Split are available at the bottom of the session drawer;
 - starts shells without the termux-tools welcome banner through its native `TERMUX_HUSHLOGIN` switch; Help remains available from the terminal context menu;
 - advertises the terminal emulator's implemented DEC mode 2026 synchronized-output support to tmux;
-- renders Sixel and iTerm single/multipart inline-image previews with bounded pixel/input memory and completed-frame ownership, without adding packages, changing shell configuration, downloading files, or upgrading an existing prefix.
+- renders Sixel and iTerm single/multipart inline-image previews with platform-checked bitmap geometry, cumulative encoded-input bounds and completed-frame ownership, without adding packages, changing shell configuration, downloading files, or upgrading an existing prefix.
 
 Properties remain available as recovery switches, but their defaults are the Fold choices rather than upstream's general-purpose choices. Release metadata is centralized in the root `build.gradle` and asserted by the read-only integration workflow so label/version drift fails CI.
 
