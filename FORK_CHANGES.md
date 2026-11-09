@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Ordinary wide-text insertion and generated blanks remove obsolete bitmap payloads before renderer/geometry discard can ghost an image or erase text. Valid existing text attributes stay intact; recursive cleanup restores the actual incoming image slice and snapshots collateral styles before mutation.
+
 - Keeps bitmap payload out of incidental wide-character cleanup: image placement preserves neighboring text style (or NORMAL for stale bitmap payload), exact target slices and margins across File/Multipart/Sixel shared row paths. Already-classified Sixel data is not reclassified as DECRQSS/termcap merely because a reused chunk starts `$q`/`+q`; genuine requests and invalid-image draining retain their existing behavior.
 
 - Composing preview distinguishes packed bitmap-cell metadata from text style before underline/color decoding, using the existing default text style and completed-frame palette/reverse-video snapshot for image cells. This prevents palette-index crashes and invisible preedit after cursor positioning over an image; ordinary colored text-cell behavior is unchanged. Native SDK28/37 regressions include bitmap slots0/300, coordinate-derived invalid text indices and synchronized-frame isolation.

@@ -291,3 +291,29 @@ content rendered by production Android code**, not current-repair or phone proof
 All five public PNGs and a public provenance/hashes file are pinned to assets-only
 commit `33baebc29edddd4a69d278f6322aa8bc71c1d4f3`; there is no invented baseline
 Pi image. The evidence branch changes neither production head nor code CI.
+
+### Ordinary-text stale-bitmap correction (4513006630)
+
+Both e7c5d898 runs42619737355/42619746401 passed604 cases, including the earlier
+wide-cell and DCS fixes. Pi finding
+[4513006630](https://github.com/fitchmultz/termux-app/pull/35#discussion_r4513006630)
+then identified a remaining ordinary-text path: a wide glyph could cover an old
+image payload in its second cell, and subsequent text/blank or geometry discard
+could render that image again or erase the glyph. Those604 passes do not qualify
+this correction.
+
+The shared row path now normalizes the covered cell for every width-two write,
+including width-two replacements, and normalizes generated trailing blanks even
+for ordinary text. Valid old text attributes are preserved. The next-wide
+collateral style is captured before recursive cleanup; the actual bitmap target
+is restored afterward so its exact ID/X/Y is not lost. No new parser state,
+capacity policy, feature, production test seam or finality change.
+
+Targeted row assertions exercise the reported wide/narrow/ASCII/blank paths;
+explicit raw metadata seeds are labelled row-only adversarial cases. The existing
+Native28/37 File/Multipart/Sixel regression no longer repairs expected styles by
+hand: it requires bitmap removal at ordinary wide creation, compares the native
+frame with ordinary text, and verifies real geometry invalidation preserves the
+glyph/ASCII/blank. No extra fixture resource or physical acceptance gate is added.
+Current-head required tests and configured Pi/Cursor reviews remain pending at
+publication; no prior passing head is substituted. CI triggers are unchanged.

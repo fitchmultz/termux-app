@@ -278,12 +278,41 @@ public class TerminalInlineImageWideCellTest {
             append(terminal, cup(IMAGE_ROW, 7) + OLD_TEXT_SGR + "漢\033[0m");
             margins(terminal);
             long[][] old = styles(terminal);
-            assertTrue(TextStyle.isTerminalBitmap(old[IMAGE_ROW][8]));
-            old[IMAGE_ROW][8] = TextStyle.NORMAL;
+            assertFalse("Wide text must already remove the covered image", TextStyle.isTerminalBitmap(old[IMAGE_ROW][8]));
+            assertEquals(old[IMAGE_ROW][7], old[IMAGE_ROW][8]);
             append(terminal, cup(IMAGE_ROW, 7));
             image(terminal, protocol, 1);
             assertPlacement(terminal, protocol, 7, 1, 8, old, expectedRow(7, 7, 1));
             assertCursorAndMargins(terminal, protocol, 7, 1, 4, 8, 1, 5);
+
+            // Reported ordinary-text path: real image -> wide glyph -> optional ASCII/space/ECH,
+            // then actual geometry invalidation. No raw style injection or expected-style repair.
+            for (String replacement : new String[]{"漢", "x", " ", "\033[X"}) {
+                TerminalEmulator actual = terminal();
+                append(actual, cup(IMAGE_ROW, 8));
+                image(actual, protocol, 1);
+                long oldImageStyle = actual.getScreen().getStyleAt(IMAGE_ROW, 8);
+                assertTrue(TextStyle.isTerminalBitmap(oldImageStyle));
+                append(actual, cup(IMAGE_ROW, 7) + OLD_TEXT_SGR + "漢\033[0m");
+                assertFalse(TextStyle.isTerminalBitmap(actual.getScreen().getStyleAt(IMAGE_ROW, 8)));
+                assertEquals(actual.getScreen().getStyleAt(IMAGE_ROW, 7), actual.getScreen().getStyleAt(IMAGE_ROW, 8));
+                if (!replacement.equals("漢")) append(actual, cup(IMAGE_ROW, 7) + replacement);
+                String expectedText = replacement.equals("漢") ? "漢" : replacement.equals("x") ? "x" : "";
+                assertEquals(expectedText, actual.getScreen().getSelectedText(7, IMAGE_ROW, 8, IMAGE_ROW));
+                for (int col = 0; col < COLUMNS; col++)
+                    assertFalse(TextStyle.isTerminalBitmap(actual.getScreen().getStyleAt(IMAGE_ROW, col)));
+
+                TerminalEmulator reference = terminal();
+                append(reference, cup(IMAGE_ROW, 8) + OLD_TEXT_SGR + " \033[0m"
+                    + cup(IMAGE_ROW, 7) + OLD_TEXT_SGR + "漢\033[0m");
+                if (!replacement.equals("漢")) append(reference, cup(IMAGE_ROW, 7) + replacement);
+                TerminalRenderer renderer = new TerminalRenderer(16, Typeface.MONOSPACE);
+                assertTrue("No image may ghost through ordinary text", render(actual, renderer).sameAs(render(reference, renderer)));
+                actual.resize(COLUMNS + 1, ROWS, CELL_WIDTH, CELL_HEIGHT);
+                assertNull(actual.getScreen().getTerminalBitmap(oldImageStyle));
+                assertEquals("Geometry discard must not delete legitimate text", expectedText,
+                    actual.getScreen().getSelectedText(7, IMAGE_ROW, 8, IMAGE_ROW));
+            }
         }
     }
 }

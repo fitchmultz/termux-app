@@ -211,11 +211,14 @@ public final class TerminalRow {
             // Check if we are overwriting the first half of a wide character starting at the next column:
             boolean overwritingWideCharInNextColumn = newCodePointDisplayWidth == 2 && wideDisplayCharacterStartingAt(columnToSet + 1);
             if (overwritingWideCharInNextColumn) {
+                // Snapshot the collateral blank's attributes before recursive cleanup changes them.
+                long trailingStyle = wideCharTrailingStyle(columnToSet + 2, style);
                 setChar(columnToSet + 1, ' ', wideCharCleanupStyle(columnToSet + 1, style));
-                // The recursive clear also creates a blank beyond the new wide character.
-                if (TextStyle.isTerminalBitmap(style))
-                    mStyle[columnToSet + 2] = wideCharCleanupStyle(columnToSet + 2, style);
+                mStyle[columnToSet + 2] = trailingStyle;
             }
+            // The left recursive clear can normalize this already-assigned target as a trailing
+            // blank. Restore the actual image slice, not the incidental cleanup's text attributes.
+            if (TextStyle.isTerminalBitmap(style)) mStyle[columnToSet] = style;
         }
 
         char[] text = mText;
@@ -285,8 +288,7 @@ public final class TerminalRow {
                 System.arraycopy(text, newNextColumnIndex, text, newNextColumnIndex + 1, mSpaceUsed - newNextColumnIndex);
             }
             text[newNextColumnIndex] = ' ';
-            if (TextStyle.isTerminalBitmap(style))
-                mStyle[columnToSet + 1] = wideCharCleanupStyle(columnToSet + 1, style);
+            mStyle[columnToSet + 1] = wideCharTrailingStyle(columnToSet + 1, style);
 
             ++mSpaceUsed;
         } else if (oldCodePointDisplayWidth == 1 && newCodePointDisplayWidth == 2) {
@@ -306,6 +308,10 @@ public final class TerminalRow {
                 mSpaceUsed -= nextLen;
             }
         }
+        // A wide text glyph covers its second cell too. An old image payload there must not
+        // survive to render again or make geometry invalidation erase the new wide glyph.
+        if (newCodePointDisplayWidth == 2)
+            mStyle[columnToSet + 1] = wideCharTrailingStyle(columnToSet + 1, style);
     }
 
     /** Bitmap coordinates are not text attributes for incidental wide-character blanks. */
@@ -315,6 +321,13 @@ public final class TerminalRow {
         // payload has no text style to preserve, and clearing its bitmap bit is not a decode.
         long oldStyle = mStyle[column];
         return TextStyle.isTerminalBitmap(oldStyle) ? TextStyle.NORMAL : oldStyle;
+    }
+
+    /** Keep valid text attributes, but never retain an obsolete image beneath a covered/blank cell. */
+    private long wideCharTrailingStyle(int column, long replacementStyle) {
+        long oldStyle = mStyle[column];
+        if (!TextStyle.isTerminalBitmap(oldStyle)) return oldStyle;
+        return TextStyle.isTerminalBitmap(replacementStyle) ? TextStyle.NORMAL : replacementStyle;
     }
 
     boolean isBlank() {

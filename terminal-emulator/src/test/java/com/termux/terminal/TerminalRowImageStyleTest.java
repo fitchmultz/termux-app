@@ -65,7 +65,12 @@ public class TerminalRowImageStyleTest extends TestCase {
             for (long tailStyle : new long[]{OTHER_TEXT, TextStyle.encodeTerminalBitmap(11, 8, 9)}) {
                 TerminalRow row = new TerminalRow(COLUMNS, TextStyle.NORMAL);
                 row.setChar(1, 'x', tailStyle);
-                row.setChar(0, wide, OLD_TEXT); // The covered cell retains its previous style.
+                row.setChar(0, wide, OLD_TEXT);
+                if (TextStyle.isTerminalBitmap(tailStyle)) {
+                    assertEquals(OLD_TEXT, row.getStyle(1)); // Real wide creation already removes the old image.
+                    // Row-only adversarial legacy metadata: independently exercise trailing-blank cleanup.
+                    row.mStyle[1] = tailStyle;
+                }
                 long image = TextStyle.encodeTerminalBitmap(7, 0, 0);
                 row.setChar(0, '+', image);
                 assertText(row, "+     ");
@@ -106,6 +111,11 @@ public class TerminalRowImageStyleTest extends TestCase {
                 row.setChar(0, wide, OLD_TEXT);
                 row.setChar(3, 'x', tailStyle);
                 row.setChar(2, wide, OLD_TEXT);
+                if (TextStyle.isTerminalBitmap(tailStyle)) {
+                    assertEquals(OLD_TEXT, row.getStyle(3));
+                    // Row-only adversarial stale metadata, not a production builder output.
+                    row.mStyle[3] = tailStyle;
+                }
                 long image = TextStyle.encodeTerminalBitmap(7, 5, 6);
                 row.setChar(1, wide, image);
                 assertText(row, " " + new String(Character.toChars(wide)) + "   ");
@@ -131,6 +141,66 @@ public class TerminalRowImageStyleTest extends TestCase {
         assertEquals(OLD_TEXT, destination.getStyle(0));
         assertOnlyBitmap(destination, 1, image);
         assertSingleWidthColumns(destination);
+    }
+
+    public void testWideTextRemovesCoveredBitmapBeforeNarrowingOrDiscard() {
+        for (int wide : WIDE) {
+            for (int first : new int[]{0, COLUMNS - 2}) {
+                TerminalRow row = new TerminalRow(COLUMNS, TextStyle.NORMAL);
+                long image = TextStyle.encodeTerminalBitmap(7, 0, 0);
+                row.setChar(first + 1, '+', image);
+                assertEquals(image, row.getStyle(first + 1));
+                row.setChar(first, wide, OLD_TEXT);
+                assertEquals(OLD_TEXT, row.getStyle(first));
+                assertEquals(OLD_TEXT, row.getStyle(first + 1));
+                String expected = " ".repeat(first) + new String(Character.toChars(wide))
+                    + " ".repeat(COLUMNS - first - 2);
+                assertText(row, expected);
+                for (int col = 0; col < COLUMNS; col++)
+                    assertFalse(TextStyle.isTerminalBitmap(row.getStyle(col)));
+                // Row-only adversarial pre-fix state also needs repair on a width-two replacement.
+                row.mStyle[first + 1] = image;
+                row.setChar(first, wide, NEW_TEXT);
+                assertEquals(NEW_TEXT, row.getStyle(first + 1));
+                assertText(row, expected);
+            }
+        }
+    }
+
+    public void testOrdinaryAsciiAndEraseNormalizeOnlyStaleTrailingBitmapStyles() {
+        for (int wide : WIDE) {
+            for (int replacement : new int[]{'x', ' '}) {
+                for (boolean asciiRun : new boolean[]{false, true}) {
+                    for (long tailStyle : new long[]{OTHER_TEXT, TextStyle.encodeTerminalBitmap(7, 0, 0)}) {
+                        TerminalRow row = new TerminalRow(COLUMNS, TextStyle.NORMAL);
+                        row.setChar(0, wide, OLD_TEXT);
+                        // Row-only adversarial old metadata; no production seam or renderer forcing.
+                        row.mStyle[1] = tailStyle;
+                        if (asciiRun) row.setAscii(0, new byte[]{(byte) replacement}, 0, 1, NEW_TEXT);
+                        else row.setChar(0, replacement, NEW_TEXT);
+                        assertText(row, Character.toString((char) replacement) + "     ");
+                        assertEquals(NEW_TEXT, row.getStyle(0));
+                        assertEquals(TextStyle.isTerminalBitmap(tailStyle) ? NEW_TEXT : tailStyle, row.getStyle(1));
+                        for (int col = 0; col < COLUMNS; col++)
+                            assertFalse(TextStyle.isTerminalBitmap(row.getStyle(col)));
+                        assertSingleWidthColumns(row);
+                    }
+                }
+            }
+        }
+    }
+
+    public void testOrdinaryWideOverlapNormalizesTheGeneratedRightBlankWithoutLosingTargets() {
+        for (int wide : WIDE) {
+            TerminalRow row = new TerminalRow(COLUMNS, TextStyle.NORMAL);
+            row.setChar(0, wide, OLD_TEXT);
+            row.setChar(2, wide, OLD_TEXT);
+            row.mStyle[3] = TextStyle.encodeTerminalBitmap(7, 0, 0); // Row-only stale metadata.
+            row.setChar(1, wide, NEW_TEXT);
+            assertText(row, " " + new String(Character.toChars(wide)) + "   ");
+            for (int col = 0; col <= 3; col++) assertEquals(NEW_TEXT, row.getStyle(col));
+            for (int col = 0; col < COLUMNS; col++) assertFalse(TextStyle.isTerminalBitmap(row.getStyle(col)));
+        }
     }
 
     public void testOrdinaryTextWideCleanupStyleSemanticsAreUnchanged() {
