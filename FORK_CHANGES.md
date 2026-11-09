@@ -64,6 +64,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Features
 
+- Candidate eighth capability: adapts upstream PR5238's direct Kitty PNG/RGB/RGBA frontend to the checked common bitmap backend, with unsigned IDs, source-pixel crop, cached placement/delete/reuse, margin-aware scrolling and immutable completed-frame ownership. No filesystem/shared-memory transfer, identity spoof, feature gate or new quota; native tests/reviews are pending. See [source and scope](docs/KITTY_GRAPHICS_2026-11-09.md).
+
 - Adds the narrowly validated Chafa-style single-strip LE RGBA8 TIFF fallback for iTerm output, with native BitmapFactory first, pre-allocation strip/layout validation, direct sampling and alpha-correct row conversion. This is not general TIFF support, and native DNG preservation is source-reviewed rather than backed by a new DNG fixture. See [the source/provenance and acceptance limits](docs/CHAFA_TIFF_2026-11-09.md).
 
 - Selectively integrates upstream Sixel and iTerm single/multipart inline images while preserving Fold OSC52 limits, completed DEC2026 pixel ownership, mixed text runs, panes/input and scroll margins. Uses sourced Android/upstream draw and encoded-data limits, checked geometry, bounds-first decoding and immutable publication—not custom heap-fraction quotas or a native-RSS guarantee. Column/font-cell changes clear only live fixed-geometry images so programs can redraw; completed frames retain old pixels. No image files are downloaded, uploaded or executed. See the [master/open-PR source audit and real Pi launch route](docs/UPSTREAM_AUDIT_2026-11-09.md).

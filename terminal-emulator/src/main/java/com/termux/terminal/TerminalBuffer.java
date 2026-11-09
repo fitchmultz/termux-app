@@ -3,6 +3,7 @@ package com.termux.terminal;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import android.graphics.Bitmap;
@@ -47,6 +48,19 @@ public final class TerminalBuffer {
 
     /** The map for bitmap number to the {@link TerminalBitmap} loaded in the terminal. */
     private final HashMap<Integer, TerminalBitmap> mTerminalBitmaps;
+
+    // Protocol IDs are unsigned32, independent of TextStyle's unsigned16 bitmap slots.
+    // Only live buffers own reusable sources; completed frames retain visible TerminalBitmaps.
+    private final HashMap<Long, Bitmap> mKittyImages = new HashMap<>();
+    private final HashMap<Integer, KittyPlacement> mKittyPlacements = new HashMap<>();
+
+    private static final class KittyPlacement {
+        final long imageId, placementId;
+        KittyPlacement(long imageId, long placementId) {
+            this.imageId = imageId;
+            this.placementId = imageId == 0 ? 0 : placementId;
+        }
+    }
 
     /** The time since last garbage collection for all the {@link TerminalBitmap} that are loaded in the terminal. */
     private long mTerminalBitmapsLastGC;
@@ -622,6 +636,7 @@ public final class TerminalBuffer {
             row.mHasTerminalBitmap = false;
         }
         mTerminalBitmaps.clear();
+        mKittyPlacements.clear();
         mTerminalSixel = null;
     }
 
@@ -751,6 +766,85 @@ public final class TerminalBuffer {
     }
 
 
+    synchronized Bitmap getKittyImage(long imageId) { return mKittyImages.get(imageId); }
+
+    synchronized void storeKittyImage(long imageId, Bitmap source) {
+        if (imageId == 0) return;
+        mKittyImages.put(imageId, source);
+        // A new successful transmission replaces ALL placements of that ID, not their pixels.
+        deleteKittyPlacements(imageId, 0, false, false);
+    }
+
+    synchronized int[] addKittyImage(Bitmap source, KittyImage command, int x, int y,
+                                    int cellWidth, int cellHeight) {
+        Bitmap prepared = TerminalBitmap.prepareKitty(this, source, command, x, y, cellWidth, cellHeight);
+        if (prepared == null) return null;
+        doTerminalBitmapsGC(0);
+        int slot = getFreeTerminalBitmapNum();
+        if (slot < 0) return null;
+        KittyPlacement placement = new KittyPlacement(command.imageId, command.placementId);
+        TerminalBitmap bitmap = TerminalBitmap.buildOrThrow(this, slot, prepared, x, y, cellWidth, cellHeight);
+        mTerminalBitmaps.put(slot, bitmap);
+        if (placement.imageId != 0 && placement.placementId != 0)
+            deleteKittyPlacements(placement.imageId, placement.placementId, false, false);
+        mKittyPlacements.put(slot, placement);
+        return new int[] {bitmap.getScrollLines(), (prepared.getWidth() + cellWidth - 1) / cellWidth};
+    }
+
+    /** Delete named placements, or whole placements intersecting the visible screen for d=a/A. */
+    synchronized void deleteKittyPlacements(long imageId, long placementId, boolean visible, boolean free) {
+        doTerminalBitmapsGC(0);
+        Set<Integer> selected = new HashSet<>();
+        Set<Long> sources = new HashSet<>();
+        if (visible) {
+            for (int row = 0; row < mScreenRows; row++) {
+                for (int col = 0; col < mColumns; col++) {
+                    long style = getStyleAt(row, col);
+                    int slot = TextStyle.getTerminalBitmapNum(style);
+                    if (TextStyle.isTerminalBitmap(style) && mKittyPlacements.containsKey(slot)) selected.add(slot);
+                }
+            }
+        } else {
+            for (Map.Entry<Integer, KittyPlacement> entry : mKittyPlacements.entrySet()) {
+                KittyPlacement placement = entry.getValue();
+                if (placement.imageId == imageId && (placementId == 0 || placement.placementId == placementId))
+                    selected.add(entry.getKey());
+            }
+            sources.add(imageId); // Uppercase named delete also frees an upload with no placements.
+        }
+        for (int slot : selected) sources.add(mKittyPlacements.get(slot).imageId);
+        eraseKittyPlacements(selected);
+        if (free) {
+            for (KittyPlacement placement : mKittyPlacements.values()) sources.remove(placement.imageId);
+            for (long id : sources) mKittyImages.remove(id);
+        }
+    }
+
+    private void eraseKittyPlacements(Set<Integer> selected) {
+        if (!selected.isEmpty()) {
+            for (TerminalRow row : mLines) {
+                if (row == null || !row.mHasTerminalBitmap) continue;
+                boolean hasBitmap = false;
+                for (int col = 0; col < mColumns; col++) {
+                    long style = row.getStyle(col);
+                    if (!TextStyle.isTerminalBitmap(style)) continue;
+                    if (selected.contains(TextStyle.getTerminalBitmapNum(style))) row.setChar(col, ' ', TextStyle.NORMAL);
+                    else hasBitmap = true;
+                }
+                row.mHasTerminalBitmap = hasBitmap;
+            }
+            for (int slot : selected) {
+                mKittyPlacements.remove(slot);
+                mTerminalBitmaps.remove(slot); // Never recycle: completed frames may own these pixels.
+            }
+        }
+    }
+
+    synchronized void resetKittyGraphics() {
+        eraseKittyPlacements(new HashSet<>(mKittyPlacements.keySet()));
+        mKittyImages.clear();
+    }
+
     /** Set one synchronous placement's geometry and its emulator-owned scrolling operation. */
     public synchronized void beginImagePlacement(int right, int bottom, Runnable scroll) {
         mHasImagePlacementContext = true;
@@ -804,6 +898,7 @@ public final class TerminalBuffer {
             }
         }
 
+        mKittyPlacements.keySet().retainAll(mTerminalBitmaps.keySet());
         mTerminalBitmapsLastGC = SystemClock.uptimeMillis();
     }
 

@@ -183,7 +183,7 @@ public final class TerminalEmulator implements TerminalRendererState {
      *     {@link #mTerminalControlArgs}, and for later code points {@link #receiveApc(int)} is called
      *     instead.
      * <p>
-     * Currently, APC commands are only parsed, but ignored as none are supported.
+     * Kitty direct-data graphics is supported; other APC types remain discard-only.
      * <p>
      * - https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Application-Program-Command-functions
      */
@@ -378,6 +378,8 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     /** The {@link ITermImage} if an iTerm image command is being processed. */
     private ITermImage mITermImage;
+    private KittyImage mKittyImage, mKittyPending;
+    private boolean mApcHasType, mApcGraphics, mApcPayload;
     /** Drain a rejected image string through its terminator, never print its remaining bytes. */
     private int mDiscardImageControl = ESC_NONE;
     private boolean mDiscardImageEscape;
@@ -664,6 +666,13 @@ public final class TerminalEmulator implements TerminalRendererState {
             }
             clearDcsTypeVariables();
             mITermImage = null;
+            if (mEscapeState == ESC_APC || mEscapeState == ESC_APC__ESC) {
+                mDiscardImageControl = ESC_APC;
+                mDiscardImageEscape = mEscapeState == ESC_APC__ESC;
+                finishSequence();
+            }
+            clearApcTypeVariables();
+            mKittyPending = null;
         }
         this.mCellWidthPixels = cellWidthPixels;
         this.mCellHeightPixels = cellHeightPixels;
@@ -884,11 +893,13 @@ public final class TerminalEmulator implements TerminalRendererState {
         }
         // Cancellation must take precedence over image fast paths and release partial payloads.
         if ((b == 24 || b == 26) && (mEscapeState == ESC_DCS || mEscapeState == ESC_OSC
-            || mEscapeState == ESC_OSC__ESC)) {
+            || mEscapeState == ESC_OSC__ESC || mEscapeState == ESC_APC || mEscapeState == ESC_APC__ESC)) {
             clearTerminalControlArgs();
             clearOscTypeVariables();
             clearDcsTypeVariables();
             mITermImage = null;
+            clearApcTypeVariables();
+            mKittyPending = null;
             finishSequence();
             return;
         }
@@ -2060,6 +2071,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                     if (setting) saveCursor();
                     kittyKeyboardState().invalidateEvents();
                     mScreen = newScreen;
+                    mKittyPending = null;
                     kittyKeyboardState().invalidateEvents();
                     if (!setting) {
                         int col = mSavedStateMain.mSavedCursorCol;
@@ -2302,6 +2314,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             case '_': // APC - Application Program Command.
                 clearTerminalControlArgs();
+                clearApcTypeVariables();
                 continueSequence(ESC_APC);
                 break;
             default:
@@ -2804,29 +2817,123 @@ public final class TerminalEmulator implements TerminalRendererState {
      * Receive {@link #ESC_APC}. Check its docs for more info.
      */
     private void receiveApc(final int b) {
-        // Unsupported APC (including Kitty graphics) is discard-only, with no payload buffer.
-        continueSequence(b == 27 ? ESC_APC__ESC : ESC_APC);
+        if (b == 27) {
+            continueSequence(ESC_APC__ESC);
+            return;
+        }
+        if (!mApcHasType) {
+            mApcHasType = true;
+            mApcGraphics = b == 'G';
+        } else if (mApcGraphics) {
+            if (mApcPayload) {
+                mKittyImage.read(b);
+            } else if (b == ';') {
+                startKittyCommand();
+            } else if (mTerminalControlArgs.length() < TERMINAL_CONTROL_ARGS__DEFAULT_MAX_LENGTH) {
+                mTerminalControlArgs.appendCodePoint(b);
+            } else {
+                startKittyCommand();
+                mKittyImage.fail("EINVAL");
+            }
+        }
+        continueSequence(ESC_APC);
     }
 
     private void receiveApcEsc(final int b) {
         if (b == '\\') {
+            if (mApcGraphics) doApc();
+            clearApcTypeVariables();
             finishSequence();
         } else {
+            if (mApcGraphics) {
+                if (!mApcPayload) startKittyCommand();
+                mKittyImage.fail("EINVAL");
+            }
             continueSequence(b == 27 ? ESC_APC__ESC : ESC_APC);
         }
     }
 
-    /**
-     * Clear {@link #ESC_APC} type variables.
-     */
-    public void clearApcTypeVariables() {}
+    public void clearApcTypeVariables() {
+        mApcHasType = mApcGraphics = mApcPayload = false;
+        mKittyImage = null;
+        clearTerminalControlArgs();
+    }
 
-    /**
-     * Do {@link #ESC_APC}. Check its docs for more info.
-     */
-    private void doApc() {}
+    private void startKittyCommand() {
+        KittyImage command = new KittyImage(mTerminalControlArgs);
+        clearTerminalControlArgs();
+        if (mKittyPending != null && command.continuation) {
+            mKittyPending.continueWith(command);
+            command = mKittyPending;
+        }
+        mKittyPending = null; // A new action, notably delete, aborts a pending upload.
+        mKittyImage = command;
+        mApcPayload = true;
+        command.start();
+    }
 
+    private void doApc() {
+        if (!mApcPayload) startKittyCommand(); // Pi's placement/delete commands have no ';'.
+        KittyImage command = mKittyImage;
+        if (command.error == null && command.more) {
+            mKittyPending = command;
+            return;
+        }
+        try {
+            if (command.error == null) {
+                switch (command.action) {
+                    case 'd':
+                        boolean visible = command.delete == 'a' || command.delete == 'A';
+                        if (!visible && command.imageId == 0) command.fail("EINVAL");
+                        else mScreen.deleteKittyPlacements(command.imageId, command.placementId,
+                            visible, Character.isUpperCase(command.delete));
+                        break;
+                    case 'p':
+                        android.graphics.Bitmap stored = mScreen.getKittyImage(command.imageId);
+                        if (stored == null) command.fail("ENOENT");
+                        else placeKittyImage(command, stored);
+                        break;
+                    default:
+                        byte[] data = command.finish();
+                        if (data == null) break;
+                        android.graphics.Bitmap source = TerminalBitmap.decodeKitty(command, data);
+                        if (source == null) { command.fail("EBADDATA"); break; }
+                        if (command.action != 'q') {
+                            mScreen.storeKittyImage(command.imageId, source);
+                            if (command.action == 'T') placeKittyImage(command, source);
+                        }
+                        break;
+                }
+            }
+        } catch (RuntimeException | OutOfMemoryError failure) {
+            command.fail("ENOSPC"); // Constant, payload-free response; never log decoder messages.
+        }
+        if (command.imageId != 0 && command.quiet < (command.error == null ? 1 : 2)) {
+            String placement = command.placementId == 0 ? "" : ",p=" + command.placementId;
+            mSession.write("\033_Gi=" + command.imageId + placement + ";" +
+                (command.error == null ? "OK" : command.error + ":graphics command failed") + "\033\\");
+        }
+    }
 
+    private void placeKittyImage(KittyImage command, android.graphics.Bitmap source) {
+        TerminalBuffer target = beginImagePlacement();
+        int right = target.getImageRightMargin();
+        boolean canScroll = target.canScrollImage();
+        int[] delta;
+        try {
+            delta = target.addKittyImage(source, command, mCursorCol, mCursorRow,
+                mCellWidthPixels, mCellHeightPixels);
+        } finally {
+            target.endImagePlacement();
+        }
+        if (delta == null) { command.fail("EINVAL"); return; }
+        if (!command.noMove) {
+            // Kitty's production graphics.c moves by effective rows-1, unlike its prose.
+            advanceImageRows(Math.max(0, delta[0] - 1), canScroll);
+            mCursorCol = Math.min(right - 1, mCursorCol + delta[1]);
+            mAboutToAutoWrap = false;
+        }
+    }
 
 
     /**
@@ -3820,6 +3927,10 @@ public final class TerminalEmulator implements TerminalRendererState {
         clearTerminalControlArgs();
         clearOscTypeVariables();
         mITermImage = null;
+        clearApcTypeVariables();
+        mKittyPending = null;
+        mMainBuffer.resetKittyGraphics();
+        mAltBuffer.resetKittyGraphics();
         mDiscardImageControl = ESC_NONE;
         mDiscardImageEscape = false;
         clearDcsTypeVariables();
