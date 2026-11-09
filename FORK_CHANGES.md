@@ -108,3 +108,7 @@ This is the canonical concise inventory of intentional differences from the audi
 - Records all 19 direct Maven coordinates and tool/action decisions in the dated [dependency audit](docs/DEPENDENCY_AUDIT.md); those libraries were already current stable at that audit. The locked native package snapshot and its separate maintenance process are documented in [bootstrap maintenance](tools/bootstrap/README.md).
 - Removes obsolete library-publishing/JitPack configuration and unused library ProGuard files, duplicate app Markdown dependencies and the now-transitive Guava conflict placeholder, and an inherited instrumented package-name template test. Guava remains an API dependency because shared property schemas expose its map types; sharing helpers use AndroidX's nullable annotation.
 - Pins GitHub Actions by commit and explicitly provisions the SDK. Isolated signing retains all signature/reproducibility gates, including build-tools 37's per-scheme certificate output and a verifier-only API 23 floor for v1. The README distinguishes Fold-signed updates from upstream reference guidance.
+
+## Candidate visual qualification
+
+- Diagnostic-only unchanged Fold16 parser/renderer fixture for before/after native inline-image captures; no runtime behavior changes or publication.
