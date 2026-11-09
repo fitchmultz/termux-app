@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Preserves available legacy initial functional-key presses for events-only Kitty flags 2/6, including DECCKM/SS3 and F1-F4, while retaining layout-resolved Space, legacy-null fallbacks, repeat/release encoding and Pi flags7. This is a Termux compatibility policy, not a native Kitty parity claim. Corrects the synthetic keymap fixtures to pinned Robolectric 4.17's actual char-valued native hook without production seams.
+
 - Wrapped-word lookup checks adjacent row boundaries in linear work instead of repeatedly serializing the growing transcript span; long wrapped-line regressions exercise the public final buffer directly in both directions without test-only inheritance or a timing policy.
 - Selectively adapts source-confirmed open upstream fixes for valid empty/sanitized writes, coalesced PTY input wakeups, overlapping cell styles, cursor/scroll-margin/cancellation correctness, wrapped transcript words and unmatched Ctrl+Alt active-pane routing. Existing Fold shortcuts, synchronized-output timeout and queue behavior remain; focused regressions cover those contracts. See the [correctness source map](docs/UPSTREAM_CORRECTNESS_2026-11-09.md).
 - Adapts fuller JNI partial-allocation/UTF/local-reference/PTY failure cleanup, preserving pending exceptions and validating PID output, plus connected-client-FD and single AM-error-result repairs. Does not import unsafe unconditional process killing or change the independently pinned API companion producer.
