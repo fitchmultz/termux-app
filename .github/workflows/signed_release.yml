@@ -29,13 +29,10 @@ concurrency:
 jobs:
   build:
     name: Reproducible unprivileged build
-    runs-on: [self-hosted, Linux, ARM64]
+    runs-on: [self-hosted, Linux, home-linux]
     container:
       image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
       options: --platform linux/amd64
-      volumes:
-        - /lib/ld-linux-aarch64.so.1:/lib/ld-linux-aarch64.so.1:ro
-        - /lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu:ro
     timeout-minutes: 50
     permissions:
       contents: read
@@ -43,11 +40,11 @@ jobs:
     env:
       REQUESTED_TAG: ${{ inputs.release_tag }}
     steps:
-      - name: Prepare M1 job container
+      - name: Prepare home Linux job container
         run: |
           set -euo pipefail
           test "$RUNNER_OS" = Linux
-          test "$RUNNER_ARCH" = ARM64
+          [[ "$RUNNER_ARCH" = X64 || "$RUNNER_ARCH" = ARM64 ]]
           test "$(uname -m)" = x86_64
           work="$(mktemp -d "$RUNNER_TEMP/fold-ci.XXXXXXXX")"
           {
@@ -57,8 +54,18 @@ jobs:
             printf 'ANDROID_USER_HOME=%s/android-user-home\n' "$work"
             printf 'GRADLE_USER_HOME=%s/gradle-home\n' "$work"
           } >> "$GITHUB_ENV"
+          runner_node_libs=()
+          if [ "$RUNNER_ARCH" = ARM64 ]; then
+            # JavaScript actions run this ARM64 runner's own Node inside the amd64 container.
+            dpkg --add-architecture arm64
+            sed -i '/^Types:/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
+            printf '%s\n' 'Types: deb' 'URIs: http://ports.ubuntu.com/ubuntu-ports/' 'Suites: noble noble-updates noble-security' \
+              'Components: main' 'Architectures: arm64' 'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
+              > /etc/apt/sources.list.d/ubuntu-ports.sources
+            runner_node_libs=(libc6:arm64 libstdc++6:arm64 libgcc-s1:arm64)
+          fi
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates git curl unzip binutils dpkg gpgv gzip xz-utils zip jq python3 make file libstdc++6
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates git curl unzip binutils dpkg gpgv gzip xz-utils zip jq python3 make file libstdc++6 "${runner_node_libs[@]}"
       - name: Validate release tag input
         shell: bash
         run: |
@@ -278,23 +285,20 @@ jobs:
   sign-and-release:
     name: Isolated signing and GitHub Release
     needs: build
-    runs-on: [self-hosted, Linux, ARM64]
+    runs-on: [self-hosted, Linux, home-linux]
     container:
       image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
       options: --platform linux/amd64
-      volumes:
-        - /lib/ld-linux-aarch64.so.1:/lib/ld-linux-aarch64.so.1:ro
-        - /lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu:ro
     timeout-minutes: 15
     environment: termux-fold-signing
     permissions:
       contents: write
     steps:
-      - name: Prepare M1 job container
+      - name: Prepare home Linux job container
         run: |
           set -euo pipefail
           test "$RUNNER_OS" = Linux
-          test "$RUNNER_ARCH" = ARM64
+          [[ "$RUNNER_ARCH" = X64 || "$RUNNER_ARCH" = ARM64 ]]
           test "$(uname -m)" = x86_64
           work="$(mktemp -d "$RUNNER_TEMP/fold-ci.XXXXXXXX")"
           {
@@ -303,8 +307,18 @@ jobs:
             printf 'ANDROID_HOME=%s/android-sdk\n' "$work"
             printf 'ANDROID_USER_HOME=%s/android-user-home\n' "$work"
           } >> "$GITHUB_ENV"
+          runner_node_libs=()
+          if [ "$RUNNER_ARCH" = ARM64 ]; then
+            # JavaScript actions run this ARM64 runner's own Node inside the amd64 container.
+            dpkg --add-architecture arm64
+            sed -i '/^Types:/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
+            printf '%s\n' 'Types: deb' 'URIs: http://ports.ubuntu.com/ubuntu-ports/' 'Suites: noble noble-updates noble-security' \
+              'Components: main' 'Architectures: arm64' 'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
+              > /etc/apt/sources.list.d/ubuntu-ports.sources
+            runner_node_libs=(libc6:arm64 libstdc++6:arm64 libgcc-s1:arm64)
+          fi
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates curl unzip libstdc++6
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates curl unzip libstdc++6 "${runner_node_libs[@]}"
           gh_archive="$work/gh.tar.gz"
           curl --disable --fail --location --proto '=https' --proto-redir '=https' --retry 3 \
             https://github.com/cli/cli/releases/download/v2.103.2/gh_2.103.2_linux_amd64.tar.gz \
