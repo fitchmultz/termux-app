@@ -96,6 +96,8 @@ public final class TerminalView extends View {
     /** Identity of the served terminal connection; deferred IME metadata must not outlive it. */
     private BaseInputConnection mInputConnection;
     private long mInputConnectionGeneration;
+    /** Carry Honeyboard restart intent through temporary null and rapid session changes. */
+    private boolean mRestartInputAfterSessionChange;
 
     private void invalidateInputConnection() {
         mInputConnection = null;
@@ -352,6 +354,7 @@ public final class TerminalView extends View {
      */
     public boolean attachSession(TerminalSession session) {
         if (session == mTermSession) return false;
+        boolean restartFocusedInput = mRestartInputAfterSessionChange && hasFocus() && isAttachedToWindow();
         mKittyKeyPresses.clear();
         invalidateInputConnection();
         stopTextSelectionMode();
@@ -368,6 +371,17 @@ public final class TerminalView extends View {
         // Wait with enabling the scrollbar until we have a terminal to get scroll position from.
         setVerticalScrollBarEnabled(session != null);
         invalidate();
+        // Session navigation can keep this view focused while Android still serves the old editor.
+        // Rebind only Honeyboard's virtual editor; restartInput does not request keyboard showing.
+        if (restartFocusedInput && session != null) {
+            long generation = mInputConnectionGeneration;
+            post(() -> {
+                if (generation != mInputConnectionGeneration || mInputConnection != null || mTermSession != session ||
+                    !hasFocus() || !isAttachedToWindow() || !mClient.isTerminalViewSelected()) return;
+                InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.restartInput(TerminalView.this);
+            });
+        }
 
         return true;
     }
@@ -519,8 +533,11 @@ public final class TerminalView extends View {
             @Override
             public void closeConnection() {
                 if (mClosed) return;
+                boolean wasCurrent = isCurrentConnection();
                 mClosed = true;
                 mExtractedTextMonitor = false;
+                // Base closure finishes composition: never flush an old virtual editor into a new session.
+                if (honeyboard && !wasCurrent) getEditable().clear();
                 super.closeConnection();
                 if (mInputConnection == this) invalidateInputConnection();
             }
@@ -643,6 +660,7 @@ public final class TerminalView extends View {
 
         };
         mInputConnection = connection;
+        mRestartInputAfterSessionChange = honeyboard;
         return connection;
     }
 

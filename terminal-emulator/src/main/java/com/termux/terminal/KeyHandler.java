@@ -278,13 +278,14 @@ public final class KeyHandler {
         }
         if ((flags & KITTY_DISAMBIGUATE) == 0) {
             String legacy = getCode(keyCode, keyMode, cursorApp, keypadApplication);
+            // Events-only presses keep Termux's legacy functional encoding, including DECCKM/SS3.
+            // Space still needs Android layout resolution; Kitty-only keys must not return legacy null.
+            if (eventType == KEY_EVENT_PRESS && legacy != null && keyCode != KEYCODE_SPACE) return legacy;
             if (isKittyRecoveryKey(keyCode)) {
                 if (eventType == KEY_EVENT_RELEASE) return null;
                 // Keep legacy presses and plain recovery repeats, but report modified repeats.
                 return eventType == KEY_EVENT_REPEAT ? getKittyCode(keyCode, keyMode, eventType) : legacy;
             }
-            if ((keyCode == KEYCODE_ESCAPE || keyCode == KEYCODE_BACK) && eventType == KEY_EVENT_PRESS)
-                return legacy;
             if (keyCode >= KEYCODE_NUMPAD_0 && keyCode <= KEYCODE_NUMPAD_9) {
                 if ((keyMode & KEYMOD_NUM_LOCK) != 0 || keyCode == KEYCODE_NUMPAD_5)
                     return eventType == KEY_EVENT_RELEASE ? null : legacy;

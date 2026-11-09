@@ -3,8 +3,10 @@ package com.termux.app.terminal;
 import android.app.Activity;
 import android.app.Application;
 import android.os.Build;
+import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.ExtractedText;
@@ -50,6 +52,19 @@ public class TerminalHoneyboardInputTest {
     public static class RecordingImm extends ShadowInputMethodManager {
         static final List<View> selections = new ArrayList<>();
         static final List<Integer> extractedTokens = new ArrayList<>();
+        static final List<View> restarts = new ArrayList<>();
+
+        @Implementation protected void restartInput(View view) { restarts.add(view); }
+
+        /**
+         * Provide a deterministic test-only bridge for this hidden IMM method. Keep the
+         * BaseInputConnection -> IMM boundary real, then model only the asynchronous dispatch to
+         * the supplied view. No PTY bytes are fabricated; the real TerminalView handles each key.
+         * This does not emulate Android's served-view fallback or ViewRootImpl routing.
+         */
+        @Implementation protected void dispatchKeyEventFromInputMethod(View target, KeyEvent event) {
+            new Handler(Looper.getMainLooper()).post(() -> target.dispatchKeyEvent(event));
+        }
 
         @Implementation protected void updateSelection(View view, int start, int end, int composingStart, int composingEnd) {
             selections.add(view);
@@ -60,7 +75,7 @@ public class TerminalHoneyboardInputTest {
             assertEquals(1, text.selectionStart);
             assertEquals(1, text.selectionEnd);
         }
-        static void clear() { selections.clear(); extractedTokens.clear(); }
+        static void clear() { selections.clear(); extractedTokens.clear(); restarts.clear(); }
     }
 
     private Activity activity;
@@ -157,6 +172,8 @@ public class TerminalHoneyboardInputTest {
         input.finishComposingText();
         assertEquals("한", received(session));
         input.deleteSurroundingText(2, 0);
+        assertEquals("IMM key dispatch must remain asynchronous", "", received(session));
+        idle();
         assertEquals("\u007f\u007f", received(session));
         assertEquals("", received(otherSession));
     }
@@ -168,6 +185,109 @@ public class TerminalHoneyboardInputTest {
         assertEquals("x", input.getTextAfterCursor(1, 0).toString());
         input.commitText("ok", 1);
         assertEquals("ok", received(session));
+        input.deleteSurroundingText(1, 0);
+        assertEquals("", received(session));
+        idle();
+        assertEquals("\u007f", received(session));
+    }
+
+    @Test public void focusedSessionNavigationRestartsHoneyboardWithoutShowingTheKeyboard() {
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("old draft", 1);
+        monitor(old, 41);
+        InputMethodManager imm = activity.getSystemService(InputMethodManager.class);
+        assertFalse(Shadows.shadowOf(imm).isSoftInputVisible());
+        RecordingImm.clear();
+        assertTrue(terminal.attachSession(otherSession));
+        assertTrue(terminal.hasFocus());
+        idle();
+        assertEquals(1, RecordingImm.restarts.size());
+        assertSame(terminal, RecordingImm.restarts.get(0));
+        assertFalse(Shadows.shadowOf(imm).isSoftInputVisible());
+        assertTrue(RecordingImm.selections.isEmpty());
+        assertTrue(RecordingImm.extractedTokens.isEmpty());
+
+        // restartInput is recorded, not a fake framework rebind. Supply Android's new callback.
+        EditorInfo attrs = new EditorInfo();
+        InputConnection current = terminal.onCreateInputConnection(attrs);
+        old.closeConnection();
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
+        assertEquals(1, attrs.initialSelStart);
+        assertEquals(1, attrs.initialSelEnd);
+        assertEquals("x", current.getTextBeforeCursor(1, 0).toString());
+        assertEquals("x", current.getTextAfterCursor(1, 0).toString());
+        monitor(current, 42);
+        current.commitText("new target", 1);
+        idle();
+        assertTrue(RecordingImm.extractedTokens.contains(42));
+        assertFalse(RecordingImm.extractedTokens.contains(41));
+        assertEquals("", received(session));
+        assertEquals("new target", received(otherSession));
+    }
+
+    @Test public void nullAndRapidSessionReplacementsRestartOnlyTheFinalFocusedDestination() {
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("old draft", 1);
+        RecordingImm.clear();
+        terminal.attachSession(null);
+        terminal.attachSession(otherSession);
+        terminal.attachSession(session);
+        idle();
+        assertEquals(1, RecordingImm.restarts.size());
+        assertSame(terminal, RecordingImm.restarts.get(0));
+        assertSame(session, terminal.getCurrentSession());
+        old.closeConnection();
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
+
+        InputConnection current = terminal.onCreateInputConnection(new EditorInfo());
+        assertEquals("x", current.getTextAfterCursor(1, 0).toString());
+        current.commitText("final target", 1);
+        assertEquals("final target", received(session));
+        assertEquals("", received(otherSession));
+    }
+
+    @Test public void queuedSessionRestartCannotStealPaneOrNativeEditorFocus() {
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("old draft", 1);
+        RecordingImm.clear();
+        terminal.attachSession(otherSession);
+        assertTrue(other.requestFocus());
+        idle();
+        assertTrue(RecordingImm.restarts.isEmpty());
+        old.closeConnection();
+
+        InputConnection otherInput = other.onCreateInputConnection(new EditorInfo());
+        otherInput.setComposingText("other draft", 1);
+        other.attachSession(session);
+        assertTrue(editor.requestFocus());
+        InputConnection nativeInput = editor.onCreateInputConnection(new EditorInfo());
+        nativeInput.setComposingText("native draft", 1);
+        idle();
+        assertTrue(RecordingImm.restarts.isEmpty());
+        otherInput.closeConnection();
+        assertEquals("native draft", editor.getText().toString());
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
+    }
+
+    @Test public void nonHoneyboardSessionNavigationKeepsLegacyRestartAndCloseBehavior() {
+        Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD,
+            "com.example.keyboard/.Ime");
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        input.setComposingText("normal close", 1);
+        input.closeConnection();
+        assertEquals("normal close", received(session));
+        input = terminal.onCreateInputConnection(new EditorInfo());
+        input.setComposingText("legacy draft", 1);
+        RecordingImm.clear();
+        terminal.attachSession(otherSession);
+        idle();
+        assertTrue(RecordingImm.restarts.isEmpty());
+        assertEquals("legacy draft", input.getTextBeforeCursor(100, 0).toString());
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
     }
 
     @Test public void otherInputMethodsRetainRealEditableSelectionAndComposition() {

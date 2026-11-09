@@ -15,6 +15,7 @@ import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
+import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.shadows.ShadowKeyCharacterMap;
@@ -28,7 +29,8 @@ import static org.junit.Assert.assertTrue;
 
 /** Exercise Android key events through TerminalView into the real session input queue, without a PTY. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 28)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = {28, 37})
 public class KittyKeyboardInputTest {
     private TerminalView mView;
     private TerminalSession mSession;
@@ -113,17 +115,20 @@ public class KittyKeyboardInputTest {
         press(KeyEvent.KEYCODE_0, KeyEvent.META_CTRL_ON, "");
     }
 
-    /** A layout fixture where right Alt composes NBSP on Space and Euro on E. */
+    /**
+     * A partial layout where right Alt composes NBSP on Space and Euro on E.
+     * Robolectric 4.17 shadows nativeGetCharacter, not the framework get method;
+     * unhandled keys retain its default map, reached through the real KeyCharacterMap.get.
+     */
     @Implements(KeyCharacterMap.class)
     public static class AltGrCharacterMap extends ShadowKeyCharacterMap {
-        @Override
         @Implementation
-        protected int get(int keyCode, int metaState) {
+        protected static char nativeGetCharacter(long ptr, int keyCode, int metaState) {
             if ((metaState & KeyEvent.META_ALT_RIGHT_ON) != 0) {
                 if (keyCode == KeyEvent.KEYCODE_SPACE) return 0x00A0;
                 if (keyCode == KeyEvent.KEYCODE_E) return 0x20AC;
             }
-            return super.get(keyCode, metaState);
+            return ShadowKeyCharacterMap.nativeGetCharacter(ptr, keyCode, metaState);
         }
     }
 
@@ -208,6 +213,58 @@ public class KittyKeyboardInputTest {
         release(KeyEvent.KEYCODE_DPAD_UP, 0, "\033[1;1:3A");
         press(KeyEvent.KEYCODE_ENTER, KeyEvent.META_CTRL_ON, "\r");
         release(KeyEvent.KEYCODE_ENTER, KeyEvent.META_CTRL_ON, "");
+    }
+
+    @Test
+    public void functionalPressesPreserveLegacyUnlessDisambiguationIsEnabled() throws Exception {
+        int[] keys = {KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MOVE_HOME, KeyEvent.KEYCODE_MOVE_END,
+            KeyEvent.KEYCODE_F1, KeyEvent.KEYCODE_F2, KeyEvent.KEYCODE_F3, KeyEvent.KEYCODE_F4};
+        String[] normal = {"\033[A", "\033[B", "\033[C", "\033[D", "\033[H", "\033[F",
+            "\033OP", "\033OQ", "\033OR", "\033OS"};
+        String[] application = {"\033OA", "\033OB", "\033OC", "\033OD", "\033OH", "\033OF",
+            "\033OP", "\033OQ", "\033OR", "\033OS"};
+        char[] legacySuffix = {'A', 'B', 'C', 'D', 'H', 'F', 'P', 'Q', 'R', 'S'};
+        char[] kittySuffix = {'A', 'B', 'C', 'D', 'H', 'F', 'P', 'Q', '~', 'S'};
+        int alt = KeyEvent.META_ALT_ON | KeyEvent.META_ALT_LEFT_ON;
+        int[] modifiers = {0, KeyEvent.META_SHIFT_ON, alt, KeyEvent.META_SHIFT_ON | alt,
+            KeyEvent.META_CTRL_ON, KeyEvent.META_SHIFT_ON | KeyEvent.META_CTRL_ON,
+            alt | KeyEvent.META_CTRL_ON, KeyEvent.META_SHIFT_ON | alt | KeyEvent.META_CTRL_ON};
+        for (int flags : new int[]{2, 6, 7}) {
+            enter("\033[=" + flags + "u");
+            for (boolean cursorApp : new boolean[]{false, true}) {
+                enter(cursorApp ? "\033[?1h" : "\033[?1l");
+                assertEquals(cursorApp, mView.mEmulator.isCursorKeysApplicationMode());
+                for (int i = 0; i < keys.length; i++) {
+                    String number = keys[i] == KeyEvent.KEYCODE_F3 ? "13" : "1";
+                    for (int m = 0; m < modifiers.length; m++) {
+                        String pressBytes;
+                        if ((flags & 1) == 0) {
+                            pressBytes = m == 0 ? (cursorApp ? application[i] : normal[i]) :
+                                "\033[1;" + (m + 1) + legacySuffix[i];
+                        } else {
+                            pressBytes = m == 0 ? "\033[" + (number.equals("1") ? "" : number) + kittySuffix[i] :
+                                "\033[" + number + ";" + (m + 1) + kittySuffix[i];
+                        }
+                        press(keys[i], modifiers[m], pressBytes);
+                        repeat(keys[i], modifiers[m], "\033[" + number + ";" + (m + 1) + ":2" + kittySuffix[i]);
+                        release(keys[i], modifiers[m], "\033[" + number + ";" + (m + 1) + ":3" + kittySuffix[i]);
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    @Config(shadows = AltGrCharacterMap.class)
+    public void eventsOnlyLegacyPressSelectionDoesNotBypassSpaceLayout() throws Exception {
+        int altGr = KeyEvent.META_ALT_ON | KeyEvent.META_ALT_RIGHT_ON;
+        for (int flags : new int[]{2, 6}) {
+            enter("\033[=" + flags + "u");
+            press(KeyEvent.KEYCODE_SPACE, altGr, "\u00a0");
+            press(KeyEvent.KEYCODE_SPACE, altGr | KeyEvent.META_CTRL_ON, "\u00a0");
+            press(KeyEvent.KEYCODE_SPACE, KeyEvent.META_CTRL_ON, "\0");
+        }
     }
 
     @Test
@@ -438,15 +495,14 @@ public class KittyKeyboardInputTest {
         }
     }
 
-    /** Robolectric 4.10 omits Shift+=; provide the US layout entry explicitly. */
+    /** A partial punctuation fixture; all other entries use Robolectric 4.17's default map. */
     @Implements(KeyCharacterMap.class)
     public static class PunctuationCharacterMap extends ShadowKeyCharacterMap {
-        @Override
         @Implementation
-        protected int get(int keyCode, int metaState) {
+        protected static char nativeGetCharacter(long ptr, int keyCode, int metaState) {
             if (keyCode == KeyEvent.KEYCODE_EQUALS)
                 return (metaState & KeyEvent.META_SHIFT_ON) != 0 ? '+' : '=';
-            return super.get(keyCode, metaState);
+            return ShadowKeyCharacterMap.nativeGetCharacter(ptr, keyCode, metaState);
         }
     }
 
@@ -470,17 +526,16 @@ public class KittyKeyboardInputTest {
     @Implements(KeyCharacterMap.class)
     public static class AlternateCharacterMap extends ShadowKeyCharacterMap {
         static boolean greek;
-        @Override
         @Implementation
-        protected int get(int keyCode, int metaState) {
+        protected static char nativeGetCharacter(long ptr, int keyCode, int metaState) {
             if (keyCode == KeyEvent.KEYCODE_D)
                 return (metaState & KeyEvent.META_SHIFT_ON) != 0 ? '!' : 'a';
             if (keyCode == KeyEvent.KEYCODE_C) {
                 if ((metaState & KeyEvent.META_META_ON) != 0) return 0x03BB;
                 boolean shift = (metaState & KeyEvent.META_SHIFT_ON) != 0;
-                return greek ? (shift ? 0x03A0 : 0x03C0) : (shift ? 0x0421 : 0x0441);
+                return (char) (greek ? (shift ? 0x03A0 : 0x03C0) : (shift ? 0x0421 : 0x0441));
             }
-            return super.get(keyCode, metaState);
+            return ShadowKeyCharacterMap.nativeGetCharacter(ptr, keyCode, metaState);
         }
     }
 
@@ -572,19 +627,18 @@ public class KittyKeyboardInputTest {
     /** Distinct generic, left, right, both and right-Shift+AltGr mappings. */
     @Implements(KeyCharacterMap.class)
     public static class SideShiftCharacterMap extends ShadowKeyCharacterMap {
-        @Override
         @Implementation
-        protected int get(int keyCode, int metaState) {
+        protected static char nativeGetCharacter(long ptr, int keyCode, int metaState) {
             if (keyCode == KeyEvent.KEYCODE_EQUALS) {
                 boolean left = (metaState & KeyEvent.META_SHIFT_LEFT_ON) != 0;
                 boolean right = (metaState & KeyEvent.META_SHIFT_RIGHT_ON) != 0;
-                if ((metaState & KeyEvent.META_ALT_RIGHT_ON) != 0) return right ? 0x00D7 : 0x20AC;
+                if ((metaState & KeyEvent.META_ALT_RIGHT_ON) != 0) return (char) (right ? 0x00D7 : 0x20AC);
                 if (left && right) return '^';
                 if (right) return '*';
                 if (left) return '#';
                 return (metaState & KeyEvent.META_SHIFT_ON) != 0 ? '+' : '=';
             }
-            return super.get(keyCode, metaState);
+            return ShadowKeyCharacterMap.nativeGetCharacter(ptr, keyCode, metaState);
         }
     }
 

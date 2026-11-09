@@ -22,7 +22,7 @@ these sentinels; these are distinct capabilities, not interchangeable workaround
 
 ## Verification boundaries
 
-Five new source test methods cover Honeyboard versus other IMEs, actual arrows,
+The initial five source test methods cover Honeyboard versus other IMEs, actual arrows,
 virtual context, stale connections and real-editor separation. The fixture matches
 production focusability. Its native graphics cases use SDK28/37; API24 coverage is
 explicitly legacy, not native graphics. Authoring/independent static reread and
@@ -32,3 +32,21 @@ Exact-head M1 CI and independent Pi Durable/Cursor reviews are required. Current
 Samsung One UI/Keys Cafe emission, hardware keyboards and physical Fold behavior
 remain unverified until owner acceptance; they are not invented release-blocking
 gates. The phone's ongoing source build must not be interrupted.
+
+## Review correction and test boundary
+
+The served editor can stay focused during a session switch, so invalidation alone
+was insufficient. Restart intent now survives temporary null/rapid replacement;
+only the final attached, selected, focused Honeyboard target can request
+`restartInput`. It never requests keyboard showing or steals native-editor focus.
+Closing an obsolete Honeyboard editor clears its draft before Base closure;
+ordinary other-IME closing behavior is preserved.
+
+Four additional lifecycle methods and the extended deletion cases were authored,
+not executed at this commit's preparation. Robolectric does not supply Android's
+hidden IMM key-dispatch bridge. The fixture therefore explicitly posts events to
+the supplied target view, preserving asynchronous timing and real TerminalView
+byte production. It does **not** model served-view fallback or full ViewRoot/system
+routing; no PTY bytes are fabricated. Actual final-head M1 checks and independent
+reviews remain required before merge, and physical Honeyboard acceptance is not
+claimed.

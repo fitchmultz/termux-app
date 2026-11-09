@@ -123,6 +123,102 @@ public class KittyKeyboardTest extends TerminalTestCase {
         assertNull(KeyHandler.getCode(KeyEvent.KEYCODE_DPAD_UP, 0, false, false, 1, 3));
     }
 
+    public void testEventsOnlyPreservesEveryAvailableLegacyFunctionalPress() {
+        int[] modifiers = {0, KeyHandler.KEYMOD_SHIFT, KeyHandler.KEYMOD_ALT, KeyHandler.KEYMOD_CTRL,
+            KeyHandler.KEYMOD_SHIFT | KeyHandler.KEYMOD_ALT, KeyHandler.KEYMOD_SHIFT | KeyHandler.KEYMOD_CTRL,
+            KeyHandler.KEYMOD_ALT | KeyHandler.KEYMOD_CTRL,
+            KeyHandler.KEYMOD_SHIFT | KeyHandler.KEYMOD_ALT | KeyHandler.KEYMOD_CTRL,
+            KeyHandler.KEYMOD_NUM_LOCK, KeyHandler.KEYMOD_CAPS_LOCK, KeyHandler.KEYMOD_SUPER};
+        for (int flags : new int[]{2, 6}) {
+            for (boolean cursorApp : new boolean[]{false, true}) {
+                for (boolean keypadApp : new boolean[]{false, true}) {
+                    for (int modifier : modifiers) {
+                        // All functional cases in the legacy switch are within Android's keypad range.
+                        for (int key = 0; key <= KeyEvent.KEYCODE_NUMPAD_RIGHT_PAREN; key++) {
+                            String legacy = KeyHandler.getCode(key, modifier, cursorApp, keypadApp);
+                            if (legacy == null || key == KeyEvent.KEYCODE_SPACE) continue;
+                            assertEquals("flags=" + flags + " key=" + key + " modifiers=" + modifier +
+                                " cursorApp=" + cursorApp + " keypadApp=" + keypadApp,
+                                legacy, KeyHandler.getCode(key, modifier, cursorApp, keypadApp,
+                                    flags, KeyHandler.KEY_EVENT_PRESS));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    public void testFunctionalEventBytesRespectDisambiguationAndCursorMode() {
+        int[] keys = {KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MOVE_HOME, KeyEvent.KEYCODE_MOVE_END,
+            KeyEvent.KEYCODE_F1, KeyEvent.KEYCODE_F2, KeyEvent.KEYCODE_F3, KeyEvent.KEYCODE_F4};
+        String[] normal = {"\033[A", "\033[B", "\033[C", "\033[D", "\033[H", "\033[F",
+            "\033OP", "\033OQ", "\033OR", "\033OS"};
+        String[] application = {"\033OA", "\033OB", "\033OC", "\033OD", "\033OH", "\033OF",
+            "\033OP", "\033OQ", "\033OR", "\033OS"};
+        char[] legacySuffix = {'A', 'B', 'C', 'D', 'H', 'F', 'P', 'Q', 'R', 'S'};
+        char[] kittySuffix = {'A', 'B', 'C', 'D', 'H', 'F', 'P', 'Q', '~', 'S'};
+        int[] modifiers = {0, KeyHandler.KEYMOD_SHIFT, KeyHandler.KEYMOD_ALT,
+            KeyHandler.KEYMOD_SHIFT | KeyHandler.KEYMOD_ALT, KeyHandler.KEYMOD_CTRL,
+            KeyHandler.KEYMOD_SHIFT | KeyHandler.KEYMOD_CTRL, KeyHandler.KEYMOD_ALT | KeyHandler.KEYMOD_CTRL,
+            KeyHandler.KEYMOD_SHIFT | KeyHandler.KEYMOD_ALT | KeyHandler.KEYMOD_CTRL};
+        for (int flags : new int[]{2, 6, 7}) {
+            for (boolean cursorApp : new boolean[]{false, true}) {
+                for (int i = 0; i < keys.length; i++) {
+                    String number = keys[i] == KeyEvent.KEYCODE_F3 ? "13" : "1";
+                    for (int m = 0; m < modifiers.length; m++) {
+                        String press;
+                        if ((flags & KeyHandler.KITTY_DISAMBIGUATE) == 0) {
+                            // F3 intentionally retains legacy CSI 1;modifier R, not Kitty CSI 13;modifier ~.
+                            press = m == 0 ? (cursorApp ? application[i] : normal[i]) :
+                                "\033[1;" + (m + 1) + legacySuffix[i];
+                        } else {
+                            press = m == 0 ? "\033[" + (number.equals("1") ? "" : number) + kittySuffix[i] :
+                                "\033[" + number + ";" + (m + 1) + kittySuffix[i];
+                        }
+                        String label = "flags=" + flags + " key=" + keys[i] + " modifier=" + (m + 1) +
+                            " cursorApp=" + cursorApp;
+                        assertEquals(label + " press", press, KeyHandler.getCode(keys[i], modifiers[m],
+                            cursorApp, false, flags, KeyHandler.KEY_EVENT_PRESS));
+                        assertEquals(label + " repeat", "\033[" + number + ";" + (m + 1) + ":2" + kittySuffix[i],
+                            KeyHandler.getCode(keys[i], modifiers[m], cursorApp, false, flags, KeyHandler.KEY_EVENT_REPEAT));
+                        assertEquals(label + " release", "\033[" + number + ";" + (m + 1) + ":3" + kittySuffix[i],
+                            KeyHandler.getCode(keys[i], modifiers[m], cursorApp, false, flags, KeyHandler.KEY_EVENT_RELEASE));
+                    }
+                }
+            }
+        }
+    }
+
+    public void testEventsOnlyRetainsLayoutAndKittyOnlyFallbacks() {
+        int[] kittyOnlyKeys = {KeyEvent.KEYCODE_CAPS_LOCK, KeyEvent.KEYCODE_SCROLL_LOCK, KeyEvent.KEYCODE_NUM_LOCK};
+        int[] kittyNumbers = {57358, 57359, 57360};
+        for (int flags : new int[]{2, 6}) {
+            for (boolean keypadApp : new boolean[]{false, true}) {
+                for (int i = 0; i < kittyOnlyKeys.length; i++) {
+                    String legacy = KeyHandler.getCode(kittyOnlyKeys[i], 0, false, keypadApp);
+                    String press = kittyOnlyKeys[i] == KeyEvent.KEYCODE_NUM_LOCK && keypadApp ? "\033OP" :
+                        "\033[" + kittyNumbers[i] + "u";
+                    if (kittyOnlyKeys[i] == KeyEvent.KEYCODE_NUM_LOCK && keypadApp) assertEquals("\033OP", legacy);
+                    else assertNull(legacy);
+                    assertEquals(press, KeyHandler.getCode(kittyOnlyKeys[i], 0, false, keypadApp, flags, KeyHandler.KEY_EVENT_PRESS));
+                    assertEquals("\033[" + kittyNumbers[i] + ";1:2u", KeyHandler.getCode(kittyOnlyKeys[i], 0,
+                        false, keypadApp, flags, KeyHandler.KEY_EVENT_REPEAT));
+                    assertEquals("\033[" + kittyNumbers[i] + ";1:3u", KeyHandler.getCode(kittyOnlyKeys[i], 0,
+                        false, keypadApp, flags, KeyHandler.KEY_EVENT_RELEASE));
+                }
+            }
+            // A legacy Ctrl+Space NUL is not a functional result: the Android layout must resolve Space first.
+            assertEquals("\0", KeyHandler.getCode(KeyEvent.KEYCODE_SPACE, KeyHandler.KEYMOD_CTRL, false, false));
+            assertNull(KeyHandler.getCode(KeyEvent.KEYCODE_SPACE, KeyHandler.KEYMOD_CTRL,
+                true, true, flags, KeyHandler.KEY_EVENT_PRESS));
+            assertNull(KeyHandler.getCode(KeyEvent.KEYCODE_A, KeyHandler.KEYMOD_CTRL,
+                true, true, flags, KeyHandler.KEY_EVENT_PRESS));
+            assertNull(KeyHandler.getCode(KeyEvent.KEYCODE_UNKNOWN, 0,
+                true, true, flags, KeyHandler.KEY_EVENT_PRESS));
+        }
+    }
+
     public void testAlternateFlagCombinationsAndRestoration() {
         withTerminalSized(20, 4);
         for (int flags = 0; flags <= 31; flags++) {
