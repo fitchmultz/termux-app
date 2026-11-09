@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Geometry-invalidating resize clears APC parser arguments only while actually aborting an APC. The shared OSC/DCS argument buffer survives unrelated resize, retaining OSC52 clipboard data and OSC8/title/color/query prefixes; active Kitty APCs still drain and between-command pending uploads still abort. Focused parser/native regressions cover these contracts; new-head CI execution is pending.
+
 - Isolates a Kitty source-pixel crop before filtered scaling, after requested/padded geometry admission. Android's fast filtered source-rectangle draw otherwise samples pixels outside the crop; the native SDK28/37 regression reproduced `0xff1def0f` instead of a selected pure-green pixel. The shared PNG/RGB/RGBA path preserves filtering quality, cached original pixels and immutable published ownership; regressions require the entire green fit and transparent padding, not a relaxed color threshold. Fresh native execution is pending.
 
 - Kitty `C=1` clips an anchored placement at the bottom before publication, rather than scrolling text inside/full-width margins while merely preserving cursor coordinates. Pinned Kitty `screen.c` scrolls only after cursor movement; regressions retain sentinels above the placement and verify cursor/transcript counters.

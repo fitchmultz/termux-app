@@ -32,9 +32,10 @@ public class TerminalKittyGraphicsTest {
     private static final String ST = "\033\\";
     private static final class Output extends TerminalOutput {
         final ByteArrayOutputStream replies = new ByteArrayOutputStream();
+        String clipboard;
         @Override public void write(byte[] data, int offset, int count) { replies.write(data, offset, count); }
         @Override public void titleChanged(String oldTitle, String newTitle) {}
-        @Override public void onCopyTextToClipboard(String text) {}
+        @Override public void onCopyTextToClipboard(String text) { clipboard = text; }
         @Override public void onPasteTextFromClipboard() {}
         @Override public void onBell() {}
         @Override public void onColorsChanged() {}
@@ -299,6 +300,42 @@ public class TerminalKittyGraphicsTest {
         assertEquals(0, anchored.getScreen().getActiveTranscriptRows());
         assertEquals(5, anchored.getCursorRow());
         assertEquals(0, anchored.getCursorCol());
+    }
+
+    @Test public void resizePreservesClipboardWhileAbortingActiveAndPendingKittyUploads() {
+        Output output = new Output();
+        TerminalEmulator terminal = terminal(output);
+        // A chunk can be pending between APCs while an unrelated OSC is in progress.
+        append(terminal, command("a=T,i=99,s=1,v=1,q=2,m=1;/wAA"));
+        String clipboard = "resize clipboard " + "x".repeat(20000);
+        String payload = Base64.encodeToString(clipboard.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+        append(terminal, "\033]52;c;" + payload.substring(0, 4096));
+        terminal.resize(12, 6, 9, 18);
+        append(terminal, payload.substring(4096) + "\007");
+        assertEquals(clipboard, output.clipboard);
+        append(terminal, command("m=0;/w=="));
+        noImage(terminal);
+        append(terminal, command("a=p,i=99"));
+        assertTrue(output.take().contains("ENOENT"));
+
+        // Both APC parser states still abort and drain: after ESC, and in the payload itself.
+        String upload = red("a=T,i=100,C=1,q=2");
+        append(terminal, upload.substring(0, upload.length() - 1));
+        terminal.resize(13, 6, 10, 20);
+        append(terminal, "\\SAFE");
+        noImage(terminal);
+        assertEquals("SAFE", terminal.getScreen().getTranscriptText());
+        append(terminal, command("a=p,i=100"));
+        assertTrue(output.take().contains("ENOENT"));
+
+        upload = red("a=T,i=101,C=1,q=2");
+        append(terminal, upload.substring(0, upload.length() - 2));
+        terminal.resize(14, 6, 11, 22);
+        append(terminal, ST + "OK");
+        noImage(terminal);
+        assertEquals("SAFEOK", terminal.getScreen().getTranscriptText());
+        append(terminal, command("a=p,i=101"));
+        assertTrue(output.take().contains("ENOENT"));
     }
 
     @Test public void cancellationsInvalidDataAndUnsupportedTransportsDrainThenRecover() {

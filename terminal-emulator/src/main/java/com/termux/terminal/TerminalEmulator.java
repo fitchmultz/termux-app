@@ -670,8 +670,9 @@ public final class TerminalEmulator implements TerminalRendererState {
                 mDiscardImageControl = ESC_APC;
                 mDiscardImageEscape = mEscapeState == ESC_APC__ESC;
                 finishSequence();
+                // The args buffer also belongs to OSC/DCS; abort only the active APC here.
+                clearApcTypeVariables();
             }
-            clearApcTypeVariables();
             mKittyPending = null;
         }
         this.mCellWidthPixels = cellWidthPixels;

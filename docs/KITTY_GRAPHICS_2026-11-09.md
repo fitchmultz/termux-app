@@ -121,6 +121,33 @@ screenshots. Source fixture hashes and actual run/artifact links belong in the P
   run or a completed release-APK verification. The baseline keyboard failure did
   not recur in this candidate run; no cause or input fix is inferred.
 
-Fresh full M1 execution and genuine Cursor/Pi Durable review of the crop-fix head
-remain pending; no historical result is represented as new-head qualification.
+- [Crop-fix M1 run42634570654](https://github.com/fitchmultz/termux-app/actions/runs/42634570654)
+  at `eb15cd6010f800c4fe4d02c6ee45051aa5f790e9`: **all 24 Kitty graphics cases
+  and both capture cases passed**, including strict PNG/RGB/RGBA crop/padding and
+  original-cache reuse. The overall run **failed** the same existing keyboard
+  assertion seen in the baseline (423/424 app cases passed); release-APK
+  verification was skipped. [Reports artifact13683840549](https://github.com/fitchmultz/termux-app/actions/runs/42634570654/artifacts/13683840549)
+  was downloaded and verified against SHA-256
+  `c2344a64bd70552f12fd3536548ad24a75a618c4b6462f6db406937822d462de`.
+  Both new capture PNGs are byte-identical to the initial candidate captures.
+- Genuine [Pi review finding](https://github.com/fitchmultz/termux-app/pull/43#discussion_r4513963786):
+  geometry-invalidating resize unconditionally called `clearApcTypeVariables()`,
+  which also clears the buffer shared with non-APC OSC/DCS. Source tracing through
+  `resize()`, `clearTerminalControlArgs()` and `doOsc()` confirms loss of the
+  command prefix; a surviving tail `2` becomes OSC2 instead of the original OSC8.
+  APC cleanup is now limited to the actual APC abort branch; the between-APC
+  pending Kitty upload still clears independently. Pure-parser regressions retain
+  title/color/OSC8 command identity and DCS query arguments across column/cell
+  resize. Native SDK28/37 regression additionally requires the complete long
+  OSC52 clipboard payload while cancelling between-command Kitty data, and checks
+  both active-APC drain states. This does not change existing DCS-specific resize
+  policy or add a production seam. These new regressions await fresh M1 execution;
+  no unpatched local Android reproduction is claimed.
+
+Parent's real-preferences fixture correction at
+`44324f1bb7b002ff6fbd93d281b1bc2115837681` is preserved. Its stronger preconditions
+and the full native pipeline must validate the earlier keyboard failure; no
+unrecorded preference readback or already-proven root cause is inferred here.
+Fresh full M1 execution and genuine Cursor/Pi Durable review of the parser-fix
+head remain pending; no historical result is represented as new-head qualification.
 Parent owns normal main integration/conflicts, final-pair checks and release.

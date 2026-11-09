@@ -68,6 +68,27 @@ public class OperatingSystemControlTest extends TerminalTestCase {
 		assertEquals(expectedTitleChanges, mOutput.titleChanges);
 	}
 
+	public void testOscArgumentsSurviveColumnAndCellResize() {
+		withTerminalSized(10, 3).enterString("\033]2;before-");
+		resize(11, 3).enterString("after\007");
+		assertEquals("before-after", mTerminal.getTitle());
+
+		// Preserve an OSC whose ST is split exactly across a cell-size-only resize.
+		enterString("\033]2;split-ST\033");
+		mTerminal.resize(11, 3, INITIAL_CELL_WIDTH_PIXELS + 1, INITIAL_CELL_HEIGHT_PIXELS + 1);
+		enterString("\\");
+		assertEquals("split-ST", mTerminal.getTitle());
+
+		enterString("\033]10;#12");
+		resize(12, 3).enterString("3456\007").assertColor(TextStyle.COLOR_INDEX_FOREGROUND, 0xFF123456);
+
+		// The tail of an OSC8 must not be reinterpreted as OSC2 and clear the title.
+		enterString("\033]8;;https://example.test/");
+		mTerminal.resize(12, 3, INITIAL_CELL_WIDTH_PIXELS + 2, INITIAL_CELL_HEIGHT_PIXELS + 2);
+		enterString("2\033\\");
+		assertEquals("split-ST", mTerminal.getTitle());
+	}
+
 	public void testTitleStack() throws Exception {
 		// echo -ne '\e]0;BEFORE\007' # set title
 		// echo -ne '\e[22t' # push to stack
