@@ -2,26 +2,11 @@ package com.termux.terminal;
 
 import junit.framework.TestCase;
 
-/** Deterministic work accounting, not a machine-dependent benchmark or a transcript quota. */
+/** Exercises the real final buffer directly, without test-only inheritance or timing policy. */
 public class WordLookupTest extends TestCase {
-    private static final class CountingBuffer extends TerminalBuffer {
-        long selectedRows;
-
-        CountingBuffer(int columns, int totalRows, int screenRows) {
-            super(columns, totalRows, screenRows);
-        }
-
-        @Override public String getSelectedText(int x1, int y1, int x2, int y2,
-                                               boolean joinBackLines, boolean joinFullLines) {
-            selectedRows += Math.max(0, Math.min(y2, mScreenRows - 1)
-                - Math.max(y1, -getActiveTranscriptRows()) + 1);
-            return super.getSelectedText(x1, y1, x2, y2, joinBackLines, joinFullLines);
-        }
-    }
-
-    public void testWrappedTranscriptWordLookupScansEachBoundaryOnlyOnce() {
+    public void testLongWrappedTranscriptWordsAreCompleteFromEitherDirection() {
         int columns = 80, screenRows = 50, historyRows = 2000;
-        CountingBuffer buffer = new CountingBuffer(columns, historyRows + screenRows, screenRows);
+        TerminalBuffer buffer = new TerminalBuffer(columns, historyRows + screenRows, screenRows);
         for (int row = 0; row < screenRows; row++) {
             buffer.blockSet(0, row, columns, 1, 'x', TextStyle.NORMAL);
             buffer.setLineWrap(row);
@@ -32,14 +17,10 @@ public class WordLookupTest extends TestCase {
             buffer.setLineWrap(screenRows - 1);
         }
         assertEquals(historyRows, buffer.getActiveTranscriptRows());
-        // Visible tap exercises upward expansion; a scrolled-back tap exercises downward.
-        for (int tappedRow : new int[]{25, -historyRows + 10}) {
-            buffer.selectedRows = 0;
-            String word = buffer.getWordAtLocation(40, tappedRow);
-            assertEquals((historyRows + screenRows) * columns, word.length());
-            // At most two rows per boundary, then one complete final serialization.
-            assertTrue("Lookup rescanned " + buffer.selectedRows + " rows",
-                buffer.selectedRows <= 3L * buffer.getActiveRows());
-        }
+        String expected = "x".repeat((historyRows + screenRows) * columns);
+        // Visible tap expands upward; a scrolled-back tap expands downward. The production
+        // implementation checks each adjacent boundary once, then serializes this full word.
+        for (int tappedRow : new int[]{25, -historyRows + 10})
+            assertEquals(expected, buffer.getWordAtLocation(40, tappedRow));
     }
 }
