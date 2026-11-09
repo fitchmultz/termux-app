@@ -16,6 +16,7 @@ import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A terminal session, consisting of a process coupled to a terminal interface.
@@ -46,6 +47,8 @@ public final class TerminalSession extends TerminalOutput {
      * terminal emulator.
      */
     final ByteQueue mProcessToTerminalIOQueue = new ByteQueue(64 * 1024);
+    /** Whether a {@link #MSG_NEW_INPUT} wakeup is queued for the main thread. */
+    private final AtomicBoolean mNewInputMessagePending = new AtomicBoolean();
     /**
      * A queue written to from the main thread due to user interaction, and read by another thread which forwards by
      * writing to the {@link #mTerminalFileDescriptor}.
@@ -146,7 +149,7 @@ public final class TerminalSession extends TerminalOutput {
                         int read = termIn.read(buffer);
                         if (read == -1) return;
                         if (!mProcessToTerminalIOQueue.write(buffer, 0, read)) return;
-                        mMainThreadHandler.sendEmptyMessage(MSG_NEW_INPUT);
+                        scheduleInputProcessing();
                     }
                 } catch (Exception e) {
                     // Ignore, just shutting down.
@@ -373,6 +376,13 @@ public final class TerminalSession extends TerminalOutput {
         return result;
     }
 
+    /** Schedule a queue drain after the PTY reader has enqueued input. Package-private for tests. */
+    void scheduleInputProcessing() {
+        if (mNewInputMessagePending.compareAndSet(false, true) &&
+            !mMainThreadHandler.sendEmptyMessage(MSG_NEW_INPUT))
+            mNewInputMessagePending.set(false);
+    }
+
     @SuppressLint("HandlerLeak")
     class MainThreadHandler extends Handler {
 
@@ -384,6 +394,11 @@ public final class TerminalSession extends TerminalOutput {
                 handleSynchronizedOutputTimeout();
                 return;
             }
+
+            // Clear this before reading so input written concurrently after the queue is drained
+            // can schedule the next wakeup. Only one MSG_NEW_INPUT remains queued at a time without
+            // scanning the main thread's MessageQueue. The receive buffer matches the queue capacity.
+            if (msg.what == MSG_NEW_INPUT) mNewInputMessagePending.set(false);
 
             int bytesRead = mProcessToTerminalIOQueue.read(mReceiveBuffer, false);
             if (bytesRead > 0) {

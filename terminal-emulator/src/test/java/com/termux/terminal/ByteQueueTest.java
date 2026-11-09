@@ -46,6 +46,36 @@ public class ByteQueueTest extends TestCase {
 		assertFalse(q.write(new byte[]{1, 2, 3}, 0, 3));
 	}
 
+	public void testZeroLengthWriteIsNoop() throws Exception {
+		// Regression test for https://github.com/termux/termux-app/issues/5119:
+		// pasting a lone ESC character is fully stripped by
+		// TerminalEmulator.paste(), producing a zero-length write that must
+		// not throw.
+		ByteQueue q = new ByteQueue(10);
+		assertTrue(q.write(new byte[]{1, 2, 3}, 0, 0));
+		// Queue is still empty and usable afterwards.
+		assertEquals(0, q.read(new byte[10], false));
+		assertTrue(q.write(new byte[]{7}, 0, 1));
+		byte[] arr = new byte[10];
+		assertEquals(1, q.read(arr, true));
+		assertEquals(7, arr[0]);
+	}
+
+	public void testEmptyWritesRetainBoundsChecks() {
+		ByteQueue q = new ByteQueue(10);
+		assertTrue(q.write(new byte[0], 0, 0));
+		assertTrue(q.write(new byte[2], 2, 0));
+		for (int[] range : new int[][]{{-1, 0}, {3, 0}, {0, -1}, {1, Integer.MAX_VALUE}}) {
+			try {
+				q.write(new byte[2], range[0], range[1]);
+				fail("Invalid range accepted: " + range[0] + ", " + range[1]);
+			} catch (IllegalArgumentException expected) {
+				// Invalid ranges must not become valid merely because the write is empty.
+			}
+		}
+		assertEquals(0, q.read(new byte[10], false));
+	}
+
 	public void testReadNonBlocking() throws Exception {
 		ByteQueue q = new ByteQueue(10);
 		assertEquals(0, q.read(new byte[128], false));

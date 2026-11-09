@@ -17,9 +17,21 @@
 
 static int throw_runtime_exception(JNIEnv* env, char const* message)
 {
+    // Preserve the original exception, notably OutOfMemoryError from JNI string access.
+    if ((*env)->ExceptionCheck(env)) return -1;
     jclass exClass = (*env)->FindClass(env, "java/lang/RuntimeException");
-    (*env)->ThrowNew(env, exClass, message);
+    if (exClass) {
+        (*env)->ThrowNew(env, exClass, message);
+        (*env)->DeleteLocalRef(env, exClass);
+    }
     return -1;
+}
+
+static void free_string_array(char** array)
+{
+    if (!array) return;
+    for (char** item = array; *item; ++item) free(*item);
+    free(array);
 }
 
 static int create_subprocess(JNIEnv* env,
@@ -48,6 +60,7 @@ static int create_subprocess(JNIEnv* env,
             ptsname_r(ptm, devname, sizeof(devname))
 #endif
        ) {
+        close(ptm);
         return throw_runtime_exception(env, "Cannot grantpt()/unlockpt()/ptsname_r() on /dev/ptmx");
     }
 
@@ -64,6 +77,7 @@ static int create_subprocess(JNIEnv* env,
 
     pid_t pid = fork();
     if (pid < 0) {
+        close(ptm);
         return throw_runtime_exception(env, "Fork failed");
     } else if (pid > 0) {
         *pProcessId = (int) pid;
@@ -127,57 +141,101 @@ JNIEXPORT jint JNICALL Java_com_termux_terminal_JNI_createSubprocess(
         jint cell_width,
         jint cell_height)
 {
-    jsize size = args ? (*env)->GetArrayLength(env, args) : 0;
+    // JNI string access requires nonnull jstrings; reject invalid inputs before acquiring resources.
+    if (!cmd || !cwd) return throw_runtime_exception(env, "cmd and cwd must not be null");
+
+    // Validate the PID destination before allocating resources or starting a child.
+    if (!processIdArray) return throw_runtime_exception(env, "processIdArray must not be null");
+    jsize process_id_size = (*env)->GetArrayLength(env, processIdArray);
+    if ((*env)->ExceptionCheck(env)) return -1;
+    if (process_id_size < 1) return throw_runtime_exception(env, "processIdArray must have at least one element");
+
+    char const* error_message = NULL;
+    char const* cmd_cwd = NULL;
+    char const* cmd_utf8 = NULL;
     char** argv = NULL;
+    char** envp = NULL;
+    int procId = 0;
+    int ptm = -1;
+
+    jsize size = args ? (*env)->GetArrayLength(env, args) : 0;
     if (size > 0) {
-        argv = (char**) malloc((size + 1) * sizeof(char*));
+        argv = (char**) calloc((size_t) size + 1, sizeof(char*));
         if (!argv) return throw_runtime_exception(env, "Couldn't allocate argv array");
         for (int i = 0; i < size; ++i) {
             jstring arg_java_string = (jstring) (*env)->GetObjectArrayElement(env, args, i);
+            if (!arg_java_string) {
+                if (!(*env)->ExceptionCheck(env)) error_message = "Null string in argv";
+                goto cleanup;
+            }
             char const* arg_utf8 = (*env)->GetStringUTFChars(env, arg_java_string, NULL);
-            if (!arg_utf8) return throw_runtime_exception(env, "GetStringUTFChars() failed for argv");
+            if (!arg_utf8) {
+                (*env)->DeleteLocalRef(env, arg_java_string);
+                goto cleanup;
+            }
             argv[i] = strdup(arg_utf8);
             (*env)->ReleaseStringUTFChars(env, arg_java_string, arg_utf8);
+            (*env)->DeleteLocalRef(env, arg_java_string);
+            if (!argv[i]) {
+                error_message = "strdup() failed for argv";
+                goto cleanup;
+            }
         }
-        argv[size] = NULL;
     }
 
     size = envVars ? (*env)->GetArrayLength(env, envVars) : 0;
-    char** envp = NULL;
     if (size > 0) {
-        envp = (char**) malloc((size + 1) * sizeof(char *));
-        if (!envp) return throw_runtime_exception(env, "malloc() for envp array failed");
+        envp = (char**) calloc((size_t) size + 1, sizeof(char*));
+        if (!envp) {
+            error_message = "calloc() for envp array failed";
+            goto cleanup;
+        }
         for (int i = 0; i < size; ++i) {
             jstring env_java_string = (jstring) (*env)->GetObjectArrayElement(env, envVars, i);
+            if (!env_java_string) {
+                if (!(*env)->ExceptionCheck(env)) error_message = "Null string in envp";
+                goto cleanup;
+            }
             char const* env_utf8 = (*env)->GetStringUTFChars(env, env_java_string, 0);
-            if (!env_utf8) return throw_runtime_exception(env, "GetStringUTFChars() failed for env");
+            if (!env_utf8) {
+                (*env)->DeleteLocalRef(env, env_java_string);
+                goto cleanup;
+            }
             envp[i] = strdup(env_utf8);
             (*env)->ReleaseStringUTFChars(env, env_java_string, env_utf8);
+            (*env)->DeleteLocalRef(env, env_java_string);
+            if (!envp[i]) {
+                error_message = "strdup() failed for envp";
+                goto cleanup;
+            }
         }
-        envp[size] = NULL;
     }
 
-    int procId = 0;
-    char const* cmd_cwd = (*env)->GetStringUTFChars(env, cwd, NULL);
-    char const* cmd_utf8 = (*env)->GetStringUTFChars(env, cmd, NULL);
-    int ptm = create_subprocess(env, cmd_utf8, cmd_cwd, argv, envp, &procId, rows, columns, cell_width, cell_height);
-    (*env)->ReleaseStringUTFChars(env, cwd, cmd_cwd);
-    (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8);
+    cmd_cwd = (*env)->GetStringUTFChars(env, cwd, NULL);
+    if (!cmd_cwd) goto cleanup;
 
-    if (argv) {
-        for (char** tmp = argv; *tmp; ++tmp) free(*tmp);
-        free(argv);
+    cmd_utf8 = (*env)->GetStringUTFChars(env, cmd, NULL);
+    if (!cmd_utf8) goto cleanup;
+
+    ptm = create_subprocess(env, cmd_utf8, cmd_cwd, argv, envp, &procId, rows, columns, cell_width, cell_height);
+
+cleanup:
+    if (cmd_utf8) (*env)->ReleaseStringUTFChars(env, cmd, cmd_utf8);
+    if (cmd_cwd) (*env)->ReleaseStringUTFChars(env, cwd, cmd_cwd);
+    free_string_array(argv);
+    free_string_array(envp);
+
+    if (error_message && !(*env)->ExceptionCheck(env)) return throw_runtime_exception(env, error_message);
+    if (ptm < 0 || (*env)->ExceptionCheck(env)) return ptm;
+
+    // Copy just the PID without acquiring a critical array after fork().
+    jint process_id = (jint) procId;
+    (*env)->SetIntArrayRegion(env, processIdArray, 0, 1, &process_id);
+    if ((*env)->ExceptionCheck(env)) {
+        // Closing the PTY does not guarantee child termination or reap it.
+        close(ptm);
+        return -1;
     }
-    if (envp) {
-        for (char** tmp = envp; *tmp; ++tmp) free(*tmp);
-        free(envp);
-    }
-
-    int* pProcId = (int*) (*env)->GetPrimitiveArrayCritical(env, processIdArray, NULL);
-    if (!pProcId) return throw_runtime_exception(env, "JNI call GetPrimitiveArrayCritical(processIdArray, &isCopy) failed");
-
-    *pProcId = procId;
-    (*env)->ReleasePrimitiveArrayCritical(env, processIdArray, pProcId, 0);
 
     return ptm;
 }

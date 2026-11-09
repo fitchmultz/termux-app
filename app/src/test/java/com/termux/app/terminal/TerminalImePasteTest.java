@@ -92,6 +92,20 @@ public class TerminalImePasteTest {
     }
 
     @Test
+    public void fullySanitizedPasteDoesNotCrashRunningSessionOrBlockLaterInput() {
+        session.getEmulator().paste("\033");
+        assertEquals("", received());
+        session.getEmulator().paste("after");
+        assertEquals("after", received());
+
+        output("\033[?2004h");
+        session.getEmulator().paste("\033");
+        assertEquals("\033[200~\033[201~", received());
+        input.commitText("ok", 1);
+        assertEquals("ok", received());
+    }
+
+    @Test
     public void typingCompositionAndSingleReturnKeepTheirExistingInput() {
         output("\033[?2004h");
         input.commitText("hello", 1);

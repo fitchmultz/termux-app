@@ -19,7 +19,10 @@ class BootstrapRunnerTests(unittest.TestCase):
         cls.work = Path.cwd() / "build/bootstrap-tests"
         cls.work.mkdir(parents=True, exist_ok=True)
         cls.downloads = tempfile.TemporaryDirectory(dir=cls.work)
-        cls.sources = b.source_files(Path(cls.downloads.name))
+        cache = Path(cls.downloads.name)
+        cls.sources = b.source_files(cache, recover=lambda: b.snapshot.restore(
+            b.HERE / "bootstrap.lock.json", b.HERE / "profile.json", cache,
+            cls.work / "snapshot-archives"))
         cls.lock = b.load_lock(b.HERE / "bootstrap.lock.json")
 
     @classmethod
