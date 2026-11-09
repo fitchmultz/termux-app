@@ -71,11 +71,15 @@ def fetch(url, digest, cache, offline=False, recover=None):
                             "--proto", "=https", "--proto-redir", "=https", "--connect-timeout", "30",
                             "--max-time", "300", "--output", str(temporary), url], check=True)
         except subprocess.CalledProcessError:
-            if recover is None or not recover():
-                raise
-            require(destination.is_file() and sha(destination) == digest,
-                    f"Recovered input checksum mismatch: {destination}")
-            return destination
+            if url == LSOF_BACKPORT["url"] and digest == LSOF_BACKPORT["sha256"]:
+                # The browser URL already failed; use only the fixed public API transport.
+                snapshot.download_public_asset(Path(LSOF_BACKPORT["filename"]).name, temporary)
+            else:
+                if recover is None or not recover():
+                    raise
+                require(destination.is_file() and sha(destination) == digest,
+                        f"Recovered input checksum mismatch: {destination}")
+                return destination
         require(sha(temporary) == digest, f"Checksum mismatch: {url}")
         os.replace(temporary, destination)
     return destination

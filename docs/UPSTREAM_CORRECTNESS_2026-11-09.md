@@ -51,3 +51,24 @@ ART, real child lifecycle, native socket/AM execution or physical Fold acceptanc
 Full exact-head CI, actual independent Pi Durable and Cursor review, addressed
 findings and refreshed revisions are required before this correctness PR merges.
 Graphics remains separate rather than holding these fixes behind that capability.
+
+## Observed second transport failure and narrow correction
+
+The first push bootstrap run `42572582066` passed all 17 runner/transport tests and
+restored all 127 snapshot inputs through the public API, then failed at the
+**separate custom lsof browser URL** with HTTP504. Its downloaded
+`bootstrap-first.log` SHA-256 is
+`2cdda8dae5da361402dc882ebb1c5c8fd42b08a85b85a0cded27324938ebe3e8`.
+A green repeat does not explain away that observed transport defect.
+
+The follow-up reuses the existing API-only helper only for a failed curl of the
+exact `LSOF_BACKPORT` URL **and** SHA pair. Browser bytes with bad hashes are never
+retried. The helper still selects one exact filename from the same fixed public
+release endpoint and constructs the same-repository raw asset URL from a positive
+integer ID. API bytes pass the common checksum check before publication. No
+package versions, source hashes, artifact contents, lock/snapshot pins, credentials,
+URLs or environment policies change.
+
+Fourteen new fully mocked fetch tests and the eleven unchanged snapshot tests
+passed in the isolated authoring worktree. Actual current-head M1 CI/live transport
+remains a separate gate; this result is not a full Android/bootstrap build claim.
