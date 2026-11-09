@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Groups Fold checks by source repository and branch, so push and PR runs cancel superseded work together while preserving branch/main checks and keeping fork branches independent.
+
 - Kitty physical DOWN admission atomically protects encoder-bounded future UP capacity inside the existing input ring. Matching releases consume their original session-owned promise once even while ordinary input remains FULL; only an admitted initial DOWN owns a future release; ordinary repeat bytes remain unchanged and cannot create or revive release ownership after initial rejection or context cancellation. Context/lifecycle cancellation returns capacity without stale delivery, while IME-only rebinding retains valid physical releases. CI preserves the synthetic keyboard-capture JSON in addition to PNG/XML reports.
 
 - Ordinary wide-text insertion and generated blanks remove obsolete bitmap payloads before renderer/geometry discard can ghost an image or erase text. Valid existing text attributes stay intact; recursive cleanup restores the actual incoming image slice and snapshots collateral styles before mutation.
