@@ -41,6 +41,7 @@ import com.termux.shared.view.KeyboardUtils;
 import com.termux.shared.view.ViewUtils;
 import com.termux.terminal.KeyHandler;
 import com.termux.terminal.TerminalEmulator;
+import com.termux.terminal.TerminalBuffer;
 import com.termux.terminal.TerminalSession;
 import com.termux.view.TerminalView;
 
@@ -228,7 +229,13 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
         if (mActivity.getProperties().shouldOpenTerminalTranscriptURLOnClick()) {
             int[] columnAndRow = mActivity.getTerminalView().getColumnAndRow(e, true);
-            String wordAtTap = term.getScreen().getWordAtLocation(columnAndRow[0], columnAndRow[1]);
+            String hyperlink = term.getHyperlinkAt(columnAndRow[0], columnAndRow[1]);
+            if (hyperlink != null) {
+                ShareUtils.openUrl(mActivity, hyperlink);
+                return;
+            }
+            TerminalBuffer screen = term.getRendererState().getScreen();
+            String wordAtTap = screen.getWordAtLocation(columnAndRow[0], columnAndRow[1]);
             LinkedHashSet<CharSequence> urlSet = TermuxUrlUtils.extractUrls(wordAtTap);
 
             if (!urlSet.isEmpty()) {

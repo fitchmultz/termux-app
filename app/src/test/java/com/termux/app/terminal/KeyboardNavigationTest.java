@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Looper;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
@@ -23,6 +24,7 @@ import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalSession;
+import com.termux.view.TerminalView;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -84,6 +86,68 @@ public class KeyboardNavigationTest {
     }
 
     private void idle() { Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1)); }
+
+    private void tapFirstCell(TerminalView terminal) {
+        long now = android.os.SystemClock.uptimeMillis();
+        float x = terminal.mRenderer.getFontWidth() / 2;
+        float y = terminal.getPointY(1) - 1;
+        MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0);
+        MotionEvent up = MotionEvent.obtain(now, now + 1, MotionEvent.ACTION_UP, x, y, 0);
+        assertArrayEquals(new int[]{0, 0}, terminal.getColumnAndRow(up, true));
+        terminal.dispatchTouchEvent(down);
+        terminal.dispatchTouchEvent(up);
+        down.recycle();
+        up.recycle();
+        idle();
+    }
+
+    @Test public void labeledLinksUseActivePaneCompletedFrameAndExistingClickPreference() throws Exception {
+        Application app = RuntimeEnvironment.getApplication();
+        TermuxShellManager manager = TermuxShellManager.init(app);
+        manager.mTermuxSessions.clear();
+        TerminalSession first = session("one", manager), second = session("two", manager);
+        ActivityController<TermuxActivity> controller = start();
+        TermuxActivity activity = controller.get();
+        Object properties = ReflectionHelpers.getField(activity.getProperties(), "mSharedProperties");
+        Map<String, Object> values = ReflectionHelpers.getField(properties, "mMap");
+        String key = TermuxPropertyConstants.KEY_TERMINAL_ONCLICK_URL_OPEN;
+        Object previous = values.put(key, true);
+        try {
+            activity.getTermuxTerminalSessionClient().setCurrentSession(first);
+            TerminalPaneLayoutTest.size(activity.getWindow().getDecorView(), 900, 1000);
+            byte[] output = "first".getBytes(StandardCharsets.UTF_8);
+            first.getEmulator().append(output, output.length);
+            TerminalPaneLayoutTest.capture(activity.getWindow().getDecorView(), "osc8-before-plain-label");
+            output = "\033[H\033]8;;https://first.example\033\\first\033]8;;\033\\".getBytes(StandardCharsets.UTF_8);
+            first.getEmulator().append(output, output.length);
+            TerminalPaneLayoutTest.capture(activity.getWindow().getDecorView(), "osc8-after-linked-label");
+            tapFirstCell(activity.getTerminalView());
+            Intent intent = Shadows.shadowOf(activity).getNextStartedActivity();
+            assertNotNull(intent);
+            assertEquals(Intent.ACTION_VIEW, intent.getAction());
+            assertEquals("https://first.example", intent.getDataString());
+
+            activity.getTermuxTerminalSessionClient().setCurrentSession(second);
+            idle();
+            output = "\033]8;;https://second.example\033\\second\033]8;;\033\\\033[?2026h\033[H\033]8;;https://pending.example\033\\pending\033]8;;\033\\".getBytes(StandardCharsets.UTF_8);
+            second.getEmulator().append(output, output.length);
+            tapFirstCell(activity.getTerminalView());
+            assertEquals("https://second.example", Shadows.shadowOf(activity).getNextStartedActivity().getDataString());
+
+            values.put(key, false);
+            tapFirstCell(activity.getTerminalView());
+            assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
+            values.put(key, true);
+            output = "\033[?2026l\033[2J\033[Hhttps://ordinary.example".getBytes(StandardCharsets.UTF_8);
+            second.getEmulator().append(output, output.length);
+            tapFirstCell(activity.getTerminalView());
+            assertEquals("https://ordinary.example", Shadows.shadowOf(activity).getNextStartedActivity().getDataString());
+        } finally {
+            if (previous == null) values.remove(key); else values.put(key, previous);
+            controller.pause().stop().destroy();
+            manager.mTermuxSessions.clear();
+        }
+    }
 
     private void settleDrawer(TermuxActivity activity) {
         androidx.drawerlayout.widget.DrawerLayout drawer = activity.getDrawer();
