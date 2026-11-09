@@ -1,6 +1,7 @@
 package com.termux.terminal;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -45,7 +46,7 @@ public final class TerminalBuffer {
 
 
     /** The map for bitmap number to the {@link TerminalBitmap} loaded in the terminal. */
-    private final LinkedHashMap<Integer, TerminalBitmap> mTerminalBitmaps;
+    private final HashMap<Integer, TerminalBitmap> mTerminalBitmaps;
 
     /** The time since last garbage collection for all the {@link TerminalBitmap} that are loaded in the terminal. */
     private long mTerminalBitmapsLastGC;

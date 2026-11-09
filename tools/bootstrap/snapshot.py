@@ -66,6 +66,25 @@ def verify_archive(archive_path, expected, stage=None):
             require(digest.hexdigest() == expected[member.name], f"Snapshot member checksum mismatch: {member.name}")
 
 
+def download_public_asset(filename, temporary):
+    """Download only through the fixed public API; the caller must verify the bytes."""
+    options = ["curl", "--disable", "--fail", "--location", "--silent", "--show-error",
+               "--proto", "=https", "--proto-redir", "=https"]
+    response = subprocess.run(options + ["--header", "Accept: application/vnd.github+json", RELEASE_API],
+                              check=True, capture_output=True, text=True)
+    release = json.loads(response.stdout)
+    require(isinstance(release, dict) and isinstance(release.get("assets"), list),
+            "Invalid snapshot release assets")
+    matches = [asset for asset in release["assets"]
+               if isinstance(asset, dict) and asset.get("name") == filename]
+    require(len(matches) == 1, "Snapshot release must contain exactly one matching asset")
+    asset_id = matches[0].get("id")
+    require(type(asset_id) is int and asset_id > 0, "Invalid snapshot release asset ID")
+    # Metadata selects an ID, never a URL/host. This public endpoint needs no token.
+    subprocess.run(options + ["--header", "Accept: application/octet-stream", "--output", str(temporary),
+                              f"{ASSETS_API}/{asset_id}"], check=True)
+
+
 def download_archive(archive, temporary):
     options = ["curl", "--disable", "--fail", "--location", "--silent", "--show-error",
                "--proto", "=https", "--proto-redir", "=https"]
@@ -74,19 +93,7 @@ def download_archive(archive, temporary):
     except subprocess.CalledProcessError:
         # Only a failed browser download changes transport. Checksums remain outside this
         # handler: successfully downloaded but untrusted bytes must never cause a retry.
-        response = subprocess.run(options + ["--header", "Accept: application/vnd.github+json", RELEASE_API],
-                                  check=True, capture_output=True, text=True)
-        release = json.loads(response.stdout)
-        require(isinstance(release, dict) and isinstance(release.get("assets"), list),
-                "Invalid snapshot release assets")
-        matches = [asset for asset in release["assets"]
-                   if isinstance(asset, dict) and asset.get("name") == archive.name]
-        require(len(matches) == 1, "Snapshot release must contain exactly one matching asset")
-        asset_id = matches[0].get("id")
-        require(type(asset_id) is int and asset_id > 0, "Invalid snapshot release asset ID")
-        # Metadata selects an ID, never a URL/host. This public endpoint needs no token.
-        subprocess.run(options + ["--header", "Accept: application/octet-stream", "--output", str(temporary),
-                                  f"{ASSETS_API}/{asset_id}"], check=True)
+        download_public_asset(archive.name, temporary)
 
 
 def restore(lock_path, profile_path, cache, archives):

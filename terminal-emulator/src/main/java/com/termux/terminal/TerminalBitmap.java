@@ -167,8 +167,14 @@ public class TerminalBitmap {
             BitmapFactory.decodeByteArray(image, 0, image.length, bounds);
             int imageWidth = bounds.outWidth;
             int imageHeight = bounds.outHeight;
+            ChafaTiffDecoder chafaTiff = null;
             if (imageWidth <= 0 || imageHeight <= 0) {
-                throw new IllegalArgumentException("Invalid image header");
+                // Native first, including TIFF-container RAW/DNG. Only claim Chafa's complete,
+                // validated uncompressed layout when Android could not read native bounds.
+                chafaTiff = ChafaTiffDecoder.parse(image);
+                if (chafaTiff == null) throw new IllegalArgumentException("Invalid image header");
+                imageWidth = chafaTiff.width;
+                imageHeight = chafaTiff.height;
             }
 
             long newWidth = width > 0 ? width : imageWidth;
@@ -223,6 +229,12 @@ public class TerminalBitmap {
             options.inPreferredConfig = Bitmap.Config.ARGB_8888;
             options.inScaled = false;
             Bitmap decoded = BitmapFactory.decodeByteArray(image, 0, image.length, options);
+            if (decoded == null) {
+                if (chafaTiff == null) chafaTiff = ChafaTiffDecoder.parse(image);
+                if (chafaTiff != null && chafaTiff.width == imageWidth && chafaTiff.height == imageHeight) {
+                    decoded = chafaTiff.decode(sample);
+                }
+            }
             // Verify actual geometry/byte count too: the preferred config and header are
             // not promises about a decoder's result. Allocation OOM is handled by the caller.
             if (!isBitmapValid(decoded)) throw new IllegalArgumentException("Invalid decoded bitmap");

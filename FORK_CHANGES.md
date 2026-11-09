@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Keeps bitmap-map field, constructor and import consistent after removing insertion-order eviction, fixing the genuine Cursor compile finding without restoring the rejected quota.
+
 - Wrapped-word lookup checks adjacent row boundaries in linear work instead of repeatedly serializing the growing transcript span; long wrapped-line regressions exercise the public final buffer directly in both directions without test-only inheritance or a timing policy.
 - Selectively adapts source-confirmed open upstream fixes for valid empty/sanitized writes, coalesced PTY input wakeups, overlapping cell styles, cursor/scroll-margin/cancellation correctness, wrapped transcript words and unmatched Ctrl+Alt active-pane routing. Existing Fold shortcuts, synchronized-output timeout and queue behavior remain; focused regressions cover those contracts. See the [correctness source map](docs/UPSTREAM_CORRECTNESS_2026-11-09.md).
 - Adapts fuller JNI partial-allocation/UTF/local-reference/PTY failure cleanup, preserving pending exceptions and validating PID output, plus connected-client-FD and single AM-error-result repairs. Does not import unsafe unconditional process killing or change the independently pinned API companion producer.
@@ -42,6 +44,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Features
 
+- Adds the narrowly validated Chafa-style single-strip LE RGBA8 TIFF fallback for iTerm output, with native BitmapFactory first, pre-allocation strip/layout validation, direct sampling and alpha-correct row conversion. This is not general TIFF support, and native DNG preservation is source-reviewed rather than backed by a new DNG fixture. See [the source/provenance and acceptance limits](docs/CHAFA_TIFF_2026-11-09.md).
+
 - Selectively integrates upstream Sixel and iTerm single/multipart inline images while preserving Fold OSC52 limits, completed DEC2026 pixel ownership, mixed text runs, panes/input and scroll margins. Uses sourced Android/upstream draw and encoded-data limits, checked geometry, bounds-first decoding and immutable publication—not custom heap-fraction quotas or a native-RSS guarantee. Column/font-cell changes clear only live fixed-geometry images so programs can redraw; completed frames retain old pixels. No image files are downloaded, uploaded or executed. See the [master/open-PR source audit and real Pi launch route](docs/UPSTREAM_AUDIT_2026-11-09.md).
 
 - Adds a native control editor in the session drawer and Terminal I/O settings. Drag or tap to reorder, move between rows, add keys/macros, remove keys, and reset. Saved app layouts override the file matrix explicitly; returning to the file layout leaves termux.properties untouched. Editor drafts survive activity recreation. Oversized app layouts scroll horizontally without shrinking touch targets. The default plus key starts a session through the existing new-session path; Home remains available in the editor.
@@ -68,6 +72,8 @@ This is the canonical concise inventory of intentional differences from the audi
 - Keeps explicit keyboard controls because full-screen TUIs such as Pi use terminal mouse tracking and consume terminal taps.
 
 ## Contracts, tests, and repository policy
+
+- Uses the same fixed public release-asset API fallback for the exact pinned custom lsof URL/SHA pair after browser transport failure. This repairs a separately observed HTTP504 after successful snapshot recovery; common checksum/offline/cache fail-closed behavior and all package/content pins remain unchanged.
 
 - Qualifies image rendering with identical before/after native Android fixtures and captured bytes from the unchanged pinned production Pi emitter. Captures are synthetic test content rendered by production code, not physical Fold screenshots. The documented per-invocation regular-mode/iTerm route needs no terminal-identity spoof or shared Pi configuration change; tmux transport and physical acceptance remain explicit limits.
 
