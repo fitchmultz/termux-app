@@ -83,6 +83,18 @@ public class KeyboardNavigationTest {
 
     private void idle() { Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1)); }
 
+    private void settleDrawer(TermuxActivity activity) {
+        androidx.drawerlayout.widget.DrawerLayout drawer = activity.getDrawer();
+        int gravity = activity.getTerminalSessionDrawerGravity();
+        // This fixture measures/layouts views directly. Advancing the looper alone does not
+        // supply the computeScroll calls that real draw traversals give an animated drawer.
+        // Drive its actual ViewDragHelper animation; never force the drawer into an open state.
+        for (int frame = 0; frame < 120 && !drawer.isDrawerOpen(gravity); frame++) {
+            drawer.computeScroll();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16));
+        }
+    }
+
     private String input(TerminalSession session) {
         Object queue = ReflectionHelpers.getField(session, "mTerminalToProcessIOQueue");
         byte[] bytes = new byte[128];
@@ -165,8 +177,9 @@ public class KeyboardNavigationTest {
             assertEquals("", input(first));
             assertTrue(activity.dispatchKeyEvent(new KeyEvent(500, 500, KeyEvent.ACTION_DOWN,
                 KeyEvent.KEYCODE_DPAD_RIGHT, 0, modifiers)));
-            idle();
-            assertTrue(activity.getDrawer().isDrawerOpen(activity.getTerminalSessionDrawerGravity()));
+            settleDrawer(activity);
+            assertTrue("The real drawer animation must finish after the recognized shortcut",
+                activity.getDrawer().isDrawerOpen(activity.getTerminalSessionDrawerGravity()));
             assertEquals("Recognized drawer shortcut must not produce Kitty bytes", "", input(second));
         } finally {
             controller.pause().stop().destroy();

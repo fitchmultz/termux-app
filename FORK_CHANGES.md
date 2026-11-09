@@ -71,6 +71,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Contracts, tests, and repository policy
 
+- The negotiated-input drawer regression advances the real DrawerLayout animation in its manually laid-out Robolectric fixture instead of assuming looper idling supplies draw traversals. Shortcut dispatch, pane/release and terminal-byte assertions stay intact; no runtime drawer behavior changes.
+
 - Uses the same fixed public release-asset API fallback for the exact pinned custom lsof URL/SHA pair after browser transport failure. This repairs a separately observed HTTP504 after successful snapshot recovery; common checksum/offline/cache fail-closed behavior and all package/content pins remain unchanged.
 
 - Adds included-source JNI host fault injection with fake JNI/PTY/fork boundaries and tracked allocations, and focused Java socket wrapper/framing regressions. The read-only job provisions GCC/libc headers; Android NDK compilation remains separate. Host/shadow tests do not prove ART, real child lifecycle or socket execution.
