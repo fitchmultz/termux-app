@@ -75,6 +75,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Contracts, tests, and repository policy
 
+- Inline-image pixel/Canvas assertions run only on Robolectric-supported native graphics API28/37. An explicit API24 LEGACY case tests parser recovery and cell-size replies without allocating/rendering bitmaps; production minimum SDK24 is unchanged.
+
 - Uses the same fixed public release-asset API fallback for the exact pinned custom lsof URL/SHA pair after browser transport failure. This repairs a separately observed HTTP504 after successful snapshot recovery; common checksum/offline/cache fail-closed behavior and all package/content pins remain unchanged.
 
 - Qualifies image rendering with identical before/after native Android fixtures and captured bytes from the unchanged pinned production Pi emitter. Captures are synthetic test content rendered by production code, not physical Fold screenshots. The documented per-invocation regular-mode/iTerm route needs no terminal-identity spoof or shared Pi configuration change; tmux transport and physical acceptance remain explicit limits.

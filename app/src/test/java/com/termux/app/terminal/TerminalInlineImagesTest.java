@@ -28,10 +28,10 @@ import java.nio.charset.StandardCharsets;
 
 import static org.junit.Assert.*;
 
-/** Real Android bitmap decoding and rendering, not mocked image/protocol implementations. */
+/** Native bitmap decoding/rendering on API 28/37; API 24 covers parser-only behavior. */
 @RunWith(RobolectricTestRunner.class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = {24, 28, 37}, application = Application.class)
+@Config(sdk = {28, 37}, application = Application.class)
 public class TerminalInlineImagesTest {
     private static final String ST = "\033\\";
     private static final class Output extends TerminalOutput {
@@ -85,6 +85,32 @@ public class TerminalInlineImagesTest {
         canvas.drawColor(terminal.getRendererState().getPalette()[TextStyle.COLOR_INDEX_BACKGROUND]);
         renderer.render(terminal, canvas, 0, -1, -1, -1, -1);
         return frame;
+    }
+
+    /** Robolectric 4.17 uses legacy graphics below API 26: no bitmap allocation or pixel claims here. */
+    @Test @Config(sdk = 24) @GraphicsMode(GraphicsMode.Mode.LEGACY)
+    public void oldestApiParsesCellSizeAndRejectedImageCommandsWithoutBitmapAllocation() {
+        for (String terminator : new String[]{"\007", ST}) {
+            Output output = new Output();
+            TerminalEmulator terminal = terminal(output);
+            // Malformed headers and orphan parts return before image decoding/placement.
+            // Do not call image(), file() or render() in this parser-only case.
+            String commands = "\033]1337;ReportCellSize" + terminator
+                + "\033]1337;FilePart=AAAA" + terminator + "\033]1337;FileEnd" + terminator
+                + "\033]1337;File=inline=1;broken:AAAA" + terminator
+                + "\033]1337;MultipartFile=inline=1;broken" + terminator
+                + "\033]1337;FilePart=AAAA" + terminator + "\033]1337;FileEnd" + terminator
+                + "SAFE";
+            for (int i = 0; i < commands.length(); i++)
+                append(terminal, commands.substring(i, i + 1));
+            assertEquals("\033]1337;ReportCellSize=16;8\007", output.replies.toString(StandardCharsets.UTF_8));
+            assertEquals("SAFE", terminal.getScreen().getTranscriptText());
+            assertEquals(0, terminal.getCursorRow());
+            assertEquals(4, terminal.getCursorCol());
+            for (int row = 0; row < terminal.getRows(); row++)
+                for (int column = 0; column < terminal.getColumns(); column++)
+                    assertFalse(TextStyle.isTerminalBitmap(terminal.getScreen().getStyleAt(row, column)));
+        }
     }
 
     /** Fixture emitted by the unchanged production Pi module at the pin in pi-emitter-proof.json. */

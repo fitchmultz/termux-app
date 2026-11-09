@@ -73,3 +73,28 @@ actual exact-head CI results must be recorded separately.
 Neither reconstructed fixtures nor PNG routing prove a real Chafa invocation,
 native DNG regression coverage, ART/physical Fold rendering, heap-pressure
 acceptance or tmux forwarding. Physical installation remains owner-controlled.
+
+
+## Executed image evidence and inline-fixture correction
+
+Both M1 Android runs at `a8370ce39c55bafb57043d29128f8f947930984e`
+([push](https://github.com/fitchmultz/termux-app/actions/runs/42586900421),
+[PR](https://github.com/fitchmultz/termux-app/actions/runs/42586907322)) actually
+executed 379 tests each: 376 passed, three failed, zero errors/skips. All three
+failures were the API24 variants of inline Pi pixels, Sixel pixels and completed-
+frame pixel comparison. Robolectric 4.17 uses legacy graphics below API26, whose
+Canvas does not rasterize those operations. Overall checks were **not passing**.
+
+The native API28/37 inline cases, including the digest-pinned unchanged Pi
+emitter capture, passed in both runs. All 174 emulator and 11 shared cases also
+passed, with actual task execution and fresh XML. This establishes synthetic
+production-code consumption of those Pi bytes, not phone installation, Pi
+fullscreen/iTerm support, tmux forwarding or a real Chafa process.
+
+The inline fixture now retains all existing helper/native-test bodies unchanged
+on API28/37 and adds one explicit LEGACY API24 parser-only case for BEL/ST
+cell-size responses and malformed/orphan image-command recovery. That method
+does not allocate or render bitmaps or assert pixels. This is independently
+source-reviewed, not yet successful fixed-head execution; new-head full CI and
+Pi Durable/Cursor review remain required. Production code, minimum SDK24 and
+the captured Pi bytes are unchanged.
