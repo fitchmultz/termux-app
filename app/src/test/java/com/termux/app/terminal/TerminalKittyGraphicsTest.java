@@ -214,10 +214,11 @@ public class TerminalKittyGraphicsTest {
 
     @Test public void placementUsesLrMarginScrollWithoutMovingTranscriptOrOutsideText() {
         TerminalEmulator terminal = terminal(new Output());
-        append(terminal, "LEFT\033[?69h\033[2;6s\033[2;5r\033[5;2H");
+        append(terminal, "LEFT\033[?69h\033[2;6s\033[2;5r\033[4;2HKEEP\033[5;2H");
         append(terminal, red("a=T,i=1,c=2,r=3,C=1,q=2"));
         assertEquals(0, terminal.getScrollCounter());
         assertEquals(0, terminal.getScreen().getActiveTranscriptRows());
+        assertEquals("KEEP", terminal.getScreen().getSelectedText(1, 3, 4, 3));
         assertEquals("L", terminal.getScreen().getSelectedText(0, 0, 0, 0));
         assertEquals(4, terminal.getCursorRow());
         assertEquals(1, terminal.getCursorCol());
@@ -237,6 +238,13 @@ public class TerminalKittyGraphicsTest {
         assertEquals(2, terminal.getScreen().getActiveTranscriptRows());
         assertEquals(5, terminal.getCursorRow());
         assertEquals(2, terminal.getCursorCol());
+        TerminalEmulator anchored = terminal(new Output());
+        append(anchored, "\033[5;1HKEEP\033[6;1H" + red("a=T,c=2,r=3,C=1,q=2"));
+        assertEquals("KEEP", anchored.getScreen().getSelectedText(0, 4, 3, 4));
+        assertEquals(0, anchored.getScrollCounter());
+        assertEquals(0, anchored.getScreen().getActiveTranscriptRows());
+        assertEquals(5, anchored.getCursorRow());
+        assertEquals(0, anchored.getCursorCol());
     }
 
     @Test public void cancellationsInvalidDataAndUnsupportedTransportsDrainThenRecover() {

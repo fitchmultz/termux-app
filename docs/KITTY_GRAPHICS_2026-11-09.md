@@ -54,7 +54,9 @@ existing unsigned16 bitmap slots, image cells and renderer. Completed DEC2026
 frames keep only their visible bitmap references and never copy the reusable
 cache or in-progress upload. Deletion/replacement/collection never mutates or
 recycles published pixels. Existing margin-aware scroll callbacks account for
-transcript movement once. Column/font-cell changes invalidate live fixed-geometry
+transcript movement once. `C=1` clips the anchored placement at the bottom before
+publication, without scrolling text; pinned Kitty `screen.c` scrolls only when its
+graphics command changes cursor coordinates. Column/font-cell changes invalidate live fixed-geometry
 placements but retain reusable source data for redraw; completed frames keep their
 old pixels. Row-only resizing keeps the backend's ordinary row movement.
 
@@ -74,8 +76,15 @@ tmux forwarding is not established by an environment variable. No installed-phon
 Pi revision, interactive full-session run or physical render is inferred.
 
 Native tests use the existing API28/37 Robolectric Android pipeline and common
-production parser/bitmap/renderer. The same capture fixture is intended to run
-before/after with bytes from the pinned, unchanged production Pi module. Captures
+production parser/bitmap/renderer. The identical capture fixture is on baseline branch `fold/kitty-render-baseline-17`
+at `4ecee689de7cb94f1e4dc090877d25e594240c05` and the candidate. Its 76,249 bytes
+(SHA-256 `103e4ba835a596fa145d95291039be840cc3c21d9c8abd7845125efcf154954e`)
+come from the pinned, unchanged production Pi module, actually executed with Node24.
+`tools/ci/generate-pi-kitty-fixture.mjs` checks the source hash and regenerates the
+resource deterministically; `pi-kitty-emitter-proof.json` records exact provenance.
+The production fullscreen writer at that same Pi pin (`tui-alt-screen.ts` lines
+1768–1786) explicitly draws images after text/clears for cell-backed renderers;
+this frontend needs no separate overlay protocol or change to Pi. Captures
 are synthetic test content rendered by production Android code, not Fold device
 screenshots. Source fixture hashes and actual run/artifact links belong in the PR.
 At preparation, authored new tests are **not yet run**. Full current-head Android

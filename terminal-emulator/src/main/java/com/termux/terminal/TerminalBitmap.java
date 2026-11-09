@@ -329,7 +329,9 @@ public class TerminalBitmap {
         long maxWidth = (long) (buffer.getImageRightMargin() - x) * cellWidth;
         long paddedWidth = Math.min(maxWidth, roundUpToCell(width, cellWidth));
         long paddedHeight = roundUpToCell(height, cellHeight);
-        if (!buffer.canScrollImage())
+        // Kitty scrolls only as a consequence of cursor movement (screen.c handle_graphics_command).
+        // C=1 stays anchored and clips at the bottom; it must not scroll even inside valid margins.
+        if (command.noMove || !buffer.canScrollImage())
             paddedHeight = Math.min(paddedHeight, (long) (buffer.getImageBottomMargin() - y) * cellHeight);
         if (!isBitmapSizeValid(paddedWidth, paddedHeight) ||
             paddedWidth / cellWidth > MAX_BITMAP_CELLS || paddedHeight / cellHeight > MAX_BITMAP_CELLS) return null;
