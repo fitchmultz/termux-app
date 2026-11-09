@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Restarts only the focused Honeyboard virtual editor after session navigation, carrying intent across temporary null/rapid replacements and guarding deferred work by connection generation, selection and focus. Clears stale Honeyboard drafts before BaseInputConnection closure; normal IME closure remains unchanged. Regression dispatch is explicitly a test-local asynchronous direct-target IMM bridge, not full system/ViewRoot emulation.
+
 - Preserves available legacy initial functional-key presses for events-only Kitty flags 2/6, including DECCKM/SS3 and F1-F4, while retaining layout-resolved Space, legacy-null fallbacks, repeat/release encoding and Pi flags7. This is a Termux compatibility policy, not a native Kitty parity claim. Corrects the synthetic keymap fixtures to pinned Robolectric 4.17's actual char-valued native hook without production seams.
 
 - Wrapped-word lookup checks adjacent row boundaries in linear work instead of repeatedly serializing the growing transcript span; long wrapped-line regressions exercise the public final buffer directly in both directions without test-only inheritance or a timing policy.
@@ -44,6 +46,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Features
 
+- Adds connection-scoped Samsung Honeyboard navigation metadata so its empty-editor arrow suppression can be addressed without inserting sentinels into terminal/editor text. Deferred updates require the current focused connection/session/generation and are invalidated on replacement, close or lifecycle changes. See [source and physical-acceptance limits](docs/HONEYBOARD_INPUT_2026-11-09.md).
+
 - Adds negotiated Kitty keyboard flags1|2|4 for distinct Pi Enter/newline and press/repeat/release input while preserving legacy mode, Fold shortcuts/panes/editor and literal IME control bytes. Main/alternate stacks retain PR5366's sourced 32-entry policy. See [source, IME repair and verification limits](docs/KITTY_KEYBOARD_2026-11-09.md).
 
 - Adds a native control editor in the session drawer and Terminal I/O settings. Drag or tap to reorder, move between rows, add keys/macros, remove keys, and reset. Saved app layouts override the file matrix explicitly; returning to the file layout leaves termux.properties untouched. Editor drafts survive activity recreation. Oversized app layouts scroll horizontally without shrinking touch targets. The default plus key starts a session through the existing new-session path; Home remains available in the editor.
@@ -70,6 +74,8 @@ This is the canonical concise inventory of intentional differences from the audi
 - Keeps explicit keyboard controls because full-screen TUIs such as Pi use terminal mouse tracking and consume terminal taps.
 
 ## Contracts, tests, and repository policy
+
+- Honeyboard API24 input coverage uses a method-scoped legacy Paint layout-spacing shim because Robolectric 4.17 leaves font spacing zero. It preserves the attached/focused InputConnection/IMM/PTY-queue test path and assertions without runtime clamps, forced renderer fields or font/pixel-fidelity claims; native API28/37 is unchanged.
 
 - The negotiated-input drawer regression advances the real DrawerLayout animation in its manually laid-out Robolectric fixture instead of assuming looper idling supplies draw traversals. Shortcut dispatch, pane/release and terminal-byte assertions stay intact; no runtime drawer behavior changes.
 
