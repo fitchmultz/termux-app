@@ -1,0 +1,480 @@
+package com.termux.app.terminal;
+
+import android.app.Activity;
+import android.app.Application;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.os.Looper;
+import android.provider.Settings;
+import android.text.InputType;
+import android.view.KeyEvent;
+import android.view.View;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.ExtractedText;
+import android.view.inputmethod.ExtractedTextRequest;
+import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+
+import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
+import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
+import com.termux.shared.termux.terminal.TermuxTerminalViewClientBase;
+import com.termux.terminal.TerminalEmulator;
+import com.termux.terminal.TerminalSession;
+import com.termux.terminal.TextStyle;
+import com.termux.view.TerminalView;
+
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.Robolectric;
+import org.robolectric.RobolectricTestRunner;
+import org.robolectric.Shadows;
+import org.robolectric.annotation.Config;
+import org.robolectric.annotation.GraphicsMode;
+import org.robolectric.annotation.Implementation;
+import org.robolectric.annotation.Implements;
+import org.robolectric.shadows.ShadowInputMethodManager;
+import org.robolectric.util.ReflectionHelpers;
+import org.robolectric.util.ReflectionHelpers.ClassParameter;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.Assert.*;
+
+@RunWith(RobolectricTestRunner.class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = {28, 37}, application = Application.class,
+    shadows = {TerminalImePasteTest.NoPty.class, TerminalImeComposingTest.RecordingImm.class})
+public class TerminalImeComposingTest {
+    @Implements(InputMethodManager.class)
+    public static class RecordingImm extends ShadowInputMethodManager {
+        static final List<View> restarts = new ArrayList<>();
+        static int selectionStart, selectionEnd, composingStart, composingEnd;
+        static ExtractedText extracted;
+        @Implementation protected void restartInput(View view) { restarts.add(view); }
+        @Implementation protected void updateSelection(View view, int start, int end, int candidateStart, int candidateEnd) {
+            selectionStart = start;
+            selectionEnd = end;
+            composingStart = candidateStart;
+            composingEnd = candidateEnd;
+        }
+        @Implementation protected void updateExtractedText(View view, int token, ExtractedText text) { extracted = text; }
+        static void clear() { restarts.clear(); extracted = null; }
+    }
+
+    private Activity activity;
+    private TerminalView terminal, other;
+    private TerminalSession session, otherSession;
+    private EditText editor;
+    private boolean enabled, enforce = true;
+
+    @Before public void setUp() {
+        activity = Robolectric.buildActivity(Activity.class).setup().get();
+        Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD,
+            "com.samsung.android.honeyboard/.service.HoneyBoardService");
+        LinearLayout layout = new LinearLayout(activity);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        editor = new EditText(activity);
+        terminal = terminal();
+        other = terminal();
+        session = session();
+        otherSession = session();
+        layout.addView(terminal, new LinearLayout.LayoutParams(900, 300));
+        layout.addView(other, new LinearLayout.LayoutParams(900, 300));
+        layout.addView(editor, new LinearLayout.LayoutParams(900, 100));
+        activity.setContentView(layout);
+        terminal.attachSession(session);
+        other.attachSession(otherSession);
+        layout.measure(View.MeasureSpec.makeMeasureSpec(900, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(700, View.MeasureSpec.EXACTLY));
+        layout.layout(0, 0, 900, 700);
+        assertTrue(terminal.requestFocus());
+        idle();
+        RecordingImm.clear();
+    }
+
+    private TerminalView terminal() {
+        TerminalView view = new TerminalView(activity, null);
+        view.setFocusableInTouchMode(true);
+        view.setTextSize(16);
+        view.setTerminalViewClient(new TermuxTerminalViewClientBase() {
+            @Override public boolean shouldEnforceCharBasedInput() { return enforce; }
+            @Override public boolean shouldEnableImeComposing() { return enabled; }
+            @Override public boolean isTerminalViewSelected() { return !editor.hasFocus(); }
+        });
+        return view;
+    }
+
+    private TerminalSession session() {
+        TermuxTerminalSessionClientBase client = new TermuxTerminalSessionClientBase();
+        TerminalSession result = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
+        ReflectionHelpers.setField(result, "mEmulator", new TerminalEmulator(result, 80, 24, 8, 16, 100, client));
+        ReflectionHelpers.setField(result, "mShellPid", 1234);
+        return result;
+    }
+
+    private String received(TerminalSession target) {
+        Object queue = ReflectionHelpers.getField(target, "mTerminalToProcessIOQueue");
+        byte[] bytes = new byte[4096];
+        int count = ReflectionHelpers.callInstanceMethod(queue, "read",
+            ClassParameter.from(byte[].class, bytes), ClassParameter.from(boolean.class, false));
+        return new String(bytes, 0, count, StandardCharsets.UTF_8);
+    }
+
+    private void output(String text) {
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        session.getEmulator().append(bytes, bytes.length);
+    }
+
+    private void idle() { Shadows.shadowOf(Looper.getMainLooper()).idle(); }
+    private String preview() { return ReflectionHelpers.getField(terminal, "mComposingText"); }
+
+    private Bitmap capture() {
+        Bitmap bitmap = Bitmap.createBitmap(terminal.getWidth(), terminal.getHeight(), Bitmap.Config.ARGB_8888);
+        terminal.draw(new Canvas(bitmap));
+        return bitmap;
+    }
+
+    /**
+     * Synthetic candidate OFF/ON evidence through the actual served InputConnection and
+     * TerminalView draw path. This is neither a Fold16 baseline nor a physical-device capture.
+     * The client flag is test-local; no app, shared Pi, or device preference is changed.
+     */
+    @Test public void captureSyntheticCandidateCjkPreeditOffAndOn() throws Exception {
+        Bitmap off = captureSyntheticCandidatePreedit(false);
+        Bitmap on = null;
+        try {
+            on = captureSyntheticCandidatePreedit(true);
+            // Compare only the prompt's preedit area, not the deliberately different mode label.
+            int left = (int) Math.floor(4 * terminal.mRenderer.getFontWidth());
+            int top = 8 * terminal.mRenderer.getFontLineSpacing();
+            int right = (int) Math.ceil(24 * terminal.mRenderer.getFontWidth());
+            int bottom = top + 2 * terminal.mRenderer.getFontLineSpacing();
+            boolean changedAtPrompt = false;
+            for (int y = top; y < bottom && !changedAtPrompt; y++) {
+                for (int x = left; x < right; x++) {
+                    if (off.getPixel(x, y) != on.getPixel(x, y)) {
+                        changedAtPrompt = true;
+                        break;
+                    }
+                }
+            }
+            assertTrue("Opt-in preedit must change native pixels at the completed prompt", changedAtPrompt);
+        } finally {
+            off.recycle();
+            if (on != null) on.recycle();
+        }
+    }
+
+    private Bitmap captureSyntheticCandidatePreedit(boolean optIn) throws Exception {
+        enabled = optIn;
+        terminal.refreshImeComposingPreference();
+        idle();
+        assertTrue(terminal.requestFocus());
+        assertTrue(terminal.hasFocus());
+        terminal.setTerminalCursorBlinkerRate(0);
+        terminal.setTerminalCursorBlinkerState(false, false);
+        // Finish the terminal frame before requesting composition: the preview must use this
+        // completed cursor/palette, not a hand-positioned string or a live partial snapshot.
+        output("\033[?2026h\033[2J\033[H\033]10;#d5deeb\007\033]11;#101923\007"
+            + "\033[1;36mSYNTHETIC CANDIDATE / CJK PREEDIT " + (optIn ? "ON" : "OFF") + "\033[0m\r\n"
+            + "\033[90mNative TerminalView / not a physical-device capture\033[0m\r\n\r\n"
+            + "\033[32m$ \033[0mpython greeting.py\r\n"
+            + "\033[90m# The draft is held by the IME, not sent to the PTY.\033[0m\r\n"
+            + "\033[36mprint\033[0m(\033[33m\"Choose a greeting\"\033[0m)\r\n\r\n"
+            + "\033[90mWaiting for uncommitted CJK input at this prompt:\033[0m\r\n"
+            + "\033[32m>>> \033[0m\033[?2026l");
+        terminal.onScreenUpdated();
+        terminal.setBackgroundColor(session.getEmulator().getPalette()[TextStyle.COLOR_INDEX_BACKGROUND]);
+        assertFalse(session.getEmulator().isSynchronizedOutputActive());
+        assertEquals(8, session.getEmulator().getRendererState().getCursorRow());
+        assertEquals(4, session.getEmulator().getRendererState().getCursorCol());
+        assertEquals(0, terminal.getTopRow());
+
+        String draft = "한글 漢字 かな";
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        assertTrue(input.setComposingText(draft, 1));
+        idle();
+        if (optIn) assertEquals(draft, preview());
+        else assertNull(preview());
+        assertEquals("Preedit must remain uncommitted in both modes", "", received(session));
+        assertFalse(session.getEmulator().getScreen().getTranscriptText().contains(draft));
+        assertEquals(8, session.getEmulator().getRendererState().getCursorRow());
+        assertEquals(4, session.getEmulator().getRendererState().getCursorCol());
+
+        Bitmap bitmap = capture();
+        try {
+            File directory = new File("build/reports/tests/workbench");
+            assertTrue(directory.isDirectory() || directory.mkdirs());
+            File image = new File(directory, "ime-preedit-" + (optIn ? "on" : "off") + ".png");
+            try (FileOutputStream output = new FileOutputStream(image)) {
+                assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output));
+            }
+            return bitmap;
+        } catch (Exception | AssertionError failure) {
+            bitmap.recycle();
+            throw failure;
+        }
+    }
+
+    @Test public void offPreservesLegacyInputTypesFinishAndNoPreview() {
+        EditorInfo attrs = new EditorInfo();
+        InputConnection input = terminal.onCreateInputConnection(attrs);
+        assertEquals(InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS, attrs.inputType);
+        input.setComposingText("world", 1);
+        assertNull(preview());
+        input.finishComposingText();
+        assertEquals("world", received(session));
+        input.commitText("\n", 1);
+        assertEquals("\r", received(session));
+        enforce = false;
+        input = terminal.onCreateInputConnection(attrs = new EditorInfo());
+        assertEquals(InputType.TYPE_NULL, attrs.inputType);
+        input.setComposingText("legacy", 1);
+        input.finishComposingText();
+        assertEquals("legacy", received(session));
+        assertNull(preview());
+    }
+
+    @Test public void offDoesNotAddLegacyImeRestartAndStaleHoneyboardCloseCannotFlushIntoNewSession() {
+        Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD, "com.example.ime/.Keyboard");
+        InputConnection legacy = terminal.onCreateInputConnection(new EditorInfo());
+        legacy.setComposingText("legacy draft", 1);
+        RecordingImm.clear();
+        terminal.attachSession(otherSession);
+        idle();
+        assertTrue("OFF non-Honeyboard input must not gain session-change restarts", RecordingImm.restarts.isEmpty());
+        Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD,
+            "com.samsung.android.honeyboard/.service.HoneyBoardService");
+        InputConnection honeyboard = terminal.onCreateInputConnection(new EditorInfo());
+        honeyboard.setComposingText("old Honeyboard draft", 1);
+        terminal.attachSession(session);
+        honeyboard.closeConnection();
+        idle();
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
+    }
+
+    @Test public void onUsesRealComposingSpansAndSelectionEvenWithHoneyboard() {
+        enabled = true;
+        EditorInfo attrs = new EditorInfo();
+        InputConnection input = terminal.onCreateInputConnection(attrs);
+        assertEquals(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+            attrs.inputType);
+        assertEquals(0, attrs.initialSelStart);
+        assertEquals("", input.getTextAfterCursor(10, 0).toString());
+        String composing = "한字😀";
+        input.setComposingText(composing, 1);
+        assertEquals(composing, preview());
+        input.setSelection(1, 1);
+        assertEquals(1, (int) ReflectionHelpers.getField(terminal, "mComposingCursor"));
+        assertEquals("한", input.getTextBeforeCursor(10, 0).toString());
+        assertEquals("字😀", input.getTextAfterCursor(10, 0).toString());
+        ExtractedTextRequest request = new ExtractedTextRequest();
+        request.token = 19;
+        ExtractedText text = input.getExtractedText(request, InputConnection.GET_EXTRACTED_TEXT_MONITOR);
+        assertEquals(composing, text.text.toString());
+        assertEquals(1, text.selectionStart);
+        terminal.onKeyDown(KeyEvent.KEYCODE_SHIFT_LEFT, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_SHIFT_LEFT));
+        assertEquals(composing, preview());
+        assertEquals("", received(session));
+        idle();
+        assertEquals(0, RecordingImm.composingStart);
+        assertEquals(composing.length(), RecordingImm.composingEnd);
+        assertEquals(1, RecordingImm.selectionStart);
+        assertEquals(composing, RecordingImm.extracted.text.toString());
+        input.commitText("韓字", 1);
+        assertEquals("韓字", received(session));
+        assertNull(preview());
+        input.finishComposingText();
+        assertEquals("", received(session));
+    }
+
+    @Test public void composingRegionAndDeletionFollowEditableStateWithoutPtyBackspaces() {
+        enabled = true;
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        input.setComposingText("abc", 1);
+        input.setComposingRegion(1, 3);
+        input.setSelection(2, 2);
+        assertEquals("bc", preview());
+        assertEquals(1, (int) ReflectionHelpers.getField(terminal, "mComposingCursor"));
+        input.deleteSurroundingText(1, 0);
+        assertEquals("bc", preview());
+        assertEquals("", received(session));
+        input.finishComposingText();
+        assertEquals("bc", received(session));
+        input.deleteSurroundingTextInCodePoints(1, 0);
+        assertEquals("Code-point Backspace outside preedit must reach the terminal", "\u007f", received(session));
+        input.commitText("😀", 1);
+        assertEquals("😀", received(session));
+        input.deleteSurroundingTextInCodePoints(1, 0);
+        assertEquals("\u007f", received(session));
+        input.setComposingText("", 1);
+        assertNull(preview());
+        input.finishComposingText();
+        assertEquals("", received(session));
+    }
+
+    @Test @Config(sdk = 24) @GraphicsMode(GraphicsMode.Mode.LEGACY)
+    public void composingModelUsesOnlyMinimumSdkInputApis() {
+        enabled = true;
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        input.setComposingText("한글", 1);
+        input.setSelection(1, 1);
+        assertEquals("한글", preview());
+        assertEquals("한", input.getTextBeforeCursor(10, 0).toString());
+        input.finishComposingText();
+        assertEquals("한글", received(session));
+    }
+
+    @Test public void negotiatedLiteralControlsPasteAndBypassNavigationCommitExactlyOnce() {
+        enabled = true;
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        for (int flags : new int[]{1, 7}) {
+            output("\033[>" + flags + "u\033[?2004h");
+            input.setComposingText("한\t\n", 1);
+            input.finishComposingText();
+            assertEquals("한\t\r", received(session));
+            input.commitText("\n", 1);
+            assertEquals("\r", received(session));
+            input.commitText("first\nsecond", 1);
+            assertEquals("\033[200~first\rsecond\033[201~", received(session));
+            input.setComposingText("가", 1);
+            terminal.onKeyDown(KeyEvent.KEYCODE_DPAD_LEFT, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT));
+            assertEquals("가\033[D", received(session));
+            input.finishComposingText();
+            assertEquals("", received(session));
+            terminal.onKeyDown(KeyEvent.KEYCODE_ENTER,
+                new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0, KeyEvent.META_SHIFT_ON));
+            assertEquals("\033[13;2u", received(session));
+            output("\033[<u");
+        }
+    }
+
+    @Test public void replacedClosedReattachedAndBackgroundConnectionsCannotReplayPreedit() {
+        enabled = true;
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("old", 1);
+        InputConnection current = terminal.onCreateInputConnection(new EditorInfo());
+        assertFalse(old.commitText("late", 1));
+        assertNull(preview());
+        current.setComposingText("pane", 1);
+        RecordingImm.clear();
+        terminal.attachSession(otherSession);
+        assertFalse(current.finishComposingText());
+        idle();
+        assertTrue("Replacing the session in an already-focused view must request a fresh served connection",
+            RecordingImm.restarts.contains(terminal));
+        // Robolectric records IMM.restartInput; supply the new connection Android would request.
+        current = terminal.onCreateInputConnection(new EditorInfo());
+        current.setComposingText("closed", 1);
+        current.closeConnection();
+        assertFalse(current.commitText("late", 1));
+        current = terminal.onCreateInputConnection(new EditorInfo());
+        current.setComposingText("background", 1);
+        terminal.onWindowFocusChanged(false);
+        assertFalse(current.finishComposingText());
+        idle();
+        assertNull(preview());
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
+    }
+
+    @Test public void deferredRestartCannotDiscardNewPreeditOnTheSameConnection() {
+        enabled = true;
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        input.setComposingText("a", 1);
+        terminal.onKeyDown(KeyEvent.KEYCODE_DPAD_LEFT, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT));
+        assertEquals("a\033[D", received(session));
+        input.setComposingText("b", 1);
+        RecordingImm.clear();
+        idle();
+        assertFalse(RecordingImm.restarts.contains(terminal));
+        assertEquals("b", preview());
+        input.finishComposingText();
+        assertEquals("b", received(session));
+    }
+
+    @Test public void nullAndRapidSessionReplacementsRestartOnlyTheFinalFocusedDestination() {
+        enabled = true;
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        input.setComposingText("not replayed", 1);
+        RecordingImm.clear();
+        terminal.attachSession(null);
+        terminal.attachSession(otherSession);
+        terminal.attachSession(session);
+        idle();
+        assertEquals(1, java.util.Collections.frequency(RecordingImm.restarts, terminal));
+        assertSame(session, terminal.getCurrentSession());
+        assertFalse(input.commitText("late", 1));
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
+    }
+
+    @Test public void deferredRestartCannotDisruptPaneOrIndependentNativeEditorComposition() {
+        enabled = true;
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        input.setComposingText("가", 1);
+        terminal.onKeyDown(KeyEvent.KEYCODE_DPAD_LEFT, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT));
+        assertEquals("가\033[D", received(session));
+        assertTrue(other.requestFocus());
+        assertTrue(editor.requestFocus());
+        RecordingImm.clear();
+        idle();
+        assertFalse(RecordingImm.restarts.contains(terminal));
+        assertFalse(input.commitText("late", 1));
+        InputConnection nativeInput = editor.onCreateInputConnection(new EditorInfo());
+        nativeInput.setComposingText("native draft", 1);
+        nativeInput.finishComposingText();
+        assertEquals("native draft", editor.getText().toString());
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
+    }
+
+    @Test public void composingOverlayUsesCompletedCursorPaletteAndStyleDuringSynchronizedOutput() {
+        enabled = true;
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        input.setComposingText("漢字😀é", 1);
+        input.setSelection(1, 1);
+        Bitmap completed = capture();
+        input.setSelection(2, 2);
+        output("\033[?2026h\033[3;12H\033[7m\033]10;#00ff00\007\033]11;#ff0000\007");
+        assertTrue(session.getEmulator().isSynchronizedOutputActive());
+        input.setSelection(1, 1);
+        Bitmap during = capture();
+        assertTrue("IME redraw may move its own cursor, but must not expose live terminal state", completed.sameAs(during));
+        output("\033[?2026l");
+        Bitmap finished = capture();
+        assertFalse(completed.sameAs(finished));
+        assertEquals("", received(session));
+        completed.recycle();
+        during.recycle();
+        finished.recycle();
+    }
+
+    @Test public void preferenceDefaultsOffAndRefreshDoesNotStealEditorFocus() {
+        TermuxAppSharedPreferences preferences = TermuxAppSharedPreferences.build(activity, true);
+        assertNotNull(preferences);
+        assertFalse(preferences.isImeComposingEnabled());
+        preferences.setImeComposingEnabled(true);
+        assertTrue(preferences.isImeComposingEnabled());
+        preferences.setImeComposingEnabled(false);
+        terminal.onCreateInputConnection(new EditorInfo());
+        enabled = true;
+        terminal.refreshImeComposingPreference();
+        assertTrue(RecordingImm.restarts.contains(terminal));
+        terminal.onCreateInputConnection(new EditorInfo());
+        assertTrue(editor.requestFocus());
+        RecordingImm.clear();
+        enabled = false;
+        terminal.refreshImeComposingPreference();
+        assertTrue(editor.hasFocus());
+        assertTrue(RecordingImm.restarts.isEmpty());
+    }
+}

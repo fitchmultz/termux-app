@@ -189,6 +189,10 @@
                 <string name="termux_soft_keyboard_enabled_only_if_no_hardware_on">Soft keyboard will be enabled only if
                     no hardware keyboard is connected.</string>
 
+                <!-- IME Composing -->
+                <string name="termux_ime_composing_enabled_title">IME Composing Preview</string>
+                <string name="termux_ime_composing_enabled_off">Keep the existing terminal input behavior. (Default)</string>
+                <string name="termux_ime_composing_enabled_on">Preview composing text at the terminal cursor. The native draft editor is unchanged.</string>
 
         <!-- Terminal View Preferences -->
         <string name="termux_terminal_view_preferences_title">Terminal View</string>

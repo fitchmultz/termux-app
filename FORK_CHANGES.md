@@ -42,6 +42,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Features
 
+- Adds default-OFF direct-terminal IME Composing Preview with real spans/selection, mutually exclusive Samsung metadata, completed-frame cursor/palette/style rendering and connection/session guards. Uncommitted enabled preedit is canceled—not replayed—on invalidation; existing clients default false and the real editor stays untouched. See [source, safety policy and verification limits](docs/CJK_PREEDIT_2026-11-09.md).
+
 - Adds connection-scoped Samsung Honeyboard navigation metadata so its empty-editor arrow suppression can be addressed without inserting sentinels into terminal/editor text. Deferred updates require the current focused connection/session/generation and are invalidated on replacement, close or lifecycle changes. See [source and physical-acceptance limits](docs/HONEYBOARD_INPUT_2026-11-09.md).
 
 - Adds negotiated Kitty keyboard flags1|2|4 for distinct Pi Enter/newline and press/repeat/release input while preserving legacy mode, Fold shortcuts/panes/editor and literal IME control bytes. Main/alternate stacks retain PR5366's sourced 32-entry policy. See [source, IME repair and verification limits](docs/KITTY_KEYBOARD_2026-11-09.md).
