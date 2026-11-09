@@ -1,0 +1,67 @@
+{
+  "sourceRepository": "fitchmultz/pi",
+  "sourceCommit": "cd74c5a3615635c61e68c52922debcda7ed53b51",
+  "sourcePath": "packages/tui/src/terminal-image.ts",
+  "sourceGitBlob": "c1f682dff617a3c0782a5f0dcf7d412d8d8c2418",
+  "sourceSha256": "2aa0d1acfc233129e8ae15a6db607b8ea0873c665c0820e682233b118fbe09e1",
+  "sourceUrl": "https://github.com/fitchmultz/pi/blob/cd74c5a3615635c61e68c52922debcda7ed53b51/packages/tui/src/terminal-image.ts",
+  "node": "v24.22.1",
+  "generator": "tools/ci/generate-pi-kitty-fixture.mjs",
+  "generatorSha256": "443bfb84ed42df64db1cc7a0f787d542253f35e6c7b37744a40e9b1b3d4bb199",
+  "scope": "Unchanged production Pi exports executed with Node 24; standard ANSI positions/text surround their actual graphics bytes. Native capture tests are separate and unrun at fixture generation; not a physical-device capture.",
+  "capabilitySelection": "Public setCapabilities({images: 'kitty', trueColor: true, hyperlinks: false}); no terminal identity spoof",
+  "input": {
+    "recoveredFrom": "app/src/test/resources/pi-iterm2-preview.ansi",
+    "containerSha256": "f0d3895a147106b072d7110a534486d737383141aa36991157d008613a51296e",
+    "description": "Existing synthetic production-Android renderer capture PNG, decoded without modification",
+    "sha256": "7bf3077caa2df3daf223a76656c9ff0d6de71ec1b01fd157ac6b681f32d53b98",
+    "bytes": 56353,
+    "widthPx": 480,
+    "heightPx": 680
+  },
+  "renderOptions": {
+    "maxWidthCells": 12,
+    "maxHeightCells": 8,
+    "imageId": 4294967294,
+    "moveCursor": false
+  },
+  "exportsExecuted": [
+    "setCapabilities",
+    "setCellDimensions",
+    "renderImage",
+    "getKittyImagePlacement",
+    "cropKittyImageLine",
+    "deleteAllKittyImages",
+    "deleteAllKittyPlacements"
+  ],
+  "commands": {
+    "transmittedPngs": 1,
+    "transmissionChunks": 19,
+    "croppedPlacementSha256": "3fffef3c6eeaf83f756cc0406d2895af96f7bb799a37f75ca086857ed31fbd7a",
+    "reusedPlacementSha256": "bcb7135601193c333874addfebd474476796d94444dd3bba76281427f2a838d4",
+    "lowerCropPlacementSha256": "faebe1a9269def8a93534a9237668bc4c506cae912afc353649de411d85101ab",
+    "lifecycle": "clear image data; transmit+place; crop/cache placement; delete placements retaining data; reuse full placement and two crops"
+  },
+  "output": {
+    "path": "app/src/test/resources/pi-kitty-preview.ansi",
+    "protocol": "kitty",
+    "columns": 11,
+    "rows": 8,
+    "bytes": 76249,
+    "sha256": "103e4ba835a596fa145d95291039be840cc3c21d9c8abd7845125efcf154954e"
+  },
+  "nativeCapture": {
+    "test": "TerminalKittyImageRenderingTest",
+    "widths": [
+      480,
+      900
+    ],
+    "height": 680,
+    "files": [
+      "pi-kitty-cover.png",
+      "pi-kitty-wide.png"
+    ],
+    "assertions": "Source hash, text, cursor and quiet replies only; no supported-image or pixel assertions",
+    "stateAtFixtureGeneration": "unrun; run unchanged test source on baseline and candidate"
+  }
+}
