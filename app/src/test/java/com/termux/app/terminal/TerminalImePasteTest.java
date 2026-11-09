@@ -106,6 +106,64 @@ public class TerminalImePasteTest {
     }
 
     @Test
+    public void negotiatedImeCommitsPreserveLiteralControlsCompositionAndPaste() {
+        for (int flags : new int[]{1, 7}) {
+            for (boolean bracketed : new boolean[]{false, true}) {
+                output("\033[>" + flags + "u\033[?u");
+                assertEquals("\033[?" + flags + "u", received());
+                output(bracketed ? "\033[?2004h" : "\033[?2004l");
+
+                input.commitText("\n", 1);
+                assertEquals("IME Enter is CR, not synthetic Kitty Ctrl+M", "\r", received());
+                input.commitText("\r", 1);
+                assertEquals("\r", received());
+                input.commitText("\t", 1);
+                assertEquals("\t", received());
+                String controls = "\u0001\u0003\b\u001c\u001d\u001e\u001f";
+                input.commitText(controls, 1);
+                assertEquals(controls, received());
+
+                input.setComposingText("한글\t\n", 1);
+                assertEquals("", received());
+                input.finishComposingText();
+                assertEquals("한글\t\r", received());
+                input.finishComposingText();
+                assertEquals("Composition must not be replayed", "", received());
+
+                input.commitText("first\nsecond\n", 1);
+                assertEquals(bracketed ? "\033[200~first\rsecond\r\033[201~" : "first\rsecond\r", received());
+                input.commitText("after", 1);
+                assertEquals("after", received());
+                output("\033[<u");
+            }
+        }
+    }
+
+    @Test
+    public void explicitPhysicalAndExtraKeyModifiersRemainNegotiatedUnlikeImeControlBytes() {
+        for (int flags : new int[]{1, 7}) {
+            output("\033[>" + flags + "u");
+            terminal.onKeyDown(KeyEvent.KEYCODE_ENTER,
+                new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0, KeyEvent.META_SHIFT_ON));
+            assertEquals("\033[13;2u", received());
+            terminal.onKeyDown(KeyEvent.KEYCODE_ENTER,
+                new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0, KeyEvent.META_CTRL_ON));
+            assertEquals("\033[13;5u", received());
+            terminal.inputCodePoint(TerminalView.KEY_EVENT_SOURCE_SOFT_KEYBOARD, 'i', true, false);
+            assertEquals("Explicit soft-key Ctrl identity must not be blanket-disabled", "\033[105;5u", received());
+            new com.termux.shared.termux.terminal.io.TerminalExtraKeys(terminal) {
+                void tap() {
+                    onTerminalExtraKeyButtonClick(null, "ENTER", false, false, true, false);
+                }
+            }.tap();
+            assertEquals("\033[13;2u", received());
+            input.commitText("\n", 1);
+            assertEquals("\r", received());
+            output("\033[<u");
+        }
+    }
+
+    @Test
     public void typingCompositionAndSingleReturnKeepTheirExistingInput() {
         output("\033[?2004h");
         input.commitText("hello", 1);

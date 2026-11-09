@@ -127,6 +127,52 @@ public class KeyboardNavigationTest {
         }
     }
 
+    @Test public void negotiatedInputRetainsFoldShortcutAndPaneReleasePrecedence() {
+        Application app = RuntimeEnvironment.getApplication();
+        TermuxShellManager manager = TermuxShellManager.init(app);
+        manager.mTermuxSessions.clear();
+        TerminalSession first = session("one", manager), second = session("two", manager);
+        for (TerminalSession terminal : new TerminalSession[]{first, second}) {
+            byte[] negotiate = "\033[>7u".getBytes(StandardCharsets.UTF_8);
+            terminal.getEmulator().append(negotiate, negotiate.length);
+        }
+        ActivityController<TermuxActivity> controller = start();
+        try {
+            TermuxActivity activity = controller.get();
+            View root = activity.findViewById(com.termux.R.id.activity_termux_root_view);
+            TerminalPaneLayoutTest.size(root, 900, 650);
+            activity.getTerminalPanes().openBeside(first);
+            TerminalPaneLayoutTest.size(root, 900, 650);
+            idle();
+            assertSame(first, activity.getCurrentSession());
+            int modifiers = KeyEvent.META_CTRL_ON | KeyEvent.META_ALT_ON | KeyEvent.META_ALT_LEFT_ON;
+
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(100, 100, KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_X, 0, modifiers)));
+            assertEquals("\033[120;7u", input(first));
+            assertEquals("", input(second));
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(200, 200, KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_N, 0, modifiers)));
+            assertSame(second, activity.getCurrentSession());
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(100, 300, KeyEvent.ACTION_UP,
+                KeyEvent.KEYCODE_X, 0, modifiers)));
+            assertEquals("A release from the old pane must not enter either terminal", "", input(first));
+            assertEquals("", input(second));
+
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(400, 400, KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_X, 0, modifiers)));
+            assertEquals("\033[120;7u", input(second));
+            assertEquals("", input(first));
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(500, 500, KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_DPAD_RIGHT, 0, modifiers)));
+            idle();
+            assertTrue(activity.getDrawer().isDrawerOpen(activity.getTerminalSessionDrawerGravity()));
+            assertEquals("Recognized drawer shortcut must not produce Kitty bytes", "", input(second));
+        } finally {
+            controller.pause().stop().destroy();
+        }
+    }
+
     @Test public void savedControlsApplyOnReturnWithoutReplacingTheSession() throws Exception {
         Application app = RuntimeEnvironment.getApplication();
         TermuxShellManager manager = TermuxShellManager.init(app);
