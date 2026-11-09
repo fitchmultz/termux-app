@@ -115,6 +115,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
     public void onResume() {
         // Show the soft keyboard if required
         setSoftKeyboardState(true, mActivity.isActivityRecreated());
+        for (TerminalView terminal : mActivity.getTerminalViews()) terminal.refreshImeComposingPreference();
 
         if (mActivity.getTerminalView().mEmulator != null) {
             // Start terminal cursor blinking if enabled
@@ -253,6 +254,11 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
     @Override
     public boolean shouldEnforceCharBasedInput() {
         return mActivity.getProperties().isEnforcingCharBasedInput();
+    }
+
+    @Override
+    public boolean shouldEnableImeComposing() {
+        return mActivity.getPreferences().isImeComposingEnabled();
     }
 
     @Override

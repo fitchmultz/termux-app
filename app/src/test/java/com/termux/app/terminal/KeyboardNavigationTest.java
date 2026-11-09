@@ -9,6 +9,8 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
 import android.widget.TextView;
 
 import com.termux.app.TermuxActivity;
@@ -182,6 +184,50 @@ public class KeyboardNavigationTest {
                 activity.getDrawer().isDrawerOpen(activity.getTerminalSessionDrawerGravity()));
             assertEquals("Recognized drawer shortcut must not produce Kitty bytes", "", input(second));
         } finally {
+            controller.pause().stop().destroy();
+        }
+    }
+
+    @Test @Config(shadows = {TerminalPaneLayoutTest.NoPty.class, TerminalImeComposingTest.RecordingImm.class})
+    public void composingConnectionRestartsAfterActualFinishedSessionRemoval() {
+        Application app = RuntimeEnvironment.getApplication();
+        TermuxShellManager manager = TermuxShellManager.init(app);
+        manager.mTermuxSessions.clear();
+        TerminalSession first = session("one", manager), second = session("two", manager);
+        com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences preferences =
+            com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences.build(app, true);
+        assertNotNull(preferences);
+        preferences.setImeComposingEnabled(true);
+        ActivityController<TermuxActivity> controller = start();
+        try {
+            TermuxActivity activity = controller.get();
+            TerminalPaneLayoutTest.size(activity.findViewById(com.termux.R.id.activity_termux_root_view), 900, 650);
+            activity.getTermuxTerminalSessionClient().setCurrentSession(first);
+            assertTrue(activity.getTerminalView().requestFocus());
+            idle();
+            InputConnection old = activity.getTerminalView().onCreateInputConnection(new EditorInfo());
+            old.setComposingText("old preedit", 1);
+            // Give the fake finished process the real service exit callback, without starting a PTY.
+            TermuxSession existing = manager.mTermuxSessions.get(0);
+            manager.mTermuxSessions.set(0, ReflectionHelpers.callConstructor(TermuxSession.class,
+                ClassParameter.from(TerminalSession.class, first),
+                ClassParameter.from(ExecutionCommand.class, existing.getExecutionCommand()),
+                ClassParameter.from(TermuxSession.TermuxSessionClient.class, activity.getTermuxService()),
+                ClassParameter.from(boolean.class, false)));
+            ReflectionHelpers.setField(first, "mShellPid", -1);
+            TerminalImeComposingTest.RecordingImm.clear();
+            activity.getTermuxTerminalSessionClient().removeFinishedSession(first);
+            assertEquals(1, activity.getTermuxService().getTermuxSessionsSize());
+            assertSame(second, activity.getCurrentSession());
+            idle();
+            assertTrue(TerminalImeComposingTest.RecordingImm.restarts.contains(activity.getTerminalView()));
+            assertFalse(old.commitText("late", 1));
+            InputConnection current = activity.getTerminalView().onCreateInputConnection(new EditorInfo());
+            current.commitText("new target", 1);
+            assertEquals("new target", input(second));
+            assertEquals("", input(first));
+        } finally {
+            preferences.setImeComposingEnabled(false);
             controller.pause().stop().destroy();
         }
     }

@@ -13,7 +13,15 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
-- Restarts only the focused Honeyboard virtual editor after session navigation, carrying intent across temporary null/rapid replacements and guarding deferred work by connection generation, selection and focus. Clears stale Honeyboard drafts before BaseInputConnection closure; normal IME closure remains unchanged. Regression dispatch is explicitly a test-local asynchronous direct-target IMM bridge, not full system/ViewRoot emulation.
+- Test-only composing-preference fixture completes the first real PRIVATE preferences load before dual-mode construction and verifies backend identity/key absence. Default-OFF and immediate true/false readbacks stay intact; no production preference I/O, fake backend, seeded setting, or post-setter idle is introduced.
+
+- Reconciles opt-in composing preference changes even after an OFF connection was invalidated, with guarded/coalesced restart requests and stale legacy-draft cancellation only for admitted ON replacement. Collapsed/clipped composing regions finalize retained drafts once instead of hiding text ahead of terminal navigation/deletion; ordinary OFF behavior remains unchanged.
+
+- After an observed window-focus loss, request guarded IMM rebinding for an invalidated composing/Honeyboard connection on actual focused return, including missed-gain reattachment. Keep generation/session/selection cancellation and native-editor/ordinary-legacy isolation; do not request keyboard showing or replay canceled drafts. API24 input fixtures use explicit synthetic legacy layout spacing, not production font clamps or rendering claims.
+
+- Requires a valid nonempty composing span before ON-mode deletion edits the local Editable; absent/empty markers retain terminal Backspace fallback. Natural empty/equal AOSP operations are expected to be unmarked, not a claimed zero-span reproducer. The retained zero-marker regression is separately synthetic; OFF and active supplementary-text behavior are preserved.
+
+- Restarts focused Honeyboard virtual editors, or opt-in real composing editors, after session navigation, carrying intent across temporary null/rapid replacements and guarding deferred work by connection generation, selection and focus. Clears stale Honeyboard drafts before BaseInputConnection closure; OFF-mode ordinary IME closure remains unchanged. Regression dispatch is explicitly a test-local asynchronous direct-target IMM bridge, not full system/ViewRoot emulation.
 
 - Preserves available legacy initial functional-key presses for events-only Kitty flags 2/6, including DECCKM/SS3 and F1-F4, while retaining layout-resolved Space, legacy-null fallbacks, repeat/release encoding and Pi flags7. This is a Termux compatibility policy, not a native Kitty parity claim. Corrects the synthetic keymap fixtures to pinned Robolectric 4.17's actual char-valued native hook without production seams.
 
@@ -45,6 +53,8 @@ This is the canonical concise inventory of intentional differences from the audi
 - Routes drawer layout, Back handling, hardware shortcuts, and the `DRAWER` extra key through one logical start/end position contract.
 
 ## Features
+
+- Adds default-OFF direct-terminal IME Composing Preview with real spans/selection, mutually exclusive Samsung metadata, completed-frame cursor/palette/style rendering and connection/session guards. Uncommitted enabled preedit is canceled—not replayed—on invalidation; existing clients default false and the real editor stays untouched. See [source, safety policy and verification limits](docs/CJK_PREEDIT_2026-11-09.md).
 
 - Adds connection-scoped Samsung Honeyboard navigation metadata so its empty-editor arrow suppression can be addressed without inserting sentinels into terminal/editor text. Deferred updates require the current focused connection/session/generation and are invalidated on replacement, close or lifecycle changes. See [source and physical-acceptance limits](docs/HONEYBOARD_INPUT_2026-11-09.md).
 

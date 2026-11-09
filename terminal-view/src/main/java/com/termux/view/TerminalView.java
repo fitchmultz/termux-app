@@ -15,6 +15,7 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.Selection;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.ActionMode;
@@ -96,12 +97,94 @@ public final class TerminalView extends View {
     /** Identity of the served terminal connection; deferred IME metadata must not outlive it. */
     private BaseInputConnection mInputConnection;
     private long mInputConnectionGeneration;
-    /** Carry Honeyboard restart intent through temporary null and rapid session changes. */
+    private long mQueuedInputRestartGeneration = -1;
+    /** Legacy editors older than an admitted ON rebind must not flush drafts when closed. */
+    private long mLegacyInputCancellationGeneration = -1;
+    private boolean mImeComposingEnabled;
+    /** Carry feature-connection restart intent through temporary null and rapid session changes. */
     private boolean mRestartInputAfterSessionChange;
+    /** Defer feature rebinding after a known window-focus loss until the matching gain callback. */
+    private boolean mInputConnectionWindowFocusLost;
+    private String mComposingText;
+    private int mComposingCursor = -1;
 
     private void invalidateInputConnection() {
+        // An uncommitted preview belongs to its original editor/session, never a new pane.
+        if (mImeComposingEnabled && mInputConnection != null) mInputConnection.getEditable().clear();
         mInputConnection = null;
         mInputConnectionGeneration++;
+        mImeComposingEnabled = false;
+        setComposingTextPreview(null, -1);
+    }
+
+    private void restartInvalidatedFeatureInputConnection() {
+        if ((mInputConnectionWindowFocusLost && !hasWindowFocus()) || mInputConnection != null ||
+            mTermSession == null || !hasFocus() || !isAttachedToWindow() ||
+            (!mRestartInputAfterSessionChange && !mClient.shouldEnableImeComposing())) return;
+        long generation = mInputConnectionGeneration;
+        if (mQueuedInputRestartGeneration == generation) return;
+        mQueuedInputRestartGeneration = generation;
+        TerminalSession session = mTermSession;
+        post(() -> {
+            // An obsolete runnable must not release a newer generation's queued restart.
+            if (mQueuedInputRestartGeneration == generation) mQueuedInputRestartGeneration = -1;
+            boolean enableComposing = mClient.shouldEnableImeComposing();
+            if (generation != mInputConnectionGeneration || mInputConnection != null || mTermSession != session ||
+                (mInputConnectionWindowFocusLost && !hasWindowFocus()) || !hasFocus() || !isAttachedToWindow() ||
+                !mClient.isTerminalViewSelected() || (!mRestartInputAfterSessionChange && !enableComposing)) return;
+            InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                // Base closure can run synchronously inside restartInput, before the replacement callback.
+                if (enableComposing) mLegacyInputCancellationGeneration = generation;
+                imm.restartInput(TerminalView.this);
+            }
+        });
+    }
+
+    private void setComposingTextPreview(String text, int cursor) {
+        if (TextUtils.equals(text, mComposingText) && cursor == mComposingCursor) return;
+        mComposingText = text;
+        mComposingCursor = cursor;
+        invalidate();
+    }
+
+    private void updateComposingTextPreview(BaseInputConnection connection) {
+        if (!mImeComposingEnabled || connection != mInputConnection) return;
+        Editable editable = connection.getEditable();
+        int start = BaseInputConnection.getComposingSpanStart(editable);
+        int end = BaseInputConnection.getComposingSpanEnd(editable);
+        if (start < 0 || end <= start || end > editable.length()) {
+            setComposingTextPreview(null, -1);
+        } else {
+            int selection = Selection.getSelectionStart(editable);
+            setComposingTextPreview(editable.subSequence(start, end).toString(),
+                selection >= start && selection <= end ? selection - start : -1);
+        }
+    }
+
+    private void finalizeComposingIfActive() {
+        BaseInputConnection connection = mInputConnection;
+        if (!mImeComposingEnabled || mComposingText == null || connection == null || !hasFocus()) return;
+        long generation = mInputConnectionGeneration;
+        connection.finishComposingText();
+        post(() -> {
+            if (mInputConnection != connection || generation != mInputConnectionGeneration ||
+                !mImeComposingEnabled || mComposingText != null || !hasFocus() || !isAttachedToWindow() || !mClient.isTerminalViewSelected()) return;
+            InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) imm.restartInput(TerminalView.this);
+        });
+    }
+
+    /** Apply a changed opt-in setting on return without stealing focus from a native editor. */
+    public void refreshImeComposingPreference() {
+        if (!hasFocus() || !isAttachedToWindow() || !mClient.isTerminalViewSelected() || mTermSession == null ||
+            (mInputConnectionWindowFocusLost && !hasWindowFocus())) return;
+        if (mInputConnection != null) {
+            if (mImeComposingEnabled == mClient.shouldEnableImeComposing()) return;
+            invalidateInputConnection();
+        }
+        // A lost OFF connection still needs rebinding when the preference has since become ON.
+        restartInvalidatedFeatureInputConnection();
     }
 
     /** Only terminal-delivered physical keys may produce a matching release. */
@@ -354,7 +437,6 @@ public final class TerminalView extends View {
      */
     public boolean attachSession(TerminalSession session) {
         if (session == mTermSession) return false;
-        boolean restartFocusedInput = mRestartInputAfterSessionChange && hasFocus() && isAttachedToWindow();
         mKittyKeyPresses.clear();
         invalidateInputConnection();
         stopTextSelectionMode();
@@ -371,17 +453,8 @@ public final class TerminalView extends View {
         // Wait with enabling the scrollbar until we have a terminal to get scroll position from.
         setVerticalScrollBarEnabled(session != null);
         invalidate();
-        // Session navigation can keep this view focused while Android still serves the old editor.
-        // Rebind only Honeyboard's virtual editor; restartInput does not request keyboard showing.
-        if (restartFocusedInput && session != null) {
-            long generation = mInputConnectionGeneration;
-            post(() -> {
-                if (generation != mInputConnectionGeneration || mInputConnection != null || mTermSession != session ||
-                    !hasFocus() || !isAttachedToWindow() || !mClient.isTerminalViewSelected()) return;
-                InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
-                if (imm != null) imm.restartInput(TerminalView.this);
-            });
-        }
+        // Rebind only feature editors after null/rapid session changes; never request keyboard showing.
+        restartInvalidatedFeatureInputConnection();
 
         return true;
     }
@@ -408,12 +481,19 @@ public final class TerminalView extends View {
 
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+        invalidateInputConnection();
+        final boolean composing = mClient.isTerminalViewSelected() && hasFocus() && mClient.shouldEnableImeComposing();
         // Ensure that inputType is only set if TerminalView is selected view with the keyboard and
         // an alternate view is not selected, like an EditText. This is necessary if an activity is
         // initially started with the alternate view or if activity is returned to from another app
         // and the alternate view was the one selected the last time.
         if (mClient.isTerminalViewSelected()) {
-            if (mClient.shouldEnforceCharBasedInput()) {
+            if (composing) {
+                outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL |
+                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+                outAttrs.initialSelStart = outAttrs.initialSelEnd = 0;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) outAttrs.setInitialSurroundingText("");
+            } else if (mClient.shouldEnforceCharBasedInput()) {
                 // Some keyboards seems do not reset the internal state on TYPE_NULL.
                 // Affects mostly Samsung stock keyboards.
                 // https://github.com/termux/termux-app/issues/686
@@ -443,7 +523,8 @@ public final class TerminalView extends View {
 
         // Honeyboard may suppress RIGHT before emitting a DPAD event if an empty terminal
         // Editable looks like its right boundary. This virtual context is metadata only.
-        final boolean honeyboard = mClient.isTerminalViewSelected() && hasFocus() && isSamsungHoneyboardInputMethod();
+        // The opt-in composing editor exposes its actual Editable, never Honeyboard's sentinels.
+        final boolean honeyboard = !composing && mClient.isTerminalViewSelected() && hasFocus() && isSamsungHoneyboardInputMethod();
         if (honeyboard) {
             outAttrs.initialSelStart = outAttrs.initialSelEnd = 1;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) outAttrs.setInitialSurroundingText("xx");
@@ -460,6 +541,25 @@ public final class TerminalView extends View {
                     boundSession == mTermSession;
             }
 
+            private boolean isActiveComposingConnection() {
+                return isCurrentConnection() && hasFocus() && isAttachedToWindow() && mClient.isTerminalViewSelected();
+            }
+
+            private boolean hasNonEmptyComposingSpan() {
+                Editable editable = getEditable();
+                int start = BaseInputConnection.getComposingSpanStart(editable);
+                int end = BaseInputConnection.getComposingSpanEnd(editable);
+                // An empty framework COMPOSING marker is not an active preedit.
+                return start >= 0 && end > start && end <= editable.length();
+            }
+
+            private boolean finishComposingTextIfNoPreedit() {
+                if (!composing || !isActiveComposingConnection() || hasNonEmptyComposingSpan() ||
+                    getEditable().length() == 0) return false;
+                finishComposingText();
+                return true;
+            }
+
             private boolean useHoneyboardVirtualEditor() {
                 return honeyboard && isCurrentConnection() && hasFocus() && isAttachedToWindow() &&
                     mClient.isTerminalViewSelected() && isSamsungHoneyboardInputMethod();
@@ -472,6 +572,32 @@ public final class TerminalView extends View {
                 result.partialStartOffset = result.partialEndOffset = -1;
                 result.selectionStart = result.selectionEnd = 1;
                 return result;
+            }
+
+            private ExtractedText composingExtractedText() {
+                Editable editable = getEditable();
+                ExtractedText result = new ExtractedText();
+                result.text = editable.toString();
+                result.startOffset = 0;
+                result.partialStartOffset = result.partialEndOffset = -1;
+                result.selectionStart = Selection.getSelectionStart(editable);
+                result.selectionEnd = Selection.getSelectionEnd(editable);
+                return result;
+            }
+
+            private void synchronizeComposingEditor() {
+                if (!composing || !isActiveComposingConnection()) return;
+                updateComposingTextPreview(this);
+                post(() -> {
+                    if (!isActiveComposingConnection()) return;
+                    InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm == null) return;
+                    Editable editable = getEditable();
+                    imm.updateSelection(TerminalView.this, Selection.getSelectionStart(editable), Selection.getSelectionEnd(editable),
+                        BaseInputConnection.getComposingSpanStart(editable), BaseInputConnection.getComposingSpanEnd(editable));
+                    if (mExtractedTextMonitor && mExtractedTextToken >= 0)
+                        imm.updateExtractedText(TerminalView.this, mExtractedTextToken, composingExtractedText());
+                });
             }
 
             private void synchronizeHoneyboardVirtualEditor() {
@@ -503,29 +629,44 @@ public final class TerminalView extends View {
 
             @Override
             public ExtractedText getExtractedText(ExtractedTextRequest request, int flags) {
-                if (!useHoneyboardVirtualEditor()) return super.getExtractedText(request, flags);
+                if (composing && !isActiveComposingConnection()) return null;
+                if (!composing && !useHoneyboardVirtualEditor()) return super.getExtractedText(request, flags);
                 if (request != null) {
                     mExtractedTextToken = request.token;
                     mExtractedTextMonitor = (flags & InputConnection.GET_EXTRACTED_TEXT_MONITOR) != 0;
                 }
-                return honeyboardExtractedText();
+                return composing ? composingExtractedText() : honeyboardExtractedText();
             }
 
             @Override
             public boolean setSelection(int start, int end) {
-                return useHoneyboardVirtualEditor() || super.setSelection(start, end);
+                if (!composing) return useHoneyboardVirtualEditor() || super.setSelection(start, end);
+                if (!isActiveComposingConnection()) return false;
+                boolean result = super.setSelection(start, end);
+                synchronizeComposingEditor();
+                Editable editable = getEditable();
+                int composingStart = BaseInputConnection.getComposingSpanStart(editable);
+                int composingEnd = BaseInputConnection.getComposingSpanEnd(editable);
+                if (result && composingStart >= 0 && composingEnd >= composingStart &&
+                    (start < composingStart || start > composingEnd || end < composingStart || end > composingEnd))
+                    finalizeComposingIfActive();
+                return result;
             }
 
             @Override
             public boolean setComposingText(CharSequence text, int newCursorPosition) {
+                if (composing && !isActiveComposingConnection()) return false;
                 boolean result = super.setComposingText(text, newCursorPosition);
+                if (!finishComposingTextIfNoPreedit()) synchronizeComposingEditor();
                 synchronizeHoneyboardVirtualEditor();
                 return result;
             }
 
             @Override
             public boolean setComposingRegion(int start, int end) {
+                if (composing && !isActiveComposingConnection()) return false;
                 boolean result = super.setComposingRegion(start, end);
+                if (!finishComposingTextIfNoPreedit()) synchronizeComposingEditor();
                 synchronizeHoneyboardVirtualEditor();
                 return result;
             }
@@ -536,8 +677,9 @@ public final class TerminalView extends View {
                 boolean wasCurrent = isCurrentConnection();
                 mClosed = true;
                 mExtractedTextMonitor = false;
-                // Base closure finishes composition: never flush an old virtual editor into a new session.
-                if (honeyboard && !wasCurrent) getEditable().clear();
+                // A restart after retargeting must not flush a stale virtual editor into the new session.
+                if (composing || (!wasCurrent && (honeyboard || generation < mLegacyInputCancellationGeneration)))
+                    getEditable().clear();
                 super.closeConnection();
                 if (mInputConnection == this) invalidateInputConnection();
             }
@@ -545,10 +687,13 @@ public final class TerminalView extends View {
             @Override
             public boolean finishComposingText() {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: finishComposingText()");
+                if (composing && !isActiveComposingConnection()) return false;
                 super.finishComposingText();
+                if (composing) setComposingTextPreview(null, -1);
 
                 sendTextToTerminal(getEditable());
                 getEditable().clear();
+                synchronizeComposingEditor();
                 synchronizeHoneyboardVirtualEditor();
                 return true;
             }
@@ -558,7 +703,9 @@ public final class TerminalView extends View {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
                     mClient.logInfo(LOG_TAG, "IME: commitText(\"" + text + "\", " + newCursorPosition + ")");
                 }
+                if (composing && !isActiveComposingConnection()) return false;
                 super.commitText(text, newCursorPosition);
+                if (composing) setComposingTextPreview(null, -1);
 
                 if (mEmulator == null) {
                     synchronizeHoneyboardVirtualEditor();
@@ -575,6 +722,7 @@ public final class TerminalView extends View {
                     sendTextToTerminal(content);
                 }
                 content.clear();
+                synchronizeComposingEditor();
                 synchronizeHoneyboardVirtualEditor();
                 return true;
             }
@@ -583,6 +731,14 @@ public final class TerminalView extends View {
             public boolean deleteSurroundingText(int leftLength, int rightLength) {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
                     mClient.logInfo(LOG_TAG, "IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
+                }
+                if (composing) {
+                    if (!isActiveComposingConnection()) return false;
+                    if (hasNonEmptyComposingSpan()) {
+                        boolean result = super.deleteSurroundingText(leftLength, rightLength);
+                        synchronizeComposingEditor();
+                        return result;
+                    }
                 }
                 // The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
                 KeyEvent deleteKey = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL);
@@ -594,7 +750,13 @@ public final class TerminalView extends View {
 
             @Override
             public boolean deleteSurroundingTextInCodePoints(int beforeLength, int afterLength) {
+                if (composing) {
+                    if (!isActiveComposingConnection() || beforeLength < 0 || afterLength < 0) return false;
+                    if (!hasNonEmptyComposingSpan())
+                        return deleteSurroundingText(beforeLength, afterLength);
+                }
                 boolean result = super.deleteSurroundingTextInCodePoints(beforeLength, afterLength);
+                synchronizeComposingEditor();
                 synchronizeHoneyboardVirtualEditor();
                 return result;
             }
@@ -660,7 +822,9 @@ public final class TerminalView extends View {
 
         };
         mInputConnection = connection;
-        mRestartInputAfterSessionChange = honeyboard;
+        mImeComposingEnabled = composing;
+        mRestartInputAfterSessionChange = composing || honeyboard;
+        if (composing) mLegacyInputCancellationGeneration = generation;
         return connection;
     }
 
@@ -1025,6 +1189,10 @@ public final class TerminalView extends View {
             return super.onKeyDown(keyCode, event);
         }
 
+        // Application shortcuts above retain precedence; only terminal-delivered bypass keys
+        // finalize a preview. Modifier presses remain available to the composing IME.
+        if (!KeyEvent.isModifierKey(keyCode)) finalizeComposingIfActive();
+
         final int metaState = event.getMetaState();
         final boolean controlDown = event.isCtrlPressed() || mClient.readControlKey();
         final boolean leftAltDown = (metaState & KeyEvent.META_ALT_LEFT_ON) != 0 || mClient.readAltKey();
@@ -1124,6 +1292,7 @@ public final class TerminalView extends View {
         }
 
         if (mTermSession == null) return;
+        finalizeComposingIfActive();
 
         // Ensure cursor is shown when a key is pressed down like long hold on (arrow) keys
         if (mEmulator != null)
@@ -1297,6 +1466,22 @@ public final class TerminalView extends View {
         }
     }
 
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(hasWindowFocus);
+        if (!hasWindowFocus) {
+            mInputConnectionWindowFocusLost = true;
+            mKittyKeyPresses.clear();
+            invalidateInputConnection();
+        } else {
+            boolean restoreInvalidatedInput = mInputConnectionWindowFocusLost;
+            mInputConnectionWindowFocusLost = false;
+            // Non-IME windows can leave Android serving the invalidated connection on return.
+            // Rebind the selected feature editor without asking the keyboard to become visible.
+            if (restoreInvalidatedInput && hasWindowFocus()) refreshImeComposingPreference();
+        }
+    }
+
     /**
      * This is called during layout when the size of this view has changed. If you were just added to the view
      * hierarchy, you're called with the old values of 0.
@@ -1349,6 +1534,11 @@ public final class TerminalView extends View {
 
             // render the text selection handles
             renderTextSelection();
+            if (mImeComposingEnabled && mComposingText != null && hasFocus()) {
+                char[] chars = mComposingText.toCharArray();
+                mRenderer.renderComposingText(mEmulator.getRendererState(), canvas, mTopRow,
+                    chars, 0, chars.length, mComposingCursor);
+            }
         }
     }
 
