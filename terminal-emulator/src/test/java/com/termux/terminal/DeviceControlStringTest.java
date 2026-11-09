@@ -34,6 +34,16 @@ public class DeviceControlStringTest extends TerminalTestCase {
 		enterString("B").assertLinesAre("AB ", "   ", "   ");
 	}
 
+	public void testQueryArgumentsSurviveColumnAndCellResize() {
+		withTerminalSized(10, 3).enterString("\033P+q43");
+		resize(11, 3);
+		assertEnteringStringGivesResponse("6F\033\\", "\033P1+r436F=323536\033\\");
+
+		enterString("\033P$q");
+		mTerminal.resize(11, 3, INITIAL_CELL_WIDTH_PIXELS + 1, INITIAL_CELL_HEIGHT_PIXELS + 1);
+		assertEnteringStringGivesResponse("\"p\033\\", "\033P1$r64;1\"p\033\\");
+	}
+
 	public void testReportKeys() {
 		withTerminalSized(3, 3);
 		assertCapabilityResponse("kB", "\033[Z");

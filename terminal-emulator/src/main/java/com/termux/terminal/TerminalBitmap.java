@@ -267,6 +267,90 @@ public class TerminalBitmap {
     }
 
 
+    /** Decode a direct Kitty source once, before it can enter the reusable image cache. */
+    static Bitmap decodeKitty(KittyImage command, byte[] image) {
+        if (image == null || image.length > MAX_IMAGE_DATA_SIZE) return null;
+        if (command.format == 100) {
+            // f=100 means PNG, not any format accepted by BitmapFactory (nor Chafa TIFF).
+            byte[] signature = {(byte) 137, 80, 78, 71, 13, 10, 26, 10};
+            if (image.length < signature.length) return null;
+            for (int i = 0; i < signature.length; i++) if (image[i] != signature[i]) return null;
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(image, 0, image.length, bounds);
+            if (!isBitmapSizeValid(bounds.outWidth, bounds.outHeight)) return null;
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inScaled = false;
+            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            Bitmap decoded = BitmapFactory.decodeByteArray(image, 0, image.length, options);
+            return isBitmapValid(decoded) && decoded.getWidth() == bounds.outWidth &&
+                decoded.getHeight() == bounds.outHeight ? decoded : null;
+        }
+        int width = command.pixelWidth, height = command.pixelHeight, channels = command.format / 8;
+        if (!isBitmapSizeValid(width, height) || (long) width * height * channels != image.length) return null;
+        Bitmap decoded = allocateBitmap(width, height);
+        if (decoded == null) return null;
+        int[] row = new int[width];
+        int offset = 0;
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int red = image[offset++] & 255, green = image[offset++] & 255, blue = image[offset++] & 255;
+                int alpha = channels == 4 ? image[offset++] & 255 : 255;
+                row[x] = (alpha << 24) | (red << 16) | (green << 8) | blue;
+            }
+            // setPixels takes straight ARGB; Android handles premultiplication, including alpha0.
+            decoded.setPixels(row, 0, width, 0, y, width, 1);
+        }
+        return decoded;
+    }
+
+    /**
+     * Prepare crop/scale/padding entirely before publication. Dimensions come from decoded pixels,
+     * not client s/v declarations. All requested and padded geometry is checked BEFORE allocation;
+     * no createScaledBitmap/cropped temporary can bypass the common Android draw limits.
+     */
+    static Bitmap prepareKitty(TerminalBuffer buffer, Bitmap source, KittyImage command,
+                               int x, int y, int cellWidth, int cellHeight) {
+        if (!isBitmapValid(source) || cellWidth <= 0 || cellHeight <= 0) return null;
+        int left = command.sourceX, top = command.sourceY;
+        int right = (int) Math.min(source.getWidth(), (long) left +
+            (command.sourceWidth > 0 ? command.sourceWidth : source.getWidth()));
+        int bottom = (int) Math.min(source.getHeight(), (long) top +
+            (command.sourceHeight > 0 ? command.sourceHeight : source.getHeight()));
+        if (left >= right || top >= bottom) return null;
+        int cropWidth = right - left, cropHeight = bottom - top;
+        long width = command.columns > 0 ? (long) command.columns * cellWidth : cropWidth;
+        long height = command.rows > 0 ? (long) command.rows * cellHeight : cropHeight;
+        if (command.columns > 0 && command.rows == 0)
+            height = Math.max(1, (width * cropHeight + cropWidth - 1) / cropWidth);
+        else if (command.rows > 0 && command.columns == 0)
+            width = Math.max(1, (height * cropWidth + cropHeight - 1) / cropHeight);
+        if (!isBitmapSizeValid(width, height)) return null;
+        long maxWidth = (long) (buffer.getImageRightMargin() - x) * cellWidth;
+        long paddedWidth = Math.min(maxWidth, roundUpToCell(width, cellWidth));
+        long paddedHeight = roundUpToCell(height, cellHeight);
+        // Kitty scrolls only as a consequence of cursor movement (screen.c handle_graphics_command).
+        // C=1 stays anchored and clips at the bottom; it must not scroll even inside valid margins.
+        if (command.noMove || !buffer.canScrollImage())
+            paddedHeight = Math.min(paddedHeight, (long) (buffer.getImageBottomMargin() - y) * cellHeight);
+        if (!isBitmapSizeValid(paddedWidth, paddedHeight) ||
+            paddedWidth / cellWidth > MAX_BITMAP_CELLS || paddedHeight / cellHeight > MAX_BITMAP_CELLS) return null;
+        Bitmap result = allocateBitmap((int) paddedWidth, (int) paddedHeight);
+        if (result == null) return null;
+        // The protocol reserves c/r but preserves source aspect ratio within that rectangle.
+        double scale = Math.min((double) width / cropWidth, (double) height / cropHeight);
+        float drawWidth = (float) (cropWidth * scale), drawHeight = (float) (cropHeight * scale);
+        float dx = (width - drawWidth) / 2, dy = (height - drawHeight) / 2;
+        // A filtered source Rect still samples neighboring pixels outside the selected region.
+        // Isolate the crop so filtering clamps to its edges, not to the full cached image.
+        // Both allocations follow geometry admission; this crop cannot exceed the valid source.
+        Bitmap cropped = left == 0 && top == 0 && right == source.getWidth() && bottom == source.getHeight()
+            ? source : Bitmap.createBitmap(source, left, top, cropWidth, cropHeight);
+        new Canvas(result).drawBitmap(cropped, null,
+            new RectF(dx, dy, dx + drawWidth, dy + drawHeight), new Paint(Paint.FILTER_BITMAP_FLAG));
+        return result;
+    }
+
     /** Build a {@link TerminalBitmap} from a {@link Bitmap}. */
     public static TerminalBitmap build(TerminalBuffer terminalBuffer, int bitmapNum, Bitmap bitmap,
                                        int x, int y, int cellWidth, int cellHeight) {

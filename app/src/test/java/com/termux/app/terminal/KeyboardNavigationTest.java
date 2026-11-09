@@ -4,6 +4,7 @@ import android.app.Application;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -17,6 +18,7 @@ import android.widget.TextView;
 import com.termux.app.TermuxActivity;
 import com.termux.app.TermuxService;
 import com.termux.shared.shell.command.ExecutionCommand;
+import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
 import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import com.termux.shared.termux.shell.TermuxShellManager;
@@ -257,18 +259,27 @@ public class KeyboardNavigationTest {
     }
 
     @Test @Config(shadows = {TerminalPaneLayoutTest.NoPty.class, TerminalImeComposingTest.RecordingImm.class})
-    public void composingConnectionRestartsAfterActualFinishedSessionRemoval() {
+    public void composingConnectionRestartsAfterActualFinishedSessionRemoval() throws Exception {
         Application app = RuntimeEnvironment.getApplication();
         TermuxShellManager manager = TermuxShellManager.init(app);
         manager.mTermuxSessions.clear();
         TerminalSession first = session("one", manager), second = session("two", manager);
+        // Complete the first PRIVATE load before build() opens the same file in both modes.
+        Context packageContext = app.createPackageContext(TermuxConstants.TERMUX_PACKAGE_NAME,
+            Context.CONTEXT_RESTRICTED);
+        SharedPreferences primed = packageContext.getSharedPreferences(
+            TermuxConstants.TERMUX_DEFAULT_PREFERENCES_FILE_BASENAME_WITHOUT_EXTENSION, Context.MODE_PRIVATE);
+        assertTrue("The isolated preference fixture must start empty", primed.getAll().isEmpty());
         com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences preferences =
             com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences.build(app, true);
         assertNotNull(preferences);
+        assertSame(primed, preferences.getSharedPreferences());
         preferences.setImeComposingEnabled(true);
+        assertTrue(preferences.isImeComposingEnabled());
         ActivityController<TermuxActivity> controller = start();
         try {
             TermuxActivity activity = controller.get();
+            assertTrue(activity.getPreferences().isImeComposingEnabled());
             TerminalPaneLayoutTest.size(activity.findViewById(com.termux.R.id.activity_termux_root_view), 900, 650);
             activity.getTermuxTerminalSessionClient().setCurrentSession(first);
             assertTrue(activity.getTerminalView().requestFocus());

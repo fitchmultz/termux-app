@@ -53,9 +53,9 @@ SDK28/37; API24 is explicitly legacy, not a native-graphics claim.
 
 Synthetic candidate OFF/ON native captures can document the visible difference;
 they are not physical Fold screenshots or an unchanged-Fold16 build comparison.
-Authoring/static review is not execution. Exact-head M1 CI and genuine final-pair
-Pi Durable/Cursor reviews remain required. Actual Samsung/CJK/physical behavior is
-unverified until owner acceptance tomorrow, not an invented release-blocking gate.
+Authoring/static review is not execution. The qualified feature-head run below
+records M1 execution and both configured reviews. Actual Samsung/CJK/physical
+behavior remains unverified until owner acceptance, separate from release checks.
 No Node/runtime, package, shared Pi/dotfile, SDK/profile, certificate or prefix
 change is introduced here; the ongoing phone source build remains untouched.
 
@@ -84,8 +84,8 @@ it does not emulate full ViewRoot/served-view routing or fabricate PTY bytes.
 Keyboard fixture corrections and Honeyboard lifecycle regressions are integrated.
 The merged production View matches the independently reviewed CJK correction
 apart from one explanatory restart comment; composing-or-Honeyboard restart
-intent and stale-draft guards retain their existing superset behavior. Real
-final-head CI and both independent reviews remain required.
+intent and stale-draft guards retain their existing superset behavior. The
+qualified feature-head run below records execution and both independent reviews.
 
 
 ## Window-focus recovery correction and actual runtime limits
@@ -126,8 +126,8 @@ API24-only Paint shim supplying synthetic layout spacing from the configured
 text size, retaining `NoPty`, `RecordingImm`, LEGACY graphics, actual layout,
 all test bodies and queue assertions. Native API28/37 configuration is unchanged.
 The shim is not font or pixel fidelity, and production font policy is unchanged.
-Both increments are independently source-reviewed; new-head full CI and fresh
-Pi Durable/Cursor reviews remain mandatory.
+Both increments are independently source-reviewed and included in the qualified
+feature-head execution recorded below.
 
 
 ## Further lifecycle review corrections
@@ -156,10 +156,9 @@ incomplete review is not evidence of no findings and is not merge clearance.
 Regressions cover preference/window recovery, stale closure and natural replacement,
 collapsed/clipped regions, following terminal input/deletion, prefix/suffix retention
 and OFF/cancellation boundaries. All existing API24 layout-shim configurations and
-native API28/37 configuration are retained. These changes are independently source-
-reviewed, **not yet current-head runtime qualification**. The recording IMM/manual
-replacement tests do not establish a physical Settings/notification-shade/OEM trace.
-Fresh final-pair Pi Durable/Cursor review and full CI remain required.
+native API28/37 configuration are retained. Qualified feature-head execution is
+recorded below. The recording IMM/manual replacement tests do not establish a
+physical Settings/notification-shade/OEM trace.
 
 
 ## SDK28 preference-fixture initialization
@@ -188,6 +187,16 @@ empty commit, clearing/seeding settings, fake backend, sleep, post-setter idle,
 production workaround, or claim that already-overlapping loaders are drained.
 The earlier empty-commit candidate was superseded and is not applied.
 
-This one-file fixture increment is independently source-reviewed. Only fresh-
-head full CI can establish recovery; final-pair Pi Durable/Cursor reviews remain
-mandatory. No actual user preferences or phone/runtime configuration were touched.
+The finished-session-removal Activity fixture uses the same initial-load ordering
+and checks backend identity, immediate enabled readback and the real Activity's
+enabled preference before exercising rebinding. Its restart, stale-commit rejection
+and replacement-session input assertions remain unchanged.
+
+The finished-session fixture passes in
+[M1 run42639240850](https://github.com/fitchmultz/termux-app/actions/runs/42639240850)
+at `ef36c7e83a0f6949c67d504473243b92d7bb149e`, including backend identity,
+immediate enabled readback, the real Activity's enabled preference, restart and
+stale-input rejection. All 637 tests and both configured reviews passed on that
+feature head. This verifies the fixture and original behavior assertions, not an
+unrecorded preference state during the earlier failure. No actual user preferences
+or phone/runtime configuration were touched.
