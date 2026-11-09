@@ -4,6 +4,7 @@ import android.util.Base64;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Stack;
@@ -245,7 +246,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     private boolean mSynchronizedOutputCursorStateChanged;
 
     /** Last completed visible state retained while synchronized output mutates the live emulator. */
-    private TerminalRendererState mSynchronizedOutputRendererState;
+    private CompletedScreenSnapshot mSynchronizedOutputRendererState;
 
     /**
      * If insert mode (as opposed to replace mode) is active. In insert mode new characters are inserted, pushing
@@ -306,6 +307,38 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     /** If automatic scrolling of terminal is disabled */
     private boolean mAutoScrollDisabled;
+
+    // OSC 8 hyperlinks. An open gives the link a nonzero id that every cell printed until the close carries
+    // (TerminalRow#getHyperlink), and getHyperlinkUri resolves it. Opens sharing an explicit id= and URI share one id,
+    // as the OSC 8 convention asks, so a link a program printed in pieces is one link; an open without one is always
+    // a new link. The table is bounded: an id is only ever reused once no cell of either buffer holds it, so a cell
+    // can never resolve to another link's address, and while every slot is live a new open prints with no link.
+    static final int MAX_HYPERLINKS = 1024;
+    private final String[] mHyperlinkUris = new String[MAX_HYPERLINKS + 1];
+    private final String[] mHyperlinkKeys = new String[MAX_HYPERLINKS + 1];
+    private final HashMap<String, Integer> mHyperlinkIds = new HashMap<>();
+    /** The link cells are printed under now, 0 for none. Not part of the pen SGR resets or DECSC saves. */
+    private int mHyperlink = 0;
+    private int mNextHyperlink = 1;
+    /** Opens since the table was last swept. */
+    private int mHyperlinkOpensSinceSweep = 0;
+
+    /** The URI of an OSC 8 hyperlink id a live cell carries, or null. */
+    public String getHyperlinkUri(int id) {
+        return id > 0 && id <= MAX_HYPERLINKS ? mHyperlinkUris[id] : null;
+    }
+
+    /** Resolve a hyperlink from the same completed cells the terminal presents. */
+    public String getHyperlinkAt(int column, int row) {
+        CompletedScreenSnapshot snapshot = isSynchronizedOutputActive() ? mSynchronizedOutputRendererState : null;
+        TerminalBuffer screen = snapshot == null ? mScreen : snapshot.mScreen;
+        if (column < 0 || column >= screen.mColumns || row < -screen.getActiveTranscriptRows() || row >= screen.mScreenRows)
+            return null;
+        TerminalRow line = screen.mLines[screen.externalToInternalRow(row)];
+        if (line == null) return null;
+        int link = line.getHyperlink(column);
+        return (snapshot == null ? mHyperlinkUris : snapshot.mHyperlinkUris)[link];
+    }
 
     private byte mUtf8ToFollow, mUtf8Index;
     private final byte[] mUtf8InputBuffer = new byte[4];
@@ -608,7 +641,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 while (end < limit && buffer[end] >= 32 && buffer[end] < 127) end++;
 
                 TerminalRow row = mScreen.allocateFullLineIfNecessary(mScreen.externalToInternalRow(mCursorRow));
-                row.setAscii(mCursorCol, buffer, i, end - i, getStyle());
+                row.setAscii(mCursorCol, buffer, i, end - i, getStyle(), mHyperlink);
                 mLastEmittedCodePoint = buffer[end - 1];
                 int columnAfterRun = mCursorCol + end - i;
                 if (isDecsetInternalBitSet(DECSET_BIT_AUTOWRAP))
@@ -2267,6 +2300,9 @@ public final class TerminalEmulator implements TerminalRendererState {
                     }
                 }
                 break;
+            case 8: // hyperlink. "8;params;URI" opens one over the cells printed until "8;;" closes it.
+                setHyperlink(textParameter);
+                break;
             case 52: // Manipulate Selection Data. Skip the optional first selection parameter(s).
                 int startIndex = textParameter.indexOf(";") + 1;
                 try {
@@ -2337,6 +2373,68 @@ public final class TerminalEmulator implements TerminalRendererState {
         if (!mColors.updateDefaultColors(force)) return;
         mSession.onColorsChanged();
         if (isDecsetInternalBitSet(DECSET_BIT_THEME_UPDATES)) reportTheme();
+    }
+
+    /**
+     * OSC 8. {@code parameters} is everything after "8;": "params;URI", where params is a ':'-separated list
+     * of key=value pairs and only id= means anything. An empty URI closes the link. A sequence with no URI field at all
+     * is malformed and also closes it, so a link never runs on past a sequence meant to end it.
+     */
+    private void setHyperlink(String parameters) {
+        int split = parameters.indexOf(';');
+        String uri = split < 0 ? "" : parameters.substring(split + 1);
+        if (uri.isEmpty()) {
+            mHyperlink = 0;
+            return;
+        }
+        String id = null;
+        for (String parameter : parameters.substring(0, split).split(":", -1))
+            if (parameter.startsWith("id=") && parameter.length() > 3) id = parameter.substring(3);
+        String key = id == null ? null : id + '\u0000' + uri;
+        Integer existing = key == null ? null : mHyperlinkIds.get(key);
+        mHyperlink = existing != null ? existing : allocateHyperlink(key, uri);
+    }
+
+    private int allocateHyperlink(String key, String uri) {
+        mHyperlinkOpensSinceSweep++;
+        int id = freeHyperlink();
+        // A sweep reads every cell of both buffers, so a table still full after one waits a quarter of its size in
+        // opens before the next: bounded work however many links are live.
+        if (id == 0 && mHyperlinkOpensSinceSweep >= MAX_HYPERLINKS / 4) {
+            mHyperlinkOpensSinceSweep = 0;
+            sweepHyperlinks();
+            id = freeHyperlink();
+        }
+        if (id == 0) return 0;
+        mHyperlinkUris[id] = uri;
+        mHyperlinkKeys[id] = key;
+        if (key != null) mHyperlinkIds.put(key, id);
+        mNextHyperlink = id % MAX_HYPERLINKS + 1;
+        return id;
+    }
+
+    private int freeHyperlink() {
+        for (int step = 0; step < MAX_HYPERLINKS; step++) {
+            int id = (mNextHyperlink - 1 + step) % MAX_HYPERLINKS + 1;
+            if (mHyperlinkUris[id] == null) return id;
+        }
+        return 0;
+    }
+
+    /** Frees every id no cell of either buffer holds, and that is not the link being printed now. */
+    private void sweepHyperlinks() {
+        boolean[] live = new boolean[MAX_HYPERLINKS + 1];
+        live[mHyperlink] = true;
+        for (TerminalBuffer buffer : new TerminalBuffer[]{mMainBuffer, mAltBuffer})
+            for (TerminalRow row : buffer.mLines)
+                if (row != null && row.mLinks != null)
+                    for (int link : row.mLinks) live[link] = true;
+        for (int id = 1; id <= MAX_HYPERLINKS; id++) {
+            if (live[id] || mHyperlinkUris[id] == null) continue;
+            if (mHyperlinkKeys[id] != null) mHyperlinkIds.remove(mHyperlinkKeys[id]);
+            mHyperlinkUris[id] = null;
+            mHyperlinkKeys[id] = null;
+        }
     }
 
     private void blockClear(int sx, int sy, int w) {
@@ -2693,7 +2791,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         // so was mCursorCol changed after the offsetDueToCombiningChar conditional by another thread?
         // TODO: Check if there are thread synchronization issues with mCursorCol and mCursorRow, possibly causing others bugs too.
         if (column < 0) column = 0;
-        mScreen.setChar(column, mCursorRow, codePoint, getStyle());
+        mScreen.setChar(column, mCursorRow, codePoint, getStyle(), mHyperlink);
 
         if (autoWrap && displayWidth > 0)
             mAboutToAutoWrap = (mCursorCol == mRightMargin - displayWidth);
@@ -2769,6 +2867,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     public void reset() {
         mKittyKeyboardMain.reset();
         mKittyKeyboardAlt.reset();
+        mHyperlink = 0;
         setCursorStyle();
         mArgIndex = 0;
         mContinueSequence = false;
@@ -2849,6 +2948,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         private final boolean mCursorVisible;
         private final TerminalBuffer mScreen;
         private final int[] mPalette;
+        private final String[] mHyperlinkUris;
 
         CompletedScreenSnapshot(TerminalEmulator emulator) {
             mRows = emulator.mRows;
@@ -2860,6 +2960,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             mCursorVisible = emulator.shouldCursorBeVisible();
             mScreen = emulator.mScreen.snapshotVisibleScreen();
             mPalette = Arrays.copyOf(emulator.mColors.mCurrentColors, emulator.mColors.mCurrentColors.length);
+            mHyperlinkUris = emulator.mHyperlinkUris.clone();
         }
 
         @Override
