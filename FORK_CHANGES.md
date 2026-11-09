@@ -13,9 +13,23 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Composing preview distinguishes packed bitmap-cell metadata from text style before underline/color decoding, using the existing default text style and completed-frame palette/reverse-video snapshot for image cells. This prevents palette-index crashes and invisible preedit after cursor positioning over an image; ordinary colored text-cell behavior is unchanged. Native SDK28/37 regressions include bitmap slots0/300, coordinate-derived invalid text indices and synchronized-frame isolation.
+
 - Replaces the remaining image-margin test subclass of final TerminalBuffer with composition around the existing production placement/callback API. Production finality is preserved; no test-only seam or allocator quota is added.
 
 - Keeps bitmap-map field, constructor and import consistent after removing insertion-order eviction, fixing the genuine Cursor compile finding without restoring the rejected quota.
+
+- Test-only composing-preference fixture completes the first real PRIVATE preferences load before dual-mode construction and verifies backend identity/key absence. Default-OFF and immediate true/false readbacks stay intact; no production preference I/O, fake backend, seeded setting, or post-setter idle is introduced.
+
+- Reconciles opt-in composing preference changes even after an OFF connection was invalidated, with guarded/coalesced restart requests and stale legacy-draft cancellation only for admitted ON replacement. Collapsed/clipped composing regions finalize retained drafts once instead of hiding text ahead of terminal navigation/deletion; ordinary OFF behavior remains unchanged.
+
+- After an observed window-focus loss, request guarded IMM rebinding for an invalidated composing/Honeyboard connection on actual focused return, including missed-gain reattachment. Keep generation/session/selection cancellation and native-editor/ordinary-legacy isolation; do not request keyboard showing or replay canceled drafts. API24 input fixtures use explicit synthetic legacy layout spacing, not production font clamps or rendering claims.
+
+- Requires a valid nonempty composing span before ON-mode deletion edits the local Editable; absent/empty markers retain terminal Backspace fallback. Natural empty/equal AOSP operations are expected to be unmarked, not a claimed zero-span reproducer. The retained zero-marker regression is separately synthetic; OFF and active supplementary-text behavior are preserved.
+
+- Restarts focused Honeyboard virtual editors, or opt-in real composing editors, after session navigation, carrying intent across temporary null/rapid replacements and guarding deferred work by connection generation, selection and focus. Clears stale Honeyboard drafts before BaseInputConnection closure; OFF-mode ordinary IME closure remains unchanged. Regression dispatch is explicitly a test-local asynchronous direct-target IMM bridge, not full system/ViewRoot emulation.
+
+- Preserves available legacy initial functional-key presses for events-only Kitty flags 2/6, including DECCKM/SS3 and F1-F4, while retaining layout-resolved Space, legacy-null fallbacks, repeat/release encoding and Pi flags7. This is a Termux compatibility policy, not a native Kitty parity claim. Corrects the synthetic keymap fixtures to pinned Robolectric 4.17's actual char-valued native hook without production seams.
 
 - Wrapped-word lookup checks adjacent row boundaries in linear work instead of repeatedly serializing the growing transcript span; long wrapped-line regressions exercise the public final buffer directly in both directions without test-only inheritance or a timing policy.
 - Selectively adapts source-confirmed open upstream fixes for valid empty/sanitized writes, coalesced PTY input wakeups, overlapping cell styles, cursor/scroll-margin/cancellation correctness, wrapped transcript words and unmatched Ctrl+Alt active-pane routing. Existing Fold shortcuts, synchronized-output timeout and queue behavior remain; focused regressions cover those contracts. See the [correctness source map](docs/UPSTREAM_CORRECTNESS_2026-11-09.md).
@@ -50,6 +64,12 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Selectively integrates upstream Sixel and iTerm single/multipart inline images while preserving Fold OSC52 limits, completed DEC2026 pixel ownership, mixed text runs, panes/input and scroll margins. Uses sourced Android/upstream draw and encoded-data limits, checked geometry, bounds-first decoding and immutable publication—not custom heap-fraction quotas or a native-RSS guarantee. Column/font-cell changes clear only live fixed-geometry images so programs can redraw; completed frames retain old pixels. No image files are downloaded, uploaded or executed. See the [master/open-PR source audit and real Pi launch route](docs/UPSTREAM_AUDIT_2026-11-09.md).
 
+- Adds default-OFF direct-terminal IME Composing Preview with real spans/selection, mutually exclusive Samsung metadata, completed-frame cursor/palette/style rendering and connection/session guards. Uncommitted enabled preedit is canceled—not replayed—on invalidation; existing clients default false and the real editor stays untouched. See [source, safety policy and verification limits](docs/CJK_PREEDIT_2026-11-09.md).
+
+- Adds connection-scoped Samsung Honeyboard navigation metadata so its empty-editor arrow suppression can be addressed without inserting sentinels into terminal/editor text. Deferred updates require the current focused connection/session/generation and are invalidated on replacement, close or lifecycle changes. See [source and physical-acceptance limits](docs/HONEYBOARD_INPUT_2026-11-09.md).
+
+- Adds negotiated Kitty keyboard flags1|2|4 for distinct Pi Enter/newline and press/repeat/release input while preserving legacy mode, Fold shortcuts/panes/editor and literal IME control bytes. Main/alternate stacks retain PR5366's sourced 32-entry policy. See [source, IME repair and verification limits](docs/KITTY_KEYBOARD_2026-11-09.md).
+
 - Adds a native control editor in the session drawer and Terminal I/O settings. Drag or tap to reorder, move between rows, add keys/macros, remove keys, and reset. Saved app layouts override the file matrix explicitly; returning to the file layout leaves termux.properties untouched. Editor drafts survive activity recreation. Oversized app layouts scroll horizontally without shrinking touch targets. The default plus key starts a session through the existing new-session path; Home remains available in the editor.
 - Adds native two-pane sessions with independent terminal views, active-pane input routing, draggable sizing, layout/swap/maximize controls, and compact-window collapse without ending the hidden session. Compact transitions are applied before measurement so the remaining pane fills the window.
 - Adds a per-session Evidence Dock with native multiline composition, private file imports, Android share intake, saved-draft recovery, and explicit Insert versus confirmed Send. App-owned import state survives activity replacement; draft persistence and completion are committed together. Saved drafts can be explicitly recovered or deleted, and real-stream tests cover atomic import success/failure. Pending share selections survive recreation, while completed shares are not replayed. Imports never execute commands or upload content.
@@ -76,6 +96,10 @@ This is the canonical concise inventory of intentional differences from the audi
 ## Contracts, tests, and repository policy
 
 - Inline-image pixel/Canvas assertions run only on Robolectric-supported native graphics API28/37. An explicit API24 LEGACY case tests parser recovery and cell-size replies without allocating/rendering bitmaps; production minimum SDK24 is unchanged.
+
+- Honeyboard API24 input coverage uses a method-scoped legacy Paint layout-spacing shim because Robolectric 4.17 leaves font spacing zero. It preserves the attached/focused InputConnection/IMM/PTY-queue test path and assertions without runtime clamps, forced renderer fields or font/pixel-fidelity claims; native API28/37 is unchanged.
+
+- The negotiated-input drawer regression advances the real DrawerLayout animation in its manually laid-out Robolectric fixture instead of assuming looper idling supplies draw traversals. Shortcut dispatch, pane/release and terminal-byte assertions stay intact; no runtime drawer behavior changes.
 
 - Uses the same fixed public release-asset API fallback for the exact pinned custom lsof URL/SHA pair after browser transport failure. This repairs a separately observed HTTP504 after successful snapshot recovery; common checksum/offline/cache fail-closed behavior and all package/content pins remain unchanged.
 

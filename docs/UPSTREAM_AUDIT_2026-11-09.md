@@ -214,3 +214,37 @@ is represented as merged merely because it is selected above.
 
 Final PR/run/release evidence belongs in the PR delivery record, not invented
 success assertions in this source audit.
+
+
+## Current-main image/composing integration
+
+The fixed `b93a5a32b32d9534b0127332fbe86ca0d6fc7269` image head independently
+passed both Android runs (367 cases, zero failures/errors/skips), but its review
+base `3b01179…` was superseded by the actual input/CJK main. Numbered scopes are
+review inventory, **not a serial dependency gate**. This refresh normally merges
+actual CJK main `fe59e7042b2b2dfc4c5c31827caac4b05199a345` while responsive-input
+PR40 is independently underway; it does not wait for that feature or OSC8.
+
+Root and independent source review identified one concrete cross-scope defect:
+CUP onto a Sixel/iTerm image cell while composing is enabled let the new preview
+treat packed bitmap IDs/coordinates as text colors. Slot300 decodes an indexed
+background300 against259 palette entries; slot0 can yield black-on-black. This
+is source-confirmed, not a claimed physical crash reproduction.
+
+The bounded repair tag-checks the raw cell style first, substitutes existing
+TextStyle.NORMAL for bitmap cells, then adds underline. Making that existing
+immutable constant public serves this actual cross-package production caller;
+its value is unchanged. No palette clamping, payload bit arithmetic, live pen
+lookup, finality weakening, test seam, heap budget or extra image policy is added.
+Colors/reverse video still come from the completed TerminalRendererState, not
+pending synchronized SGR/palette/cursor state. Ordinary text-cell styles retain
+their existing path.
+
+Five authored native API28/37 methods cover slots0/300, coordinate-derived
+foreground259, completed-frame isolation and unchanged ordinary colored text.
+They use synthetic packed metadata through production Buffer APIs and direct
+Renderer calls—not an image producer, InputConnection workflow, screenshot or
+physical device. The preexisting real Pi emitter/production Android image tests
+remain separate and required. These new methods are source-reviewed, **unrun at
+this commit's preparation**; fresh final-pair CI/Pi Durable/Cursor and actual
+merged-main verification are still required. No native24 pixel claim is added.

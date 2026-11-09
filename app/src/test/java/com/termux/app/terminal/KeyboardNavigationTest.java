@@ -9,6 +9,8 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
 import android.widget.TextView;
 
 import com.termux.app.TermuxActivity;
@@ -83,6 +85,18 @@ public class KeyboardNavigationTest {
 
     private void idle() { Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1)); }
 
+    private void settleDrawer(TermuxActivity activity) {
+        androidx.drawerlayout.widget.DrawerLayout drawer = activity.getDrawer();
+        int gravity = activity.getTerminalSessionDrawerGravity();
+        // This fixture measures/layouts views directly. Advancing the looper alone does not
+        // supply the computeScroll calls that real draw traversals give an animated drawer.
+        // Drive its actual ViewDragHelper animation; never force the drawer into an open state.
+        for (int frame = 0; frame < 120 && !drawer.isDrawerOpen(gravity); frame++) {
+            drawer.computeScroll();
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16));
+        }
+    }
+
     private String input(TerminalSession session) {
         Object queue = ReflectionHelpers.getField(session, "mTerminalToProcessIOQueue");
         byte[] bytes = new byte[128];
@@ -123,6 +137,97 @@ public class KeyboardNavigationTest {
             assertEquals("", input(first));
             assertEquals("\033\u0018", input(second));
         } finally {
+            controller.pause().stop().destroy();
+        }
+    }
+
+    @Test public void negotiatedInputRetainsFoldShortcutAndPaneReleasePrecedence() {
+        Application app = RuntimeEnvironment.getApplication();
+        TermuxShellManager manager = TermuxShellManager.init(app);
+        manager.mTermuxSessions.clear();
+        TerminalSession first = session("one", manager), second = session("two", manager);
+        for (TerminalSession terminal : new TerminalSession[]{first, second}) {
+            byte[] negotiate = "\033[>7u".getBytes(StandardCharsets.UTF_8);
+            terminal.getEmulator().append(negotiate, negotiate.length);
+        }
+        ActivityController<TermuxActivity> controller = start();
+        try {
+            TermuxActivity activity = controller.get();
+            View root = activity.findViewById(com.termux.R.id.activity_termux_root_view);
+            TerminalPaneLayoutTest.size(root, 900, 650);
+            activity.getTerminalPanes().openBeside(first);
+            TerminalPaneLayoutTest.size(root, 900, 650);
+            idle();
+            assertSame(first, activity.getCurrentSession());
+            int modifiers = KeyEvent.META_CTRL_ON | KeyEvent.META_ALT_ON | KeyEvent.META_ALT_LEFT_ON;
+
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(100, 100, KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_X, 0, modifiers)));
+            assertEquals("\033[120;7u", input(first));
+            assertEquals("", input(second));
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(200, 200, KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_N, 0, modifiers)));
+            assertSame(second, activity.getCurrentSession());
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(100, 300, KeyEvent.ACTION_UP,
+                KeyEvent.KEYCODE_X, 0, modifiers)));
+            assertEquals("A release from the old pane must not enter either terminal", "", input(first));
+            assertEquals("", input(second));
+
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(400, 400, KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_X, 0, modifiers)));
+            assertEquals("\033[120;7u", input(second));
+            assertEquals("", input(first));
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(500, 500, KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_DPAD_RIGHT, 0, modifiers)));
+            settleDrawer(activity);
+            assertTrue("The real drawer animation must finish after the recognized shortcut",
+                activity.getDrawer().isDrawerOpen(activity.getTerminalSessionDrawerGravity()));
+            assertEquals("Recognized drawer shortcut must not produce Kitty bytes", "", input(second));
+        } finally {
+            controller.pause().stop().destroy();
+        }
+    }
+
+    @Test @Config(shadows = {TerminalPaneLayoutTest.NoPty.class, TerminalImeComposingTest.RecordingImm.class})
+    public void composingConnectionRestartsAfterActualFinishedSessionRemoval() {
+        Application app = RuntimeEnvironment.getApplication();
+        TermuxShellManager manager = TermuxShellManager.init(app);
+        manager.mTermuxSessions.clear();
+        TerminalSession first = session("one", manager), second = session("two", manager);
+        com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences preferences =
+            com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences.build(app, true);
+        assertNotNull(preferences);
+        preferences.setImeComposingEnabled(true);
+        ActivityController<TermuxActivity> controller = start();
+        try {
+            TermuxActivity activity = controller.get();
+            TerminalPaneLayoutTest.size(activity.findViewById(com.termux.R.id.activity_termux_root_view), 900, 650);
+            activity.getTermuxTerminalSessionClient().setCurrentSession(first);
+            assertTrue(activity.getTerminalView().requestFocus());
+            idle();
+            InputConnection old = activity.getTerminalView().onCreateInputConnection(new EditorInfo());
+            old.setComposingText("old preedit", 1);
+            // Give the fake finished process the real service exit callback, without starting a PTY.
+            TermuxSession existing = manager.mTermuxSessions.get(0);
+            manager.mTermuxSessions.set(0, ReflectionHelpers.callConstructor(TermuxSession.class,
+                ClassParameter.from(TerminalSession.class, first),
+                ClassParameter.from(ExecutionCommand.class, existing.getExecutionCommand()),
+                ClassParameter.from(TermuxSession.TermuxSessionClient.class, activity.getTermuxService()),
+                ClassParameter.from(boolean.class, false)));
+            ReflectionHelpers.setField(first, "mShellPid", -1);
+            TerminalImeComposingTest.RecordingImm.clear();
+            activity.getTermuxTerminalSessionClient().removeFinishedSession(first);
+            assertEquals(1, activity.getTermuxService().getTermuxSessionsSize());
+            assertSame(second, activity.getCurrentSession());
+            idle();
+            assertTrue(TerminalImeComposingTest.RecordingImm.restarts.contains(activity.getTerminalView()));
+            assertFalse(old.commitText("late", 1));
+            InputConnection current = activity.getTerminalView().onCreateInputConnection(new EditorInfo());
+            current.commitText("new target", 1);
+            assertEquals("new target", input(second));
+            assertEquals("", input(first));
+        } finally {
+            preferences.setImeComposingEnabled(false);
             controller.pause().stop().destroy();
         }
     }

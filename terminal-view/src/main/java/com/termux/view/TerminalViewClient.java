@@ -32,6 +32,9 @@ public interface TerminalViewClient {
 
     boolean shouldEnforceCharBasedInput();
 
+    /** Optional direct-terminal preedit; preserve existing client implementations by default. */
+    default boolean shouldEnableImeComposing() { return false; }
+
     boolean shouldUseCtrlSpaceWorkaround();
 
     boolean isTerminalViewSelected();

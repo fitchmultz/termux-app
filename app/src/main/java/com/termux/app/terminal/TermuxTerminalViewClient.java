@@ -115,6 +115,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
     public void onResume() {
         // Show the soft keyboard if required
         setSoftKeyboardState(true, mActivity.isActivityRecreated());
+        for (TerminalView terminal : mActivity.getTerminalViews()) terminal.refreshImeComposingPreference();
 
         if (mActivity.getTerminalView().mEmulator != null) {
             // Start terminal cursor blinking if enabled
@@ -253,6 +254,11 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
     @Override
     public boolean shouldEnforceCharBasedInput() {
         return mActivity.getProperties().isEnforcingCharBasedInput();
+    }
+
+    @Override
+    public boolean shouldEnableImeComposing() {
+        return mActivity.getPreferences().isImeComposingEnabled();
     }
 
     @Override
@@ -464,7 +470,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
                 // Other special keys.
                 case 'e':
-                    resultingCodePoint = /*Escape*/ 27;
+                    resultingKeyCode = KeyEvent.KEYCODE_ESCAPE;
                     break;
                 case '.':
                     resultingCodePoint = /*^.*/ 28;
@@ -494,9 +500,16 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
             if (resultingKeyCode != -1) {
                 TerminalEmulator term = session.getEmulator();
-                session.write(KeyHandler.getCode(resultingKeyCode, 0, term.isCursorKeysApplicationMode(), term.isKeypadApplicationMode()));
+                session.write(KeyHandler.getCode(resultingKeyCode, 0, term.isCursorKeysApplicationMode(),
+                    term.isKeypadApplicationMode(), term.getKittyKeyboardFlags(), KeyHandler.KEY_EVENT_PRESS));
             } else if (resultingCodePoint != -1) {
-                session.writeCodePoint(altDown, resultingCodePoint);
+                String code = null;
+                if (session.getEmulator().isKittyKeyboardEnabled()) {
+                    code = KeyHandler.getKittyCodePoint(resultingCodePoint, altDown ? KeyHandler.KEYMOD_ALT : 0,
+                        session.getEmulator().getKittyKeyboardFlags(), KeyHandler.KEY_EVENT_PRESS);
+                }
+                if (code != null) session.write(code);
+                else session.writeCodePoint(altDown, resultingCodePoint);
             }
             return true;
         } else if (ctrlDown) {

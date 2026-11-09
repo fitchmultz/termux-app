@@ -277,6 +277,107 @@ public final class TerminalRenderer {
         if (savedMatrix) canvas.restore();
     }
 
+    /**
+     * Draw the in-progress IME composing text (e.g. partially composed CJK) as a preview at the
+     * terminal cursor, on top of the already rendered terminal. It uses the same {@link #mTextPaint}
+     * and {@link #drawTextRun} code path as normal rendering so the font family, fallback, width
+     * scaling and text style (bold/italic/colors/dim) match the on-screen text exactly.
+     *
+     * @param text  char array holding the composing text
+     * @param start start index into {@code text}
+     * @param len   number of chars to draw
+     * @param cursorOffsetInChars  char offset within {@code text} of the IME pre-edit cursor,
+     *                              or -1 if none / not inside the composition
+     */
+    public void renderComposingText(TerminalRendererState rendererState, Canvas canvas, int topRow,
+                                    char[] text, int start, int len, int cursorOffsetInChars) {
+        if (rendererState == null || len <= 0) return;
+        // Match render(): a synchronized snapshot exposes only completed visible rows.
+        topRow = Math.max(topRow, -rendererState.getScreen().getActiveTranscriptRows());
+        final int cursorRow = rendererState.getCursorRow();
+        final int cursorCol = rendererState.getCursorCol();
+        final int visibleRow = cursorRow - topRow;
+        if (visibleRow < 0 || visibleRow >= rendererState.getRows()) return;
+
+        final int[] palette = rendererState.getPalette();
+        final boolean reverseVideo = rendererState.isReverseVideo();
+        // Bitmap cells encode image IDs/coordinates, not text colors or effects. Use the
+        // normal text style for those cells, resolved against this presentation frame's palette.
+        // Keep ordinary cursor-cell styling and mark all composing text with underline.
+        final long cellStyle = rendererState.getScreen().getStyleAt(cursorRow, cursorCol);
+        final long style = (TextStyle.isTerminalBitmap(cellStyle) ? TextStyle.NORMAL : cellStyle)
+            | TextStyle.CHARACTER_ATTRIBUTE_UNDERLINE;
+        final int effect = TextStyle.decodeEffect(style);
+
+        // Number of grid columns the composing text occupies, used for the same width-mismatch
+        // scaling applied to normal text in drawTextRun().
+        int runWidthColumns = 0;
+        for (int i = 0; i < len; ) {
+            char c = text[start + i];
+            int cp;
+            int chars;
+            if (Character.isHighSurrogate(c) && i + 1 < len && Character.isLowSurrogate(text[start + i + 1])) {
+                cp = Character.toCodePoint(c, text[start + i + 1]);
+                chars = 2;
+            } else {
+                cp = c;
+                chars = 1;
+            }
+            int w = WcWidth.width(cp);
+            if (w < 0) w = 0;
+            runWidthColumns += w;
+            i += chars;
+        }
+        if (runWidthColumns <= 0) runWidthColumns = 1;
+
+        final float heightOffset = mFontLineSpacingAndAscent + (visibleRow + 1) * mFontLineSpacing;
+        final float left = cursorCol * mFontWidth;
+        final float mes = mTextPaint.measureText(text, start, len);
+
+        // drawTextRun() only draws a background when it is non-default, so for the common
+        // default-background case we must mask the block cursor / existing cell content under the
+        // preview ourselves. Use the resolved on-screen background, mirroring drawTextRun().
+        int backColor = TextStyle.decodeBackColor(style);
+        if ((backColor & 0xff000000) != 0xff000000) backColor = palette[backColor];
+        int foreColor = TextStyle.decodeForeColor(style);
+        if ((foreColor & 0xff000000) != 0xff000000) {
+            if ((effect & (TextStyle.CHARACTER_ATTRIBUTE_BOLD | TextStyle.CHARACTER_ATTRIBUTE_BLINK)) != 0
+                    && foreColor >= 0 && foreColor < 8) foreColor += 8;
+            foreColor = palette[foreColor];
+        }
+        boolean reverseVideoHere = reverseVideo ^ ((effect & TextStyle.CHARACTER_ATTRIBUTE_INVERSE) != 0);
+        int visualBack = reverseVideoHere ? foreColor : backColor;
+        mTextPaint.setColor(visualBack);
+        mTextPaint.setStyle(Paint.Style.FILL);
+        canvas.drawRect(left, heightOffset - mFontLineSpacing, left + runWidthColumns * mFontWidth, heightOffset, mTextPaint);
+
+        // Draw the composing text like a normal run (same font/scaling/colors/underline), but
+        // without the cursor block (cursor == 0).
+        drawTextRun(canvas, text, palette, heightOffset, cursorCol, runWidthColumns, start, len, mes,
+            0, 0, style, reverseVideo);
+
+        // Draw the IME pre-edit cursor as a thin vertical bar at the composing offset, so
+        // in-composition cursor movement (the IME's Selection within the composing span) is
+        // visible, like GNOME-terminal.
+        if (cursorOffsetInChars >= 0 && cursorOffsetInChars <= len) {
+            int colsBefore = 0;
+            for (int i = 0; i < cursorOffsetInChars; ) {
+                char c = text[start + i];
+                int chars = (Character.isHighSurrogate(c) && i + 1 < cursorOffsetInChars && Character.isLowSurrogate(text[start + i + 1])) ? 2 : 1;
+                int cp = (chars == 2) ? Character.toCodePoint(c, text[start + i + 1]) : c;
+                int w = WcWidth.width(cp);
+                if (w < 0) w = 0;
+                colsBefore += w;
+                i += chars;
+            }
+            float cursorX = left + colsBefore * mFontWidth;
+            float barW = Math.max(2.0f, mFontWidth * 0.12f);
+            mTextPaint.setColor(reverseVideoHere ? backColor : foreColor);
+            mTextPaint.setStyle(Paint.Style.FILL);
+            canvas.drawRect(cursorX, heightOffset - mFontLineSpacing, cursorX + barW, heightOffset, mTextPaint);
+        }
+    }
+
     public float getFontWidth() {
         return mFontWidth;
     }
