@@ -2,6 +2,7 @@ package com.termux.app.terminal;
 
 import android.app.Activity;
 import android.app.Application;
+import android.graphics.Paint;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -33,6 +34,7 @@ import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.shadows.ShadowInputMethodManager;
+import org.robolectric.shadows.ShadowPaint;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
@@ -76,6 +78,16 @@ public class TerminalHoneyboardInputTest {
             assertEquals(1, text.selectionEnd);
         }
         static void clear() { selections.clear(); extractedTokens.clear(); restarts.clear(); }
+    }
+
+    /**
+     * Layout-only API24 geometry: Robolectric 4.17 ShadowPaint stores text size but has no
+     * getFontSpacing implementation. Use its inherited getter, not renderer-field forcing.
+     * This preserves the real attached/focused input graph without claiming pixel/font fidelity.
+     */
+    @Implements(value = Paint.class, minSdk = 24, maxSdk = 24)
+    public static class Api24LayoutPaint extends ShadowPaint {
+        @Implementation protected float getFontSpacing() { return getTextSize(); }
     }
 
     private Activity activity;
@@ -178,7 +190,9 @@ public class TerminalHoneyboardInputTest {
         assertEquals("", received(otherSession));
     }
 
-    @Test @Config(sdk = 24) @GraphicsMode(GraphicsMode.Mode.LEGACY)
+    @Test
+    @Config(sdk = 24, shadows = {TerminalImePasteTest.NoPty.class, RecordingImm.class, Api24LayoutPaint.class})
+    @GraphicsMode(GraphicsMode.Mode.LEGACY)
     public void virtualBoundariesAlsoWorkAtTheMinimumSdkWithoutInitialSurroundingApi() {
         InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
         assertEquals("x", input.getTextBeforeCursor(1, 0).toString());

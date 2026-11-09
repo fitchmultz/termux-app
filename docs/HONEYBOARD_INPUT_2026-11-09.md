@@ -50,3 +50,31 @@ byte production. It does **not** model served-view fallback or full ViewRoot/sys
 routing; no PTY bytes are fabricated. Actual final-head M1 checks and independent
 reviews remain required before merge, and physical Honeyboard acceptance is not
 claimed.
+
+
+## Actual eda3 execution and minimum-SDK fixture repair
+
+The M1 run [42589073268](https://github.com/fitchmultz/termux-app/actions/runs/42589073268)
+at `eda3dcf3e694097728612a5ec72ea1f38f7299b1` executed208 app cases with two
+failures: the inherited negotiated-drawer assertion and the API24 Honeyboard
+case. All16 native API28/37 Honeyboard cases passed. The minimum-SDK case failed
+in common setup/layout, before its test body or asynchronous IMM assertions,
+because Robolectric4.17 legacy Paint returned zero font line spacing. It did
+not establish an IMM-bridge failure or passing API24 input coverage.
+
+The drawer fixture repair is integrated from actual correctness/keyboard main.
+For API24 only, a method-scoped `ShadowPaint` supplies synthetic layout spacing
+from its inherited configured text size. No existing setup/test body or queue
+assertion is changed; `NoPty` and `RecordingImm` remain selected. Native API28/37
+configuration is unchanged. The shim is **layout geometry, not font, Canvas or
+pixel-fidelity evidence**; production font policy and renderer fields are not
+changed. The [4.17 source](https://repo.maven.apache.org/maven2/org/robolectric/shadows-framework/4.17/shadows-framework-4.17-sources.jar)
+provides protected text-size accessors but no spacing implementation, while
+[API24 Paint](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-7.0.0_r1/graphics/java/android/graphics/Paint.java#L1687-L1689)
+provides the actual public `getFontSpacing()` method. The test hook therefore
+has `@Implementation` and deliberately no Java `@Override`.
+
+This correction is independently source-reviewed. New-head CI must execute the
+API24 body and fresh Pi Durable/Cursor reviews must finish before merge. The
+asynchronous direct-target IMM bridge is still not full Android served-view or
+ViewRoot routing, and no physical Honeyboard/Keys Cafe acceptance is claimed.
