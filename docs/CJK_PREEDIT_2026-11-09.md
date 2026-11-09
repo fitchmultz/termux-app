@@ -128,3 +128,35 @@ all test bodies and queue assertions. Native API28/37 configuration is unchanged
 The shim is not font or pixel fidelity, and production font policy is unchanged.
 Both increments are independently source-reviewed; new-head full CI and fresh
 Pi Durable/Cursor reviews remain mandatory.
+
+
+## Further lifecycle review corrections
+
+The incomplete review at `edacd92fee110deb8b6e33637d4d71cf2156e365` still
+posted two substantive findings, each with a novel SDK28 native diagnostic. An
+incomplete review is not evidence of no findings and is not merge clearance.
+
+- **OFF→ON after window invalidation:** a focused non-Honeyboard OFF connection
+  could be null on return from settings/window loss. Preference refresh exited
+  early, while the old feature-only restart flag stayed false. Reconciliation
+  now considers the wanted preference with a null connection, defers known
+  background state and guards generation/session/attachment/selection at execution.
+  Queued requests coalesce by generation. Feature-induced legacy replacement
+  cancels old drafts on admitted restart and natural ON callbacks, not ordinary
+  current OFF closure; canceled text must not be replayed by stale close calls.
+- **Collapsed composing regions:** the framework can remove spans but retain
+  nonempty Editable text after equal/clipped-equal `setComposingRegion()`. Merely
+  hiding the preview left invisible text pending while a following Backspace
+  could reach the terminal first. The ON path now applies existing finish/commit
+  and clear semantics exactly once when no valid nonempty span remains; bounded
+  finalization also handles retained prefix/suffix text after partial empty
+  composing replacement. Empty content and ordinary OFF behavior retain their
+  contracts.
+
+Regressions cover preference/window recovery, stale closure and natural replacement,
+collapsed/clipped regions, following terminal input/deletion, prefix/suffix retention
+and OFF/cancellation boundaries. All existing API24 layout-shim configurations and
+native API28/37 configuration are retained. These changes are independently source-
+reviewed, **not yet current-head runtime qualification**. The recording IMM/manual
+replacement tests do not establish a physical Settings/notification-shade/OEM trace.
+Fresh final-pair Pi Durable/Cursor review and full CI remain required.

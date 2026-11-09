@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Reconciles opt-in composing preference changes even after an OFF connection was invalidated, with guarded/coalesced restart requests and stale legacy-draft cancellation only for admitted ON replacement. Collapsed/clipped composing regions finalize retained drafts once instead of hiding text ahead of terminal navigation/deletion; ordinary OFF behavior remains unchanged.
+
 - After an observed window-focus loss, request guarded IMM rebinding for an invalidated composing/Honeyboard connection on actual focused return, including missed-gain reattachment. Keep generation/session/selection cancellation and native-editor/ordinary-legacy isolation; do not request keyboard showing or replay canceled drafts. API24 input fixtures use explicit synthetic legacy layout spacing, not production font clamps or rendering claims.
 
 - Requires a valid nonempty composing span before ON-mode deletion edits the local Editable; absent/empty markers retain terminal Backspace fallback. Natural empty/equal AOSP operations are expected to be unmarked, not a claimed zero-span reproducer. The retained zero-marker regression is separately synthetic; OFF and active supplementary-text behavior are preserved.

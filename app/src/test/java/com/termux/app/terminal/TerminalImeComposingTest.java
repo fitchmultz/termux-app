@@ -363,6 +363,110 @@ public class TerminalImeComposingTest {
         assertEquals("", received(otherSession));
     }
 
+    private void assertCollapsedComposingRegionsCommitOnce() {
+        enabled = true;
+        int[][] regions = {{0, 0}, {1, 1}, {3, 3}, {-7, -1}, {8, 12}, {12, 8}};
+        for (int[] region : regions) {
+            for (boolean codePoints : new boolean[]{false, true}) {
+                InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+                input.setComposingText("abc", 1);
+                assertEquals("", received(session));
+                assertTrue(input.setComposingRegion(region[0], region[1]));
+                Editable editable = ((BaseInputConnection) input).getEditable();
+                assertEquals("No invisible pending text may remain after a collapsed region", 0, editable.length());
+                assertNull(preview());
+                assertEquals(-1, BaseInputConnection.getComposingSpanStart(editable));
+                assertEquals(-1, BaseInputConnection.getComposingSpanEnd(editable));
+                input.finishComposingText();
+                terminal.onKeyDown(KeyEvent.KEYCODE_DPAD_LEFT,
+                    new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT));
+                assertTrue(codePoints ? input.deleteSurroundingTextInCodePoints(1, 0) : input.deleteSurroundingText(1, 0));
+                assertEquals("Text must precede navigation, with no duplicate finish or early Backspace", "abc\033[D", received(session));
+                idle();
+                assertEquals("\u007f", received(session));
+                input.finishComposingText();
+                assertEquals("", received(session));
+                input.commitText("next", 1);
+                assertEquals("next", received(session));
+                assertEquals("", received(otherSession));
+            }
+        }
+    }
+
+    @Test public void collapsedAndClippedComposingRegionsFinishPendingTextBeforeEitherBackspaceApi() {
+        assertCollapsedComposingRegionsCommitOnce();
+    }
+
+    @Test public void ordinaryReversedComposingRegionsStayActiveAndEmptyRegionsDoNotSendText() {
+        enabled = true;
+        int[][] regions = {{0, 2}, {2, 0}, {1, 3}, {3, 1}, {5, -2}};
+        String[] previews = {"ab", "ab", "bc", "bc", "abc"};
+        for (int i = 0; i < regions.length; i++) {
+            InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+            input.setComposingText("abc", 1);
+            assertTrue(input.setComposingRegion(regions[i][0], regions[i][1]));
+            assertEquals(previews[i], preview());
+            assertEquals("abc", ((BaseInputConnection) input).getEditable().toString());
+            assertEquals("", received(session));
+            input.finishComposingText();
+            assertEquals("abc", received(session));
+            input.finishComposingText();
+            assertTrue(input.setComposingRegion(regions[i][0], regions[i][1]));
+            assertNull(preview());
+            assertEquals(0, ((BaseInputConnection) input).getEditable().length());
+            assertEquals("", received(session));
+        }
+    }
+
+    private void assertPartialComposingTextCancellationCommitsRetainedText() {
+        enabled = true;
+        int[][] regions = {{0, 2}, {1, 2}, {1, 3}};
+        String[] retained = {"c", "ac", "a"};
+        for (int i = 0; i < regions.length; i++) {
+            InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+            input.setComposingText("abc", 1);
+            input.setComposingRegion(regions[i][0], regions[i][1]);
+            input.setComposingText("", 1);
+            assertEquals(retained[i], received(session));
+            assertEquals(0, ((BaseInputConnection) input).getEditable().length());
+            assertNull(preview());
+            input.finishComposingText();
+            assertEquals("", received(session));
+            assertTerminalBackspace(input, true);
+        }
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        input.setComposingText("abc", 1);
+        input.setComposingText("", 1);
+        input.finishComposingText();
+        assertEquals("Replacing the entire draft with empty text remains cancellation", "", received(session));
+    }
+
+    @Test public void emptyReplacementOfAPartialCompositionDoesNotHideItsPendingPrefixOrSuffix() {
+        assertPartialComposingTextCancellationCommitsRetainedText();
+    }
+
+    @Test public void collapsedRegionFinalizationPreservesOffAndStaleConnectionCancellation() {
+        for (String ime : new String[]{"com.example.ime/.Keyboard", "com.samsung.android.honeyboard/.Ime"}) {
+            Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD, ime);
+            InputConnection off = terminal.onCreateInputConnection(new EditorInfo());
+            off.setComposingText("legacy", 1);
+            off.setComposingRegion(1, 1);
+            assertEquals("legacy", ((BaseInputConnection) off).getEditable().toString());
+            assertEquals("", received(session));
+            off.finishComposingText();
+            assertEquals("legacy", received(session));
+        }
+        enabled = true;
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("cancelled", 1);
+        terminal.attachSession(otherSession);
+        assertFalse(old.setComposingRegion(0, 0));
+        assertFalse(old.setComposingText("", 1));
+        old.closeConnection();
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
+    }
+
     private void assertEmptyComposingApisUseTerminalBackspace() {
         enabled = true;
         for (boolean emptyRegion : new boolean[]{false, true}) {
@@ -420,6 +524,8 @@ public class TerminalImeComposingTest {
     public void emptyPreeditDeletionAlsoUsesOnlyMinimumSdkInputApis() {
         assertEmptyComposingApisUseTerminalBackspace();
         assertSyntheticZeroLengthMarkerUsesTerminalBackspace();
+        assertCollapsedComposingRegionsCommitOnce();
+        assertPartialComposingTextCancellationCommitsRetainedText();
     }
 
     @Test public void activeComposingCodePointDeletionPreservesSurrogatesAndDoesNotSendPtyBackspaces() {
@@ -754,6 +860,155 @@ public class TerminalImeComposingTest {
         finished.recycle();
     }
 
+    @Test public void enablingPreferenceAfterLegacyWindowLossRequestsOnRebindOnReturn() {
+        Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD,
+            "com.example.ime/.Keyboard");
+        controller.windowFocusChanged(true);
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("legacy draft", 1);
+        RecordingImm.clear();
+        controller.windowFocusChanged(false);
+        enabled = true;
+        terminal.refreshImeComposingPreference();
+        assertTrue(RecordingImm.restarts.isEmpty());
+        controller.windowFocusChanged(true);
+        assertEquals(1, RecordingImm.restarts.size());
+        assertSame(terminal, RecordingImm.restarts.get(0));
+        // Prove the restart request before supplying the framework's replacement callback.
+        EditorInfo attrs = new EditorInfo();
+        InputConnection current = terminal.onCreateInputConnection(attrs);
+        old.closeConnection();
+        assertEquals("", received(session));
+        assertEquals(0, attrs.initialSelStart);
+        current.setComposingText("new draft", 1);
+        assertEquals("new draft", preview());
+        current.finishComposingText();
+        assertEquals("new draft", received(session));
+    }
+
+    @Test public void naturalOnReplacementBeforeQueuedRecoveryCancelsOnlyTheOldLegacyDraft() {
+        Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD,
+            "com.example.ime/.Keyboard");
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("old draft", 1);
+        enabled = true;
+        terminal.refreshImeComposingPreference();
+        InputConnection current = terminal.onCreateInputConnection(new EditorInfo());
+        current.setComposingText("new draft", 1);
+        old.closeConnection();
+        idle();
+        assertTrue("A naturally supplied ON connection supersedes the queued restart", RecordingImm.restarts.isEmpty());
+        assertEquals("", received(session));
+        assertEquals("new draft", preview());
+        current.finishComposingText();
+        assertEquals("new draft", received(session));
+    }
+
+    @Test public void queuedPreferenceRefreshCoalescesAndRechecksAnOffRoundTrip() {
+        Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD,
+            "com.example.ime/.Keyboard");
+        InputConnection legacy = terminal.onCreateInputConnection(new EditorInfo());
+        legacy.setComposingText("retained legacy", 1);
+        enabled = true;
+        terminal.refreshImeComposingPreference();
+        terminal.refreshImeComposingPreference();
+        enabled = false;
+        idle();
+        assertTrue("A cancelled enable must not manufacture an ordinary OFF restart", RecordingImm.restarts.isEmpty());
+        legacy.closeConnection();
+        assertEquals("No admitted enable means legacy closure is unchanged", "retained legacy", received(session));
+        terminal.onCreateInputConnection(new EditorInfo());
+        enabled = true;
+        terminal.refreshImeComposingPreference();
+        terminal.refreshImeComposingPreference();
+        assertTrue(RecordingImm.restarts.isEmpty());
+        idle();
+        assertEquals(1, RecordingImm.restarts.size());
+    }
+
+    @Test public void preferenceRecoveryFollowsFinalSessionAndDoesNotStealANativeEditor() {
+        Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD,
+            "com.example.ime/.Keyboard");
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("old draft", 1);
+        enabled = true;
+        terminal.refreshImeComposingPreference();
+        terminal.attachSession(null);
+        terminal.refreshImeComposingPreference();
+        terminal.attachSession(otherSession);
+        terminal.refreshImeComposingPreference();
+        terminal.refreshImeComposingPreference();
+        idle();
+        assertEquals(1, RecordingImm.restarts.size());
+        assertSame(otherSession, terminal.getCurrentSession());
+        old.closeConnection();
+        InputConnection current = terminal.onCreateInputConnection(new EditorInfo());
+        current.setComposingText("new draft", 1);
+        RecordingImm.clear();
+        enabled = false;
+        terminal.refreshImeComposingPreference();
+        assertTrue(editor.requestFocus());
+        InputConnection nativeInput = editor.onCreateInputConnection(new EditorInfo());
+        nativeInput.setComposingText("native draft", 1);
+        idle();
+        assertTrue(RecordingImm.restarts.isEmpty());
+        assertTrue(editor.hasFocus());
+        assertEquals("native draft", editor.getText().toString());
+        assertEquals("", received(session));
+        assertEquals("", received(otherSession));
+    }
+
+    @Test public void enablingPreferenceWhileTheWindowHasNoSessionWaitsForARealTarget() {
+        Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD,
+            "com.example.ime/.Keyboard");
+        controller.windowFocusChanged(true);
+        terminal.onCreateInputConnection(new EditorInfo());
+        controller.windowFocusChanged(false);
+        terminal.attachSession(null);
+        enabled = true;
+        terminal.refreshImeComposingPreference();
+        controller.windowFocusChanged(true);
+        assertTrue(RecordingImm.restarts.isEmpty());
+        terminal.attachSession(otherSession);
+        idle();
+        assertEquals(1, RecordingImm.restarts.size());
+        InputConnection current = terminal.onCreateInputConnection(new EditorInfo());
+        current.setComposingText("on draft", 1);
+        RecordingImm.clear();
+        controller.windowFocusChanged(false);
+        enabled = false;
+        terminal.refreshImeComposingPreference();
+        assertTrue(RecordingImm.restarts.isEmpty());
+        controller.windowFocusChanged(true);
+        assertEquals(1, RecordingImm.restarts.size());
+        current.closeConnection();
+        InputConnection off = terminal.onCreateInputConnection(new EditorInfo());
+        off.setComposingText("off draft", 1);
+        assertNull(preview());
+        off.finishComposingText();
+        assertEquals("off draft", received(otherSession));
+        assertEquals("", received(session));
+    }
+
+    @Test public void admittedOnRebindCancelsOldLegacyDraftEvenAfterPreferenceReturnsOff() {
+        Settings.Secure.putString(activity.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD,
+            "com.example.ime/.Keyboard");
+        controller.windowFocusChanged(true);
+        InputConnection old = terminal.onCreateInputConnection(new EditorInfo());
+        old.setComposingText("old legacy draft", 1);
+        controller.windowFocusChanged(false);
+        enabled = true;
+        controller.windowFocusChanged(true);
+        assertEquals(1, RecordingImm.restarts.size());
+        enabled = false;
+        InputConnection off = terminal.onCreateInputConnection(new EditorInfo());
+        old.closeConnection();
+        assertEquals("", received(session));
+        off.setComposingText("current OFF draft", 1);
+        off.closeConnection();
+        assertEquals("current OFF draft", received(session));
+    }
+
     @Test public void preferenceDefaultsOffAndRefreshDoesNotStealEditorFocus() {
         TermuxAppSharedPreferences preferences = TermuxAppSharedPreferences.build(activity, true);
         assertNotNull(preferences);
@@ -764,6 +1019,7 @@ public class TerminalImeComposingTest {
         terminal.onCreateInputConnection(new EditorInfo());
         enabled = true;
         terminal.refreshImeComposingPreference();
+        idle();
         assertTrue(RecordingImm.restarts.contains(terminal));
         terminal.onCreateInputConnection(new EditorInfo());
         assertTrue(editor.requestFocus());
