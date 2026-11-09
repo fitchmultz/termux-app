@@ -248,3 +248,46 @@ physical device. The preexisting real Pi emitter/production Android image tests
 remain separate and required. These new methods are source-reviewed, **unrun at
 this commit's preparation**; fresh final-pair CI/Pi Durable/Cursor and actual
 merged-main verification are still required. No native24 pixel claim is added.
+
+## Current-main image review follow-up (ecfb findings)
+
+Normal integration `ecfb5dbbe14d7e2655d6c021afce129f9bbff585` retained the
+current CJK/Honeyboard/Kitty code and the bounded composing-image style guard.
+Both its Android runs42613181998 and42613190114 executed **559 cases each with
+zero failures/errors/skips**; all five composing-image methods passed SDK28/37.
+Those results are not clearance of the two new substantive Pi findings:
+
+- [4512565696](https://github.com/fitchmultz/termux-app/pull/35#discussion_r4512565696):
+  insertion on a wide glyph's second cell recursively reused the bitmap style for
+  its left blank, duplicating/shifting the first image slice. The shared
+  `TerminalRow` cleanup now preserves existing text style, or uses `NORMAL` when
+  stale image payload has no text attributes. Actual target metadata survives;
+  own trailing blanks and both overlap paths are handled without changing
+  ordinary-text behavior. Seven row-JUnit methods plus five native SDK28/37
+  methods cover exact styles, overlaps, File/Multipart/Sixel, margins, pixels,
+  rendering and cursor outcomes. Width-two bitmap-marker cases are explicitly
+  adversarial row coverage; production image builders insert width-one cells.
+- [4512580918](https://github.com/fitchmultz/termux-app/pull/35#discussion_r4512580918):
+  a valid Sixel `$q` payload at initial/internal-flush boundaries entered DECRQSS
+  and leaked later payload as text. Both request branches now require that the
+  DCS has **not** already been classified Sixel. No new parser state, limits or
+  dispatch architecture: original header classification survives reused payload
+  buffers. Fourteen native SDK28/37 methods cover valid initial/post-flush `$q`,
+  byte/split streaming, invalid `+q` draining, genuine request responses, aborts,
+  split terminators, long recovery and actual image pixels.
+
+All twenty-six added methods were independently source-reviewed, but remain
+**unrun at this repair's publication**. No previous 559-pass result is reused as
+new-head execution or completed review. Current-head CI, both genuine final-pair
+reviews and addressed threads remain required before merge; merged main receives
+its own verification. No test-only production seam/finality weakening, SDK churn,
+image quota/global heap fraction, additional capability or physical-phone gate.
+
+The PR body now embeds the unmodified historical cover/wide before-after pairs
+and candidate-only Pi render from digest-verified report artifacts. Sources are
+labelled truthfully: baseline run42566601816/head d794472; qualified candidate
+run42592537717/head b93a5a3, PR merge checkout fa52b3e. These are **synthetic
+content rendered by production Android code**, not current-repair or phone proof.
+All five public PNGs and a public provenance/hashes file are pinned to assets-only
+commit `33baebc29edddd4a69d278f6322aa8bc71c1d4f3`; there is no invented baseline
+Pi image. The evidence branch changes neither production head nor code CI.

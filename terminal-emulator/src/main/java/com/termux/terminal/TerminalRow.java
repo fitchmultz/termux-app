@@ -206,10 +206,16 @@ public final class TerminalRow {
             if (wasExtraColForWideChar) columnToSet--;
         } else {
             // Check if we are overwriting the second half of a wide character starting at the previous column:
-            if (wasExtraColForWideChar) setChar(columnToSet - 1, ' ', style);
+            if (wasExtraColForWideChar)
+                setChar(columnToSet - 1, ' ', wideCharCleanupStyle(columnToSet - 1, style));
             // Check if we are overwriting the first half of a wide character starting at the next column:
             boolean overwritingWideCharInNextColumn = newCodePointDisplayWidth == 2 && wideDisplayCharacterStartingAt(columnToSet + 1);
-            if (overwritingWideCharInNextColumn) setChar(columnToSet + 1, ' ', style);
+            if (overwritingWideCharInNextColumn) {
+                setChar(columnToSet + 1, ' ', wideCharCleanupStyle(columnToSet + 1, style));
+                // The recursive clear also creates a blank beyond the new wide character.
+                if (TextStyle.isTerminalBitmap(style))
+                    mStyle[columnToSet + 2] = wideCharCleanupStyle(columnToSet + 2, style);
+            }
         }
 
         char[] text = mText;
@@ -279,6 +285,8 @@ public final class TerminalRow {
                 System.arraycopy(text, newNextColumnIndex, text, newNextColumnIndex + 1, mSpaceUsed - newNextColumnIndex);
             }
             text[newNextColumnIndex] = ' ';
+            if (TextStyle.isTerminalBitmap(style))
+                mStyle[columnToSet + 1] = wideCharCleanupStyle(columnToSet + 1, style);
 
             ++mSpaceUsed;
         } else if (oldCodePointDisplayWidth == 1 && newCodePointDisplayWidth == 2) {
@@ -298,6 +306,15 @@ public final class TerminalRow {
                 mSpaceUsed -= nextLen;
             }
         }
+    }
+
+    /** Bitmap coordinates are not text attributes for incidental wide-character blanks. */
+    private long wideCharCleanupStyle(int column, long replacementStyle) {
+        if (!TextStyle.isTerminalBitmap(replacementStyle)) return replacementStyle;
+        // Keep existing text colors/effects (including outside image margins). A stale image
+        // payload has no text style to preserve, and clearing its bitmap bit is not a decode.
+        long oldStyle = mStyle[column];
+        return TextStyle.isTerminalBitmap(oldStyle) ? TextStyle.NORMAL : oldStyle;
     }
 
     boolean isBlank() {

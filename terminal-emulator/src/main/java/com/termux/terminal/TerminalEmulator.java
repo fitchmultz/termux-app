@@ -1319,9 +1319,11 @@ public final class TerminalEmulator implements TerminalRendererState {
         ) {
                 String dcs = mTerminalControlArgs.toString();
 
+                // A recognized sixel header owns every payload chunk, even after the args
+                // buffer was flushed and its next chunk happens to start with a request prefix.
                 // Request Selection or Setting (DECRQSS) `DCS $ q P t ST`.
                 // - https://vt100.net/docs/vt510-rm/DECRQSS.html
-                if (dcs.startsWith("$q")) {
+                if (!ESC_DCS__SIXEL && dcs.startsWith("$q")) {
                     if (dcs.equals("$q\"p")) {
                         // DECSCL, conformance level, http://www.vt100.net/docs/vt510-rm/DECSCL:
                         String csiString = "64;1\"p";
@@ -1329,7 +1331,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                     } else {
                         finishSequenceAndLogError("Unrecognized DECRQSS string: '" + dcs + "'");
                     }
-                } else if (dcs.startsWith("+q")) {
+                } else if (!ESC_DCS__SIXEL && dcs.startsWith("+q")) {
                     // Request Termcap/Terminfo String. The string following the "q" is a list of names encoded in
                     // hexadecimal (2 digits per character) separated by ; which correspond to termcap or terminfo key
                     // names.
