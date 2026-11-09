@@ -55,6 +55,7 @@ This is the canonical concise inventory of intentional differences from the audi
 ## Features
 
 - Adapts upstream PR5390 OSC 8 cell metadata for labeled links, including the Fold ASCII fast path, Unicode/reflow/history, and immutable synchronized-frame targets. With the existing transcript-click setting enabled, tapping a label opens its URI through Android's existing URL handler; ordinary detected URLs and disabled-click behavior remain unchanged.
+- Uses the renderer's completed-screen scroll clamp for link taps, so a scrollback offset during DEC 2026 cannot redirect a visible label or ordinary URL to another row.
 
 - Adds default-OFF direct-terminal IME Composing Preview with real spans/selection, mutually exclusive Samsung metadata, completed-frame cursor/palette/style rendering and connection/session guards. Uncommitted enabled preedit is canceled—not replayed—on invalidation; existing clients default false and the real editor stays untouched. See [source, safety policy and verification limits](docs/CJK_PREEDIT_2026-11-09.md).
 

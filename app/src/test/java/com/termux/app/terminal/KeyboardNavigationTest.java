@@ -90,10 +90,10 @@ public class KeyboardNavigationTest {
     private void tapFirstCell(TerminalView terminal) {
         long now = android.os.SystemClock.uptimeMillis();
         float x = terminal.mRenderer.getFontWidth() / 2;
-        float y = terminal.getPointY(1) - 1;
+        float y = terminal.getPointY(terminal.getTopRow() + 1) - 1;
         MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0);
         MotionEvent up = MotionEvent.obtain(now, now + 1, MotionEvent.ACTION_UP, x, y, 0);
-        assertArrayEquals(new int[]{0, 0}, terminal.getColumnAndRow(up, true));
+        assertArrayEquals(new int[]{0, 0}, terminal.getColumnAndRow(up, false));
         terminal.dispatchTouchEvent(down);
         terminal.dispatchTouchEvent(up);
         down.recycle();
@@ -129,8 +129,11 @@ public class KeyboardNavigationTest {
 
             activity.getTermuxTerminalSessionClient().setCurrentSession(second);
             idle();
-            output = "\033]8;;https://second.example\033\\second\033]8;;\033\\\033[?2026h\033[H\033]8;;https://pending.example\033\\pending\033]8;;\033\\".getBytes(StandardCharsets.UTF_8);
+            output = ("\r\n".repeat(second.getEmulator().getRows() + 1) +
+                "\033[H\033]8;;https://second.example\033\\second\033]8;;\033\\\033[?2026h\033[H\033]8;;https://pending.example\033\\pending\033]8;;\033\\").getBytes(StandardCharsets.UTF_8);
             second.getEmulator().append(output, output.length);
+            assertTrue(second.getEmulator().getScreen().getActiveTranscriptRows() > 0);
+            activity.getTerminalView().setTopRow(-1);
             tapFirstCell(activity.getTerminalView());
             assertEquals("https://second.example", Shadows.shadowOf(activity).getNextStartedActivity().getDataString());
 
@@ -138,8 +141,9 @@ public class KeyboardNavigationTest {
             tapFirstCell(activity.getTerminalView());
             assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
             values.put(key, true);
-            output = "\033[?2026l\033[2J\033[Hhttps://ordinary.example".getBytes(StandardCharsets.UTF_8);
+            output = "\033[?2026l\033[2J\033[Hhttps://ordinary.example\033[?2026h\033[Hpending".getBytes(StandardCharsets.UTF_8);
             second.getEmulator().append(output, output.length);
+            activity.getTerminalView().setTopRow(-1);
             tapFirstCell(activity.getTerminalView());
             assertEquals("https://ordinary.example", Shadows.shadowOf(activity).getNextStartedActivity().getDataString());
         } finally {

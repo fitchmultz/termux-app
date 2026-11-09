@@ -228,13 +228,15 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
         TerminalEmulator term = session.getEmulator();
 
         if (mActivity.getProperties().shouldOpenTerminalTranscriptURLOnClick()) {
-            int[] columnAndRow = mActivity.getTerminalView().getColumnAndRow(e, true);
+            TerminalView terminal = mActivity.getTerminalView();
+            TerminalBuffer screen = term.getRendererState().getScreen();
+            int[] columnAndRow = terminal.getColumnAndRow(e, false);
+            columnAndRow[1] += Math.max(terminal.getTopRow(), -screen.getActiveTranscriptRows());
             String hyperlink = term.getHyperlinkAt(columnAndRow[0], columnAndRow[1]);
             if (hyperlink != null) {
                 ShareUtils.openUrl(mActivity, hyperlink);
                 return;
             }
-            TerminalBuffer screen = term.getRendererState().getScreen();
             String wordAtTap = screen.getWordAtLocation(columnAndRow[0], columnAndRow[1]);
             LinkedHashSet<CharSequence> urlSet = TermuxUrlUtils.extractUrls(wordAtTap);
 
