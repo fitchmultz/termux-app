@@ -1,0 +1,21 @@
+{
+  "format": "Chafa iTerm uncompressed TIFF, little-endian RGBA8 with unassociated alpha",
+  "producerRepository": "https://github.com/hpjansson/chafa",
+  "producerRelease": "1.18.3",
+  "producerCommit": "3b160556b3a6107196b614de1eb0634844144e15",
+  "producerPath": "chafa/internal/chafa-iterm2-canvas.c",
+  "producerGitBlobSha1": "c5de18969b9adec0cb5ace25d4df0bcb9798a5c7",
+  "sourceVerification": "GitHub Contents API base64 decoded; computed Git blob SHA-1 matched returned sha",
+  "sourceUrl": "https://github.com/hpjansson/chafa/blob/3b160556b3a6107196b614de1eb0634844144e15/chafa/internal/chafa-iterm2-canvas.c",
+  "sourceLines": {
+    "unassociatedDestination": [197, 208],
+    "tiffHeaderPixelsAndDirectory": [269, 285],
+    "tags": [289, 308],
+    "singleIfdTerminatorAndBitsPerSample": [310, 321]
+  },
+  "acceptedEquivalentVariants": ["The same eleven tags in another order", "The same layout with a twelfth SHORT/count=1 Compression=1 tag"],
+  "testFixture": "com.termux.terminal.ChafaTiffDecoderTest.tiff",
+  "testFixtureKind": "Wire-layout reconstruction from the pinned production encoder; not an actual Chafa execution capture",
+  "testExecution": "Not executed in cloud; native-graphics cases authored for Robolectric API 28/37; one API 24 case is parser-only with explicit LEGACY graphics",
+  "actualProducerCapture": "Not supplied in this source-only handoff. An owner-authorized host with Chafa already present may add a captured OSC stream separately."
+}

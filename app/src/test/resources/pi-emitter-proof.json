@@ -1,0 +1,49 @@
+{
+  "sourceRepository": "fitchmultz/pi",
+  "sourceCommit": "cd74c5a3615635c61e68c52922debcda7ed53b51",
+  "sourcePath": "packages/tui/src/terminal-image.ts",
+  "sourceGitBlob": "c1f682dff617a3c0782a5f0dcf7d412d8d8c2418",
+  "sourceSha256": "2aa0d1acfc233129e8ae15a6db607b8ea0873c665c0820e682233b118fbe09e1",
+  "node": "v24.22.1",
+  "scope": "Pinned production Pi module executed unchanged in a process-local environment; not an installed-phone Pi revision or physical terminal test",
+  "capabilities": {
+    "unknown": {
+      "images": null,
+      "trueColor": true,
+      "hyperlinks": false
+    },
+    "override": {
+      "images": "iterm2",
+      "trueColor": true,
+      "hyperlinks": false
+    },
+    "tmuxDefault": {
+      "images": null,
+      "trueColor": true,
+      "hyperlinks": false
+    },
+    "tmuxOverride": {
+      "images": "iterm2",
+      "trueColor": true,
+      "hyperlinks": false
+    }
+  },
+  "input": {
+    "description": "Synthetic production-Android baseline renderer capture",
+    "sha256": "7bf3077caa2df3daf223a76656c9ff0d6de71ec1b01fd157ac6b681f32d53b98",
+    "widthPx": 480,
+    "heightPx": 680
+  },
+  "output": {
+    "protocol": "iterm2",
+    "columns": 8,
+    "rows": 6,
+    "bytes": 75193,
+    "sha256": "f0d3895a147106b072d7110a534486d737383141aa36991157d008613a51296e"
+  },
+  "limits": [
+    "Environment override selects emission, not tmux transport forwarding",
+    "No TERM_PROGRAM or ITERM spoofing",
+    "No persisted settings or dependency changes"
+  ]
+}

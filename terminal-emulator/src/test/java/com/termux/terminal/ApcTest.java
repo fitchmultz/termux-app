@@ -18,4 +18,9 @@ public class ApcTest extends TerminalTestCase {
             .assertLinesAre("hello  world", "            ");
     }
 
+    public void testLongUnsupportedGraphicsAreDiscardedWithoutBufferingOrPrinting() {
+        withTerminalSized(6, 2).enterString("\033_" + "a".repeat(20000) + "\033\\SAFE")
+            .assertLinesAre("SAFE  ", "      ");
+    }
+
 }

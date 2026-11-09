@@ -62,4 +62,21 @@ public class TextStyleTest extends TestCase {
 		assertTrue((TextStyle.decodeEffect(encoded) & TextStyle.CHARACTER_ATTRIBUTE_PROTECTED) != 0);
 	}
 
+    public void testBitmapCellFieldsRoundTripWithoutSignedOrCoordinateTruncation() {
+        for (int bitmap : new int[]{0, 32768, 65535}) {
+            for (int coordinate : new int[]{0, 4096, 65535}) {
+                long style = TextStyle.encodeTerminalBitmap(bitmap, coordinate, coordinate);
+                assertTrue(TextStyle.isTerminalBitmap(style));
+                assertEquals(bitmap, TextStyle.getTerminalBitmapNum(style));
+                assertEquals(coordinate, TextStyle.getTerminalBitmapX(style));
+                assertEquals(coordinate, TextStyle.getTerminalBitmapY(style));
+            }
+        }
+        assertEquals(-1, TextStyle.getTerminalBitmapNum(TextStyle.NORMAL));
+        try {
+            TextStyle.encodeTerminalBitmap(65536, 0, 0);
+            fail("Bitmap IDs must fit their style field");
+        } catch (IllegalArgumentException expected) {}
+    }
+
 }

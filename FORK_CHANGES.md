@@ -6,7 +6,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Prioritizes the owner's Z Fold 8 (`SM-F971U1`, Android 17), retains the Ultra (`SM-F976U1`) as a regression target, and welcomes other compatible devices without model-name gating. The signed APK remains ARM64-only.
 - Keeps package ID `com.termux` and prefix `/data/data/com.termux/files/usr`; this is an in-place fork, not a side-by-side package.
-- Uses label `Termux Fold`; this branch's source release profile is `0.119.0-fold.16` (`2026110516`). PR integration, signed publication, and physical validation are separate steps.
+- Uses label `Termux Fold`; this branch's source release profile is `0.119.0-fold.17` (`2026110917`). PR integration, signed publication, and physical validation are separate steps.
 - Packages only `arm64-v8a` with the `apt-android-7` bootstrap; split release APKs are disabled.
 - Retains target SDK 28 for direct execution of programs from the writable Termux prefix. Modern targets require routing execution through Android's system linker plus a separately patched package ecosystem; forced-linker tests currently break Node test workers and `age-keygen`. Android 17 may therefore show an old-app or **Install anyway** warning.
 - Uses a dedicated Android signing identity. Signing material must never be committed or made public, but protected GitHub Actions secrets and signed GitHub Releases are allowed when deliberately configured.
@@ -14,6 +14,16 @@ This is the canonical concise inventory of intentional differences from the audi
 ## Fixes
 
 - Kitty physical DOWN admission atomically protects encoder-bounded future UP capacity inside the existing input ring. Matching releases consume their original session-owned promise once even while ordinary input remains FULL; only an admitted initial DOWN owns a future release; ordinary repeat bytes remain unchanged and cannot create or revive release ownership after initial rejection or context cancellation. Context/lifecycle cancellation returns capacity without stale delivery, while IME-only rebinding retains valid physical releases. CI preserves the synthetic keyboard-capture JSON in addition to PNG/XML reports.
+
+- Ordinary wide-text insertion and generated blanks remove obsolete bitmap payloads before renderer/geometry discard can ghost an image or erase text. Valid existing text attributes stay intact; recursive cleanup restores the actual incoming image slice and snapshots collateral styles before mutation.
+
+- Keeps bitmap payload out of incidental wide-character cleanup: image placement preserves neighboring text style (or NORMAL for stale bitmap payload), exact target slices and margins across File/Multipart/Sixel shared row paths. Already-classified Sixel data is not reclassified as DECRQSS/termcap merely because a reused chunk starts `$q`/`+q`; genuine requests and invalid-image draining retain their existing behavior.
+
+- Composing preview distinguishes packed bitmap-cell metadata from text style before underline/color decoding, using the existing default text style and completed-frame palette/reverse-video snapshot for image cells. This prevents palette-index crashes and invisible preedit after cursor positioning over an image; ordinary colored text-cell behavior is unchanged. Native SDK28/37 regressions include bitmap slots0/300, coordinate-derived invalid text indices and synchronized-frame isolation.
+
+- Replaces the remaining image-margin test subclass of final TerminalBuffer with composition around the existing production placement/callback API. Production finality is preserved; no test-only seam or allocator quota is added.
+
+- Keeps bitmap-map field, constructor and import consistent after removing insertion-order eviction, fixing the genuine Cursor compile finding without restoring the rejected quota.
 
 - Test-only composing-preference fixture completes the first real PRIVATE preferences load before dual-mode construction and verifies backend identity/key absence. Default-OFF and immediate true/false readbacks stay intact; no production preference I/O, fake backend, seeded setting, or post-setter idle is introduced.
 
@@ -61,6 +71,10 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Adapts upstream PR5409 into session-owned nonblocking, all-or-none input admission with the exact source-backed 4-MiB byte-ring capacity, one existing FIFO writer and admission receipts. Explicit/emulator paste is one sanitized/framed event; per-codepoint IME/CJK commits are not made transactional. FULL/CLOSED rejection is visible for active Activity clients without logging payloads. Positive-child gated waiter/setup cleanup retains three healthy transport threads and no constructor-started worker. See [source, ownership and execution limits](docs/RESPONSIVE_INPUT_2026-11-09.md).
 
+- Adds the narrowly validated Chafa-style single-strip LE RGBA8 TIFF fallback for iTerm output, with native BitmapFactory first, pre-allocation strip/layout validation, direct sampling and alpha-correct row conversion. This is not general TIFF support, and native DNG preservation is source-reviewed rather than backed by a new DNG fixture. See [the source/provenance and acceptance limits](docs/CHAFA_TIFF_2026-11-09.md).
+
+- Selectively integrates upstream Sixel and iTerm single/multipart inline images while preserving Fold OSC52 limits, completed DEC2026 pixel ownership, mixed text runs, panes/input and scroll margins. Uses sourced Android/upstream draw and encoded-data limits, checked geometry, bounds-first decoding and immutable publication—not custom heap-fraction quotas or a native-RSS guarantee. Column/font-cell changes clear only live fixed-geometry images so programs can redraw; completed frames retain old pixels. No image files are downloaded, uploaded or executed. See the [master/open-PR source audit and real Pi launch route](docs/UPSTREAM_AUDIT_2026-11-09.md).
+
 - Adds default-OFF direct-terminal IME Composing Preview with real spans/selection, mutually exclusive Samsung metadata, completed-frame cursor/palette/style rendering and connection/session guards. Uncommitted enabled preedit is canceled—not replayed—on invalidation; existing clients default false and the real editor stays untouched. See [source, safety policy and verification limits](docs/CJK_PREEDIT_2026-11-09.md).
 
 - Adds connection-scoped Samsung Honeyboard navigation metadata so its empty-editor arrow suppression can be addressed without inserting sentinels into terminal/editor text. Deferred updates require the current focused connection/session/generation and are invalidated on replacement, close or lifecycle changes. See [source and physical-acceptance limits](docs/HONEYBOARD_INPUT_2026-11-09.md).
@@ -92,11 +106,15 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Contracts, tests, and repository policy
 
+- Inline-image pixel/Canvas assertions run only on Robolectric-supported native graphics API28/37. An explicit API24 LEGACY case tests parser recovery and cell-size replies without allocating/rendering bitmaps; production minimum SDK24 is unchanged.
+
 - Honeyboard API24 input coverage uses a method-scoped legacy Paint layout-spacing shim because Robolectric 4.17 leaves font spacing zero. It preserves the attached/focused InputConnection/IMM/PTY-queue test path and assertions without runtime clamps, forced renderer fields or font/pixel-fidelity claims; native API28/37 is unchanged.
 
 - The negotiated-input drawer regression advances the real DrawerLayout animation in its manually laid-out Robolectric fixture instead of assuming looper idling supplies draw traversals. Shortcut dispatch, pane/release and terminal-byte assertions stay intact; no runtime drawer behavior changes.
 
 - Uses the same fixed public release-asset API fallback for the exact pinned custom lsof URL/SHA pair after browser transport failure. This repairs a separately observed HTTP504 after successful snapshot recovery; common checksum/offline/cache fail-closed behavior and all package/content pins remain unchanged.
+
+- Qualifies image rendering with identical before/after native Android fixtures and captured bytes from the unchanged pinned production Pi emitter. Captures are synthetic test content rendered by production code, not physical Fold screenshots. The documented per-invocation regular-mode/iTerm route needs no terminal-identity spoof or shared Pi configuration change; tmux transport and physical acceptance remain explicit limits.
 
 - Adds included-source JNI host fault injection with fake JNI/PTY/fork boundaries and tracked allocations, and focused Java socket wrapper/framing regressions. The read-only job provisions GCC/libc headers; Android NDK compilation remains separate. Host/shadow tests do not prove ART, real child lifecycle or socket execution.
 - If a content-addressed bootstrap snapshot's browser download fails, tries its exact public same-repository REST asset; all archive/member/profile/cache hashes and input pins remain required. Integrity failures never trigger alternate downloads. Bootstrap failure-path fixtures use the same existing authenticated snapshot recovery as production; no package or prefix contents change.

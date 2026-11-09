@@ -49,6 +49,8 @@ public final class TerminalRow {
     final long[] mStyle;
     /** If this row might contain chars with width != 1, used for deactivating fast path */
     boolean mHasNonOneWidthOrSurrogateChars;
+    /** If this row has a {@link TerminalBitmap}. Used for performance only. */
+    public boolean mHasTerminalBitmap;
 
     /**
      * the OSC 8 hyperlink id each cell was printed under, 0 for none (see
@@ -72,6 +74,7 @@ public final class TerminalRow {
         mText = Arrays.copyOf(source.mText, source.mText.length);
         mSpaceUsed = source.mSpaceUsed;
         mLineWrap = source.mLineWrap;
+        mHasTerminalBitmap = source.mHasTerminalBitmap;
         mStyle = Arrays.copyOf(source.mStyle, source.mStyle.length);
         mHasNonOneWidthOrSurrogateChars = source.mHasNonOneWidthOrSurrogateChars;
         mLinks = source.mLinks == null ? null : source.mLinks.clone();
@@ -80,6 +83,7 @@ public final class TerminalRow {
     /** NOTE: The sourceX2 is exclusive. */
     public void copyInterval(TerminalRow line, int sourceX1, int sourceX2, int destinationX) {
         mHasNonOneWidthOrSurrogateChars |= line.mHasNonOneWidthOrSurrogateChars;
+        mHasTerminalBitmap |= line.mHasTerminalBitmap;
         final int x1 = line.findStartOfColumn(sourceX1);
         final int x2 = line.findStartOfColumn(sourceX2);
         boolean startingFromSecondHalfOfWideChar = (sourceX1 > 0 && line.wideDisplayCharacterStartingAt(sourceX1 - 1));
@@ -169,6 +173,7 @@ public final class TerminalRow {
         mSpaceUsed = mColumns;
         mHasNonOneWidthOrSurrogateChars = false;
         mLinks = null;
+        mHasTerminalBitmap = false;
     }
 
     void setAscii(int column, byte[] text, int offset, int length, long style) {
@@ -198,6 +203,10 @@ public final class TerminalRow {
 
         mStyle[columnToSet] = style;
 
+        if (!mHasTerminalBitmap && TextStyle.isTerminalBitmap(style)) {
+            mHasTerminalBitmap = true;
+        }
+
         final int newCodePointDisplayWidth = WcWidth.width(codePoint);
         if (newCodePointDisplayWidth > 0) setHyperlink(columnToSet, link);
 
@@ -222,10 +231,19 @@ public final class TerminalRow {
             link = getHyperlink(columnToSet);
         } else {
             // Check if we are overwriting the second half of a wide character starting at the previous column:
-            if (wasExtraColForWideChar) setChar(columnToSet - 1, ' ', style);
+            if (wasExtraColForWideChar)
+                setChar(columnToSet - 1, ' ', wideCharCleanupStyle(columnToSet - 1, style));
             // Check if we are overwriting the first half of a wide character starting at the next column:
             boolean overwritingWideCharInNextColumn = newCodePointDisplayWidth == 2 && wideDisplayCharacterStartingAt(columnToSet + 1);
-            if (overwritingWideCharInNextColumn) setChar(columnToSet + 1, ' ', style);
+            if (overwritingWideCharInNextColumn) {
+                // Snapshot the collateral blank's attributes before recursive cleanup changes them.
+                long trailingStyle = wideCharTrailingStyle(columnToSet + 2, style);
+                setChar(columnToSet + 1, ' ', wideCharCleanupStyle(columnToSet + 1, style));
+                mStyle[columnToSet + 2] = trailingStyle;
+            }
+            // The left recursive clear can normalize this already-assigned target as a trailing
+            // blank. Restore the actual image slice, not the incidental cleanup's text attributes.
+            if (TextStyle.isTerminalBitmap(style)) mStyle[columnToSet] = style;
         }
 
         char[] text = mText;
@@ -295,6 +313,7 @@ public final class TerminalRow {
                 System.arraycopy(text, newNextColumnIndex, text, newNextColumnIndex + 1, mSpaceUsed - newNextColumnIndex);
             }
             text[newNextColumnIndex] = ' ';
+            mStyle[columnToSet + 1] = wideCharTrailingStyle(columnToSet + 1, style);
 
             ++mSpaceUsed;
         } else if (oldCodePointDisplayWidth == 1 && newCodePointDisplayWidth == 2) {
@@ -314,6 +333,10 @@ public final class TerminalRow {
                 mSpaceUsed -= nextLen;
             }
         }
+        // A wide text glyph covers its second cell too. An old image payload there must not
+        // survive to render again or make geometry invalidation erase the new wide glyph.
+        if (newCodePointDisplayWidth == 2)
+            mStyle[columnToSet + 1] = wideCharTrailingStyle(columnToSet + 1, style);
 
         // Written again last, because blanking a wide character's other half above rewrites this cell too. A
         // wide character's second cell is part of it, and the space left where one stood is part of nothing.
@@ -336,6 +359,22 @@ public final class TerminalRow {
     /** The OSC 8 hyperlink id of the cell at {@code column}, or 0. */
     public int getHyperlink(int column) {
         return mLinks == null ? 0 : mLinks[column];
+    }
+
+    /** Bitmap coordinates are not text attributes for incidental wide-character blanks. */
+    private long wideCharCleanupStyle(int column, long replacementStyle) {
+        if (!TextStyle.isTerminalBitmap(replacementStyle)) return replacementStyle;
+        // Keep existing text colors/effects (including outside image margins). A stale image
+        // payload has no text style to preserve, and clearing its bitmap bit is not a decode.
+        long oldStyle = mStyle[column];
+        return TextStyle.isTerminalBitmap(oldStyle) ? TextStyle.NORMAL : oldStyle;
+    }
+
+    /** Keep valid text attributes, but never retain an obsolete image beneath a covered/blank cell. */
+    private long wideCharTrailingStyle(int column, long replacementStyle) {
+        long oldStyle = mStyle[column];
+        if (!TextStyle.isTerminalBitmap(oldStyle)) return oldStyle;
+        return TextStyle.isTerminalBitmap(replacementStyle) ? TextStyle.NORMAL : replacementStyle;
     }
 
     boolean isBlank() {
