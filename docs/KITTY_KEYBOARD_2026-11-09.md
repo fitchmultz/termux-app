@@ -48,3 +48,28 @@ paste matrices, and Fold shortcut/pane-release/drawer coverage. These source
 counts are not executed-test counts. Exact-head M1 Android CI and independent Pi
 Durable/Cursor reviews are required before merge. Physical Samsung/IME/Bluetooth
 acceptance remains unverified and owner-controlled, not an invented release gate.
+
+## Current review corrections and evidence boundary
+
+Cursor's events-only finding is repaired: flags2/6 retain available legacy initial
+functional presses, including application-cursor SS3 and F1-F4. Space still uses
+layout resolution; legacy-null keys keep their prior fallback. Repeat/release and
+Pi's flags7 encoding are unchanged. Three unit and two app regression methods
+cover cursor/keypad modes, Shift/Alt/Ctrl combinations, F3 identity and layout/null
+boundaries; they were authored, not executed on the SDK-less developer Mac.
+
+This is the requested **Termux legacy-compatibility policy**, not a protocol-
+mandated or verified native Kitty parity claim. The [Kitty maintainer statement](https://github.com/kovidgoyal/kitty/issues/9999#issuecomment-4427174271)
+supports legacy presses without disambiguation, but [native Kitty at the inspected
+pin](https://github.com/kovidgoyal/kitty/blob/2af2d313de885974b77256c60c8b08b73e1be050/kitty/key_encoding.c#L161-L187)
+disables its SS3 path with event reporting.
+
+The actual CI compiler also exposed four test-layout overrides using Robolectric
+4.10's removed `get(int,int)` API. They now use pinned 4.17's exact
+`protected static char nativeGetCharacter(long,int,int)` implementation hook and
+its nonrecursive parent-static fallback. The [4.17 source JAR](https://repo.maven.apache.org/maven2/org/robolectric/shadows-framework/4.17/shadows-framework-4.17-sources.jar)
+and API28/37 framework sources were independently checked. Production event
+routing remains the subject under test; no hand-written US fallback map,
+production seam, dependency update or physical-layout qualification was added.
+Native Android synthetic-event coverage is configured for SDK28/37; final-head
+CI execution and both independent review gates remain mandatory.

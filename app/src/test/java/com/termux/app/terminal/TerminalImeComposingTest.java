@@ -4,11 +4,15 @@ import android.app.Activity;
 import android.app.Application;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.Spanned;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
@@ -58,6 +62,16 @@ public class TerminalImeComposingTest {
         static int selectionStart, selectionEnd, composingStart, composingEnd;
         static ExtractedText extracted;
         @Implementation protected void restartInput(View view) { restarts.add(view); }
+
+        /**
+         * Deterministic test-only bridge for the hidden IMM key-dispatch method. Preserve the
+         * BaseInputConnection -> IMM call and deferred timing; the real target handles each key.
+         * This does not emulate served-view fallback or ViewRootImpl routing, and fabricates no PTY bytes.
+         */
+        @Implementation protected void dispatchKeyEventFromInputMethod(View target, KeyEvent event) {
+            new Handler(Looper.getMainLooper()).post(() -> target.dispatchKeyEvent(event));
+        }
+
         @Implementation protected void updateSelection(View view, int start, int end, int candidateStart, int candidateEnd) {
             selectionStart = start;
             selectionEnd = end;
@@ -310,14 +324,107 @@ public class TerminalImeComposingTest {
         input.finishComposingText();
         assertEquals("bc", received(session));
         input.deleteSurroundingTextInCodePoints(1, 0);
+        assertEquals("IMM key dispatch must remain asynchronous", "", received(session));
+        idle();
         assertEquals("Code-point Backspace outside preedit must reach the terminal", "\u007f", received(session));
         input.commitText("😀", 1);
         assertEquals("😀", received(session));
         input.deleteSurroundingTextInCodePoints(1, 0);
+        assertEquals("", received(session));
+        idle();
         assertEquals("\u007f", received(session));
         input.setComposingText("", 1);
         assertNull(preview());
         input.finishComposingText();
+        assertEquals("", received(session));
+    }
+
+    private void assertTerminalBackspace(InputConnection input, boolean codePoints) {
+        assertTrue(codePoints ? input.deleteSurroundingTextInCodePoints(1, 0) : input.deleteSurroundingText(1, 0));
+        assertEquals("IMM key dispatch must remain asynchronous", "", received(session));
+        idle();
+        assertEquals("\u007f", received(session));
+        assertEquals("", received(otherSession));
+    }
+
+    private void assertEmptyComposingApisUseTerminalBackspace() {
+        enabled = true;
+        for (boolean emptyRegion : new boolean[]{false, true}) {
+            for (boolean codePoints : new boolean[]{false, true}) {
+                InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+                if (emptyRegion) {
+                    assertTrue(input.setComposingRegion(0, 0));
+                } else {
+                    assertTrue(input.setComposingText("draft", 1));
+                    assertTrue(input.setComposingText("", 1));
+                }
+                Editable editable = ((BaseInputConnection) input).getEditable();
+                assertEquals(0, editable.length());
+                // AOSP's default builder rejects zero-length EXCLUSIVE_EXCLUSIVE spans.
+                assertEquals(-1, BaseInputConnection.getComposingSpanStart(editable));
+                assertEquals(-1, BaseInputConnection.getComposingSpanEnd(editable));
+                assertNull(preview());
+                assertTerminalBackspace(input, codePoints);
+            }
+        }
+    }
+
+    @Test public void emptyComposingTextAndRegionUseTerminalBackspaceForBothDeletionApis() {
+        assertEmptyComposingApisUseTerminalBackspace();
+    }
+
+    private void assertSyntheticZeroLengthMarkerUsesTerminalBackspace() {
+        enabled = true;
+        for (boolean codePoints : new boolean[]{false, true}) {
+            InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+            assertTrue(input.setComposingText("draft", 1));
+            Editable editable = ((BaseInputConnection) input).getEditable();
+            // Defensive synthetic state, not a claim that ordinary empty composing APIs create it.
+            // Retain the real framework COMPOSING marker with flags that permit an empty span.
+            for (Object span : editable.getSpans(0, editable.length(), Object.class)) {
+                if ((editable.getSpanFlags(span) & Spanned.SPAN_COMPOSING) != 0)
+                    editable.setSpan(span, 0, 0, Spanned.SPAN_INCLUSIVE_INCLUSIVE | Spanned.SPAN_COMPOSING);
+            }
+            editable.clear();
+            assertEquals(0, BaseInputConnection.getComposingSpanStart(editable));
+            assertEquals(0, BaseInputConnection.getComposingSpanEnd(editable));
+            assertTrue(input.setSelection(0, 0));
+            assertNull(preview());
+            assertTerminalBackspace(input, codePoints);
+        }
+    }
+
+    @Test public void syntheticZeroLengthComposingMarkerDoesNotSuppressEitherTerminalBackspaceApi() {
+        assertSyntheticZeroLengthMarkerUsesTerminalBackspace();
+    }
+
+    @Test @Config(sdk = 24) @GraphicsMode(GraphicsMode.Mode.LEGACY)
+    public void emptyPreeditDeletionAlsoUsesOnlyMinimumSdkInputApis() {
+        assertEmptyComposingApisUseTerminalBackspace();
+        assertSyntheticZeroLengthMarkerUsesTerminalBackspace();
+    }
+
+    @Test public void activeComposingCodePointDeletionPreservesSurrogatesAndDoesNotSendPtyBackspaces() {
+        enabled = true;
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        input.setComposingText("😀字", 1);
+        input.setComposingRegion(2, 3);
+        input.setSelection(3, 3);
+        input.deleteSurroundingTextInCodePoints(1, 0);
+        assertEquals("字", ((BaseInputConnection) input).getEditable().toString());
+        assertEquals("字", preview());
+        idle();
+        assertEquals("", received(session));
+        input.finishComposingText();
+        assertEquals("字", received(session));
+    }
+
+    @Test public void offKeepsLegacyEmptyCompositionDeletionBehavior() {
+        InputConnection input = terminal.onCreateInputConnection(new EditorInfo());
+        input.setComposingText("", 1);
+        assertTerminalBackspace(input, false);
+        input.deleteSurroundingTextInCodePoints(1, 0);
+        idle();
         assertEquals("", received(session));
     }
 

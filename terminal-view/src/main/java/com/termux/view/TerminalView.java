@@ -422,7 +422,7 @@ public final class TerminalView extends View {
         // Wait with enabling the scrollbar until we have a terminal to get scroll position from.
         setVerticalScrollBarEnabled(session != null);
         invalidate();
-        // Also cover null -> next-session removal and rapid replacements before a queued restart.
+        // Rebind only feature editors after null/rapid session changes; never request keyboard showing.
         if (restartFocusedInput && session != null) {
             long generation = mInputConnectionGeneration;
             post(() -> {
@@ -520,6 +520,14 @@ public final class TerminalView extends View {
 
             private boolean isActiveComposingConnection() {
                 return isCurrentConnection() && hasFocus() && isAttachedToWindow() && mClient.isTerminalViewSelected();
+            }
+
+            private boolean hasNonEmptyComposingSpan() {
+                Editable editable = getEditable();
+                int start = BaseInputConnection.getComposingSpanStart(editable);
+                int end = BaseInputConnection.getComposingSpanEnd(editable);
+                // An empty framework COMPOSING marker is not an active preedit.
+                return start >= 0 && end > start && end <= editable.length();
             }
 
             private boolean useHoneyboardVirtualEditor() {
@@ -695,7 +703,7 @@ public final class TerminalView extends View {
                 }
                 if (composing) {
                     if (!isActiveComposingConnection()) return false;
-                    if (BaseInputConnection.getComposingSpanStart(getEditable()) >= 0) {
+                    if (hasNonEmptyComposingSpan()) {
                         boolean result = super.deleteSurroundingText(leftLength, rightLength);
                         synchronizeComposingEditor();
                         return result;
@@ -713,7 +721,7 @@ public final class TerminalView extends View {
             public boolean deleteSurroundingTextInCodePoints(int beforeLength, int afterLength) {
                 if (composing) {
                     if (!isActiveComposingConnection() || beforeLength < 0 || afterLength < 0) return false;
-                    if (BaseInputConnection.getComposingSpanStart(getEditable()) < 0)
+                    if (!hasNonEmptyComposingSpan())
                         return deleteSurroundingText(beforeLength, afterLength);
                 }
                 boolean result = super.deleteSurroundingTextInCodePoints(beforeLength, afterLength);

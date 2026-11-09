@@ -44,7 +44,7 @@ is an atomic admission transaction under saturation.
 
 ## Verification and evidence limits
 
-Twelve authored functional composing-test methods plus a native OFF/ON capture case cover OFF behavior, actual spans/selection,
+The initial twelve authored functional composing-test methods plus a native OFF/ON capture case cover OFF behavior, actual spans/selection,
 Honeyboard exclusion, flags1/7 controls/paste, deletion, stale/replaced/closed
 connections, same-connection newer preedit, null/rapid replacements, real-editor
 focus, preference refresh and completed-frame bitmap equality. An activity test
@@ -58,3 +58,31 @@ Pi Durable/Cursor reviews remain required. Actual Samsung/CJK/physical behavior 
 unverified until owner acceptance tomorrow, not an invented release-blocking gate.
 No Node/runtime, package, shared Pi/dotfile, SDK/profile, certificate or prefix
 change is introduced here; the ongoing phone source build remains untouched.
+
+## Empty-marker review correction and provenance
+
+Both ON deletion APIs now redirect to the Editable only for a valid **nonempty**
+composing span, consistent with the preview's definition of preedit. Absent or
+zero-length markers use terminal Backspace; active codepoint deletion preserves
+supplementary characters, and OFF behavior is unchanged.
+
+Source tracing does not substantiate the review's claimed natural zero-marker
+reproducer: AOSP's ordinary empty `setComposingText` and equal-endpoint
+`setComposingRegion` operations are expected to leave **absent (-1/-1)** markers.
+The new tests explicitly assert that distinction. A separate, clearly labelled
+synthetic fixture retains the actual framework COMPOSING marker at 0..0 using
+inclusive flags to exercise the defensive fallback; it is not an observed IME
+sequence or physical-device reproduction. See the [InputConnection contracts](https://developer.android.com/reference/android/view/inputmethod/InputConnection)
+and [AOSP SpannableStringBuilder](https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r47/core/java/android/text/SpannableStringBuilder.java).
+
+Five additional methods cover both deletion APIs, the synthetic marker, API24
+legacy execution, supplementary composing deletion and OFF preservation. They
+were authored, not executed at commit preparation. As in the Honeyboard fixture,
+the documented test-only IMM bridge posts direct-target events asynchronously;
+it does not emulate full ViewRoot/served-view routing or fabricate PTY bytes.
+
+Keyboard fixture corrections and Honeyboard lifecycle regressions are integrated.
+The merged production View matches the independently reviewed CJK correction
+apart from one explanatory restart comment; composing-or-Honeyboard restart
+intent and stale-draft guards retain their existing superset behavior. Real
+final-head CI and both independent reviews remain required.
