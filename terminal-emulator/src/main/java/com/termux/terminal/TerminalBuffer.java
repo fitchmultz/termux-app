@@ -132,11 +132,12 @@ public final class TerminalBuffer {
         int y1 = y;
         int y2 = y;
         // y1 may expand into transcript rows (negative external rows) so that
-        // tapping the visible tail of a wrapped line still finds its head.
-        while (y1 > -getActiveTranscriptRows() && !getSelectedText(0, y1 - 1, mColumns, y, true, true).contains("\n")) {
+        // tapping the visible tail of a wrapped line still finds its head. Only the next
+        // adjacent boundary is new: re-serializing the growing whole span is quadratic.
+        while (y1 > -getActiveTranscriptRows() && !getSelectedText(0, y1 - 1, mColumns, y1, true, true).contains("\n")) {
             y1--;
         }
-        while (y2 < mScreenRows && !getSelectedText(0, y, mColumns, y2 + 1, true, true).contains("\n")) {
+        while (y2 < mScreenRows - 1 && !getSelectedText(0, y2, mColumns, y2 + 1, true, true).contains("\n")) {
             y2++;
         }
 
