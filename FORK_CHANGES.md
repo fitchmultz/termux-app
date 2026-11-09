@@ -6,12 +6,15 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Prioritizes the owner's Z Fold 8 (`SM-F971U1`, Android 17), retains the Ultra (`SM-F976U1`) as a regression target, and welcomes other compatible devices without model-name gating. The signed APK remains ARM64-only.
 - Keeps package ID `com.termux` and prefix `/data/data/com.termux/files/usr`; this is an in-place fork, not a side-by-side package.
-- Uses label `Termux Fold`; this branch's source release profile is `0.119.0-fold.16` (`2026110516`). PR integration, signed publication, and physical validation are separate steps.
+- Uses label `Termux Fold`; this branch's source release profile is `0.119.0-fold.17` (`2026110917`). PR integration, signed publication, and physical validation are separate steps.
 - Packages only `arm64-v8a` with the `apt-android-7` bootstrap; split release APKs are disabled.
 - Retains target SDK 28 for direct execution of programs from the writable Termux prefix. Modern targets require routing execution through Android's system linker plus a separately patched package ecosystem; forced-linker tests currently break Node test workers and `age-keygen`. Android 17 may therefore show an old-app or **Install anyway** warning.
 - Uses a dedicated Android signing identity. Signing material must never be committed or made public, but protected GitHub Actions secrets and signed GitHub Releases are allowed when deliberately configured.
 
 ## Fixes
+
+- Adapts source-confirmed open upstream fixes for empty sanitized input, coalesced PTY wakeups, overlapping cell-style copies, CSI/margin/cancellation correctness, wrapped transcript-word lookup, and unmatched Ctrl+Alt active-pane routing. Keeps recognized Fold shortcuts and synchronized-output timeout/queue behavior, with focused regressions.
+- Adapts fuller upstream JNI failure cleanup for partial arrays, UTF acquisitions, duplication failures, local references and PTY setup/fork failure; preserves original pending exceptions and validates PID output. Main shared sockets poll the connected client FD and return exactly one AM result frame on failure. The independently pinned API companion source is unchanged; no unconditional process-kill hunk is imported.
 
 - This source branch batches ordinary printable ASCII into row-bounded runs instead of repeating decoding, width lookup, and cell setup for every byte. UTF-8, escapes, line drawing, insert mode, wrapping, cursor normalization, and complex Unicode rows retain their existing paths.
 - This source branch schedules terminal flings on Android's animation frames instead of immediately reposting the polling loop. It retains the existing scrolling physics, history bounds, mouse reporting, and pane/session cancellation.
@@ -20,7 +23,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Ports upstream `47c473f9` to clear stale wrapped-line metadata when an erase reaches the right edge, preserving newlines in copied terminal text.
 - Ports upstream `5532cc4f` to keep UTF-16 row lengths in an `int`, preventing overflow with supplementary combining text in wide terminal rows.
-- Selectively adapts upstream `fd2ab4fc` string-framing corrections: only `ESC \` terminates a DCS, and OSC escape-overflow cannot resume an aborted sequence. Retains existing parser limits and does not add image protocols.
+- Selectively adapts upstream `fd2ab4fc` string-framing corrections: only `ESC \` terminates a DCS, and OSC escape-overflow cannot resume an aborted sequence. Retains Fold clipboard/control limits; the later Fold17 capability integration adds bounded inline images without replacing these framing fixes.
 
 - Selectively incorporates upstream `45844885`, `b4a2c32c`, and `084d709f`: prevents fullscreen keyboard-margin predictions from resizing split-screen/pop-up windows, handles root file-share MIME queries, and pairs JNI string releases with the correct arguments. Also normalizes MIME extensions independently of the user's locale in sharing and document-provider paths.
 
@@ -37,6 +40,8 @@ This is the canonical concise inventory of intentional differences from the audi
 - Routes drawer layout, Back handling, hardware shortcuts, and the `DRAWER` extra key through one logical start/end position contract.
 
 ## Features
+
+- Selectively integrates upstream Sixel (`DCS q`) and iTerm inline-image (`OSC 1337` single/multipart) capabilities, with the upstream control-parser fast paths and buffer release. Preserves Fold's 512KiB OSC52 allowance, unrelated-control limits, Samsung input, panes, and DEC2026 presentation. Image rendering uses completed-frame bitmap ownership as well as copied cells; bounded immutable pixels survive live-buffer collection. Checked geometry/encoded input/heap budgets, correct bitmap fields, surrounding text-run rendering, and actual native Android protocol/render regressions adapt upstream for this appliance. App-global admission covers pending input/decoding and shared snapshot pixels without recycling them; it is not a native-RSS guarantee. Placement honors scroll margins, and column/font-cell changes clear only live fixed-geometry images so programs can redraw. No image files are downloaded, uploaded, or executed. See the [complete master/open-PR capability audit and decision log](docs/UPSTREAM_AUDIT_2026-11-09.md).
 
 - Adds a native control editor in the session drawer and Terminal I/O settings. Drag or tap to reorder, move between rows, add keys/macros, remove keys, and reset. Saved app layouts override the file matrix explicitly; returning to the file layout leaves termux.properties untouched. Editor drafts survive activity recreation. Oversized app layouts scroll horizontally without shrinking touch targets. The default plus key starts a session through the existing new-session path; Home remains available in the editor.
 - Adds native two-pane sessions with independent terminal views, active-pane input routing, draggable sizing, layout/swap/maximize controls, and compact-window collapse without ending the hidden session. Compact transitions are applied before measurement so the remaining pane fills the window.
@@ -62,6 +67,8 @@ This is the canonical concise inventory of intentional differences from the audi
 - Keeps explicit keyboard controls because full-screen TUIs such as Pi use terminal mouse tracking and consume terminal taps.
 
 ## Contracts, tests, and repository policy
+
+- Adds an included-source JNI host fault-injection gate with fake JNI/PTY/fork boundaries and tracked allocations, plus focused Java socket wrapper/framing regressions. The unprivileged job provisions GCC/libc headers for this check; full Android NDK compilation remains separate, and host faults/shadowed socket tests are not ART, child-lifecycle or real-device qualification.
 
 - This source branch combines wrapper validation, full tests, metadata and one validated unsigned release APK in PR and main checks, reusing Gradle state between runs. Signed release compares a successful exact-tag main APK with a clean build; if they differ, it requires two matching clean release-job builds instead. Bootstrap reproducibility runs for bootstrap changes; unrelated inventory changes do not trigger the independently pinned Termux:API companion.
 - Documents the observed Android child-process restriction and optional temporary-file retention for background work. These are device/user settings, not APK defaults or guarantees; see [background-session guidance](docs/ANDROID_BACKGROUND.md).

@@ -49,6 +49,8 @@ public final class TerminalRow {
     final long[] mStyle;
     /** If this row might contain chars with width != 1, used for deactivating fast path */
     boolean mHasNonOneWidthOrSurrogateChars;
+    /** If this row has a {@link TerminalBitmap}. Used for performance only. */
+    public boolean mHasTerminalBitmap;
 
     /** Construct a blank row (containing only whitespace, ' ') with a specified style. */
     public TerminalRow(int columns, long style) {
@@ -64,6 +66,7 @@ public final class TerminalRow {
         mText = Arrays.copyOf(source.mText, source.mText.length);
         mSpaceUsed = source.mSpaceUsed;
         mLineWrap = source.mLineWrap;
+        mHasTerminalBitmap = source.mHasTerminalBitmap;
         mStyle = Arrays.copyOf(source.mStyle, source.mStyle.length);
         mHasNonOneWidthOrSurrogateChars = source.mHasNonOneWidthOrSurrogateChars;
     }
@@ -71,10 +74,13 @@ public final class TerminalRow {
     /** NOTE: The sourceX2 is exclusive. */
     public void copyInterval(TerminalRow line, int sourceX1, int sourceX2, int destinationX) {
         mHasNonOneWidthOrSurrogateChars |= line.mHasNonOneWidthOrSurrogateChars;
+        mHasTerminalBitmap |= line.mHasTerminalBitmap;
         final int x1 = line.findStartOfColumn(sourceX1);
         final int x2 = line.findStartOfColumn(sourceX2);
         boolean startingFromSecondHalfOfWideChar = (sourceX1 > 0 && line.wideDisplayCharacterStartingAt(sourceX1 - 1));
         final char[] sourceChars = (this == line) ? Arrays.copyOf(line.mText, line.mText.length) : line.mText;
+        // Copy styles too when copying within the same row, or cells overwritten earlier in the loop leak their style.
+        final long[] sourceStyles = (this == line) ? Arrays.copyOf(line.mStyle, line.mStyle.length) : line.mStyle;
         int latestNonCombiningWidth = 0;
         for (int i = x1; i < x2; i++) {
             char sourceChar = sourceChars[i];
@@ -90,7 +96,7 @@ public final class TerminalRow {
                 sourceX1 += latestNonCombiningWidth;
                 latestNonCombiningWidth = w;
             }
-            setChar(destinationX, codePoint, line.getStyle(sourceX1));
+            setChar(destinationX, codePoint, sourceStyles[sourceX1]);
         }
     }
 
@@ -156,6 +162,7 @@ public final class TerminalRow {
         Arrays.fill(mStyle, style);
         mSpaceUsed = mColumns;
         mHasNonOneWidthOrSurrogateChars = false;
+        mHasTerminalBitmap = false;
     }
 
     void setAscii(int column, byte[] text, int offset, int length, long style) {
@@ -173,6 +180,10 @@ public final class TerminalRow {
             throw new IllegalArgumentException("TerminalRow.setChar(): columnToSet=" + columnToSet + ", codePoint=" + codePoint + ", style=" + style);
 
         mStyle[columnToSet] = style;
+
+        if (!mHasTerminalBitmap && TextStyle.isTerminalBitmap(style)) {
+            mHasTerminalBitmap = true;
+        }
 
         final int newCodePointDisplayWidth = WcWidth.width(codePoint);
 
