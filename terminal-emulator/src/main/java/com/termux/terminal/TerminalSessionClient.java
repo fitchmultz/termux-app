@@ -16,6 +16,11 @@ public interface TerminalSessionClient {
 
     void onSessionFinished(@NonNull TerminalSession finishedSession);
 
+    /** Input was not admitted. Called on the session Handler; never includes the rejected payload. */
+    default void onInputRejected(@NonNull TerminalSession session, @NonNull TerminalSession.InputRejectionReason reason) {
+        logWarn("TerminalSession", "Terminal input was not sent: " + reason);
+    }
+
     void onCopyTextToClipboard(@NonNull TerminalSession session, String text);
 
     void onPasteTextFromClipboard(@Nullable TerminalSession session);

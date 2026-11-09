@@ -1306,6 +1306,7 @@ public final class TerminalView extends View {
             return;
         }
 
+        boolean rememberTextKey = false;
         if (!literalControlFromIme && mEmulator != null && mEmulator.isKittyKeyboardEnabled()) {
             if (controlDown) keyMod |= KeyHandler.KEYMOD_CTRL;
             if (altDown) keyMod |= KeyHandler.KEYMOD_ALT;
@@ -1314,10 +1315,11 @@ public final class TerminalView extends View {
                 KeyHandler.KEY_EVENT_REPEAT : KeyHandler.KEY_EVENT_PRESS;
             String kittyCode = KeyHandler.getKittyCodePoint(textKey, keyMod,
                 mEmulator.getKittyKeyboardFlags(), eventType);
-            if (KeyHandler.getKittyCodePoint(textKey.codePoint, keyMod) != null)
-                rememberKittyKey(event, textKey, keyMod, null);
+            rememberTextKey = KeyHandler.getKittyCodePoint(textKey.codePoint, keyMod) != null;
             if (kittyCode != null) {
-                mTermSession.write(kittyCode);
+                if (mTermSession.tryWrite(kittyCode) && rememberTextKey)
+                    rememberKittyKey(event, textKey, keyMod, null);
+                // Recognized input is consumed even on rejection; never retry through legacy input.
                 return;
             }
         }
@@ -1366,7 +1368,8 @@ public final class TerminalView extends View {
             }
 
             // If left alt, send escape before the code point to make e.g. Alt+B and Alt+F work in readline:
-            mTermSession.writeCodePoint(altDown, codePoint);
+            if (mTermSession.tryWriteCodePoint(altDown, codePoint) && rememberTextKey)
+                rememberKittyKey(event, textKey, keyMod, null);
         }
     }
 
@@ -1390,10 +1393,11 @@ public final class TerminalView extends View {
             term.isKeypadApplicationMode(), term.getKittyKeyboardFlags(),
             event != null && event.getRepeatCount() > 0 ? KeyHandler.KEY_EVENT_REPEAT : KeyHandler.KEY_EVENT_PRESS);
         if (code == null) return false;
-        mTermSession.write(code);
-        String releaseCode = KeyHandler.getCode(keyCode, keyMod, term.isCursorKeysApplicationMode(),
-            term.isKeypadApplicationMode(), term.getKittyKeyboardFlags(), KeyHandler.KEY_EVENT_RELEASE);
-        if (releaseCode != null) rememberKittyKey(event, null, keyMod, releaseCode);
+        if (mTermSession.tryWrite(code)) {
+            String releaseCode = KeyHandler.getCode(keyCode, keyMod, term.isCursorKeysApplicationMode(),
+                term.isKeypadApplicationMode(), term.getKittyKeyboardFlags(), KeyHandler.KEY_EVENT_RELEASE);
+            if (releaseCode != null) rememberKittyKey(event, null, keyMod, releaseCode);
+        }
         return true;
     }
 

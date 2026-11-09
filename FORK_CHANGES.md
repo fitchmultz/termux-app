@@ -54,6 +54,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Features
 
+- Adapts upstream PR5409 into session-owned nonblocking, all-or-none input admission with the exact source-backed 4-MiB byte-ring capacity, one existing FIFO writer and admission receipts. Explicit/emulator paste is one sanitized/framed event; per-codepoint IME/CJK commits are not made transactional. FULL/CLOSED rejection is visible for active Activity clients without logging payloads. Positive-child gated waiter/setup cleanup retains three healthy transport threads and no constructor-started worker. See [source, ownership and execution limits](docs/RESPONSIVE_INPUT_2026-11-09.md).
+
 - Adds default-OFF direct-terminal IME Composing Preview with real spans/selection, mutually exclusive Samsung metadata, completed-frame cursor/palette/style rendering and connection/session guards. Uncommitted enabled preedit is canceled—not replayed—on invalidation; existing clients default false and the real editor stays untouched. See [source, safety policy and verification limits](docs/CJK_PREEDIT_2026-11-09.md).
 
 - Adds connection-scoped Samsung Honeyboard navigation metadata so its empty-editor arrow suppression can be addressed without inserting sentinels into terminal/editor text. Deferred updates require the current focused connection/session/generation and are invalidated on replacement, close or lifecycle changes. See [source and physical-acceptance limits](docs/HONEYBOARD_INPUT_2026-11-09.md).

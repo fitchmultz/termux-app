@@ -14,7 +14,7 @@ final class ByteQueue {
 
     public synchronized void close() {
         mOpen = false;
-        notify();
+        notifyAll();
     }
 
     public synchronized int read(byte[] buffer, boolean block) {
@@ -51,16 +51,42 @@ final class ByteQueue {
         return totalRead;
     }
 
+    enum WriteResult { ACCEPTED, FULL, CLOSED }
+
+    /**
+     * Admit an entire input event without waiting for the consumer. A rejected event writes
+     * nothing, including when it would fit only partly or would wrap around the ring.
+     */
+    public synchronized WriteResult tryWrite(byte[] buffer, int offset, int length) {
+        checkRange(buffer, offset, length);
+        if (length == 0) return WriteResult.ACCEPTED;
+        if (!mOpen) return WriteResult.CLOSED;
+        if (length > mBuffer.length - mStoredBytes) return WriteResult.FULL;
+
+        boolean wasEmpty = mStoredBytes == 0;
+        int tail = mHead + mStoredBytes;
+        if (tail >= mBuffer.length) tail -= mBuffer.length;
+        int firstRun = Math.min(length, mBuffer.length - tail);
+        System.arraycopy(buffer, offset, mBuffer, tail, firstRun);
+        if (firstRun < length) System.arraycopy(buffer, offset + firstRun, mBuffer, 0, length - firstRun);
+        mStoredBytes += length;
+        if (wasEmpty) notifyAll();
+        return WriteResult.ACCEPTED;
+    }
+
+    static void checkRange(byte[] buffer, int offset, int length) {
+        if (offset < 0 || length < 0 || offset > buffer.length || length > buffer.length - offset)
+            throw new IllegalArgumentException("Invalid offset or length");
+    }
+
     /**
      * Attempt to write the specified portion of the provided buffer to the queue.
      * <p/>
      * Returns whether the output was totally written, false if it was closed before.
      */
     public boolean write(byte[] buffer, int offset, int lengthToWrite) {
-        if (offset < 0 || lengthToWrite < 0 || offset > buffer.length ||
-            lengthToWrite > buffer.length - offset) {
-            throw new IllegalArgumentException("Invalid offset or length");
-        } else if (lengthToWrite == 0) {
+        checkRange(buffer, offset, lengthToWrite);
+        if (lengthToWrite == 0) {
             // A zero-length write is a no-op. This can happen when pasting text
             // that TerminalEmulator.paste() fully strips of escape/control
             // characters, which previously crashed the app (issue #5119).
