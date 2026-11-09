@@ -431,48 +431,79 @@ public class KittyKeyboardAdmissionTest {
     }
 
 
-    @Test public void rejectedInitialFunctionalPressCannotStartAnUnownedRepeatStreamAfterDrain() {
+    @Test public void firstAdmittedFunctionalRepeatOwnsItsReleaseWhenInitialDownWasFull() {
         for (int mode : new int[]{2, 3}) {
             flags(mode);
             byte[] pending = fillUntilOrdinaryFull();
             key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 0, 0);
             assertArrayEquals(pending, drain());
             key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 1, 0);
-            key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 2, allEventModifiers());
-            key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_UP, 0, 0);
-            expect(""); // Capacity recovered, but no initial press owns these repeats or an UP.
-            assertEquals(0, (int) ReflectionHelpers.<Integer>getField(queue, "mReservedBytes"));
-            key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 0, 0);
-            expect("\033[A");
-            key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 1, 0);
             expect("\033[1;1:2A");
+            assertTrue((int) ReflectionHelpers.<Integer>getField(queue, "mReservedBytes") > 0);
+            pending = fillUntilOrdinaryFull();
+            key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 2, 0); // Rejected repeat cannot lose the first token.
+            key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_UP, 0, allEventModifiers());
+            expectPendingThen(pending, "\033[1;208:3A"); // UP before any drain, with growing live modifiers.
             key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_UP, 0, 0);
-            expect("\033[1;1:3A");
+            expect("");
+            assertEquals(0, (int) ReflectionHelpers.<Integer>getField(queue, "mReservedBytes"));
         }
     }
 
-    @Test public void rejectedInitialShortcutAndFlag2LegacyPressesCannotStartUnownedRepeatsAfterDrain() {
+    @Test public void firstAdmittedShortcutRepeatOwnsItsReleaseAfterFullLegacyOrEncodedDown() {
         for (int mode : new int[]{2, 3, 7}) {
             flags(mode);
             byte[] pending = fillUntilOrdinaryFull();
             int before = codePointCalls;
             key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_I, 0, KeyEvent.META_CTRL_ON);
-            assertArrayEquals(pending, drain());
-            key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_I, 1, KeyEvent.META_CTRL_ON);
-            key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_I, 2, allEventModifiers());
-            key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_I, 0, KeyEvent.META_CTRL_ON);
-            expect("");
-            assertEquals(before + 3, codePointCalls); // The client hook retains precedence even on dropped repeats.
-            assertEquals(0, (int) ReflectionHelpers.<Integer>getField(queue, "mReservedBytes"));
-            key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_I, 0, KeyEvent.META_CTRL_ON);
-            expect(mode == 2 ? "\t" : "\033[105;5u");
+            assertArrayEquals(pending, drain()); // Flags2 rejected the legacy TAB, not an encoded press.
             key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_I, 1, KeyEvent.META_CTRL_ON);
             expect("\033[105;5:2u");
+            assertTrue((int) ReflectionHelpers.<Integer>getField(queue, "mReservedBytes") > 0);
+            pending = fillUntilOrdinaryFull();
+            key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_I, 2, KeyEvent.META_CTRL_ON);
+            key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_I, 0, allEventModifiers());
+            expectPendingThen(pending, "\033[105;16:3u");
+            assertEquals(before + 3, codePointCalls); // Client hooks precede both admission and rejection.
             key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_I, 0, KeyEvent.META_CTRL_ON);
-            expect("\033[105;5:3u");
+            expect("");
+            assertEquals(0, (int) ReflectionHelpers.<Integer>getField(queue, "mReservedBytes"));
         }
     }
 
+    @Test @Config(shadows = KittyKeyboardInputTest.AlternateCharacterMap.class)
+    public void firstAdmittedRepeatCapturesItsActualIdentityWithoutLaterReplacement() {
+        flags(3);
+        byte[] pending = fillUntilOrdinaryFull();
+        key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_NUMPAD_0, 0, KeyEvent.META_NUM_LOCK_ON);
+        assertArrayEquals(pending, drain());
+        key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_NUMPAD_0, 1, 0);
+        expect("\033[57425;1:2u");
+        key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_NUMPAD_0, 2, KeyEvent.META_NUM_LOCK_ON);
+        expect("\033[57399;129:2u");
+        pending = fillUntilOrdinaryFull();
+        key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_NUMPAD_0, 0, KeyEvent.META_NUM_LOCK_ON);
+        expectPendingThen(pending, "\033[57425;129:3u");
+        flags(7);
+        int modifiers = KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON;
+        try {
+            KittyKeyboardInputTest.AlternateCharacterMap.greek = false;
+            pending = fillUntilOrdinaryFull();
+            key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_C, 0, modifiers);
+            assertArrayEquals(pending, drain());
+            KittyKeyboardInputTest.AlternateCharacterMap.greek = true;
+            key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_C, 1, modifiers);
+            expect("\033[960:928:99;6:2u");
+            KittyKeyboardInputTest.AlternateCharacterMap.greek = false;
+            key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_C, 2, modifiers);
+            expect("\033[1089:1057:99;6:2u");
+            pending = fillUntilOrdinaryFull();
+            key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_C, 0, allEventModifiers());
+            expectPendingThen(pending, "\033[960:928:99;16:3u");
+        } finally {
+            KittyKeyboardInputTest.AlternateCharacterMap.greek = false;
+        }
+    }
 
     @Test public void untrackedRepeatsDoNotGateLegacyShortcutPlainTextOrRecoveryInput() {
         flags(1); // No event reporting: a shortcut repeat is still an ordinary encoded press.

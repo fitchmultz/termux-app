@@ -58,16 +58,17 @@ is actual ring-space ownership, not another payload queue or a heap/RSS budget.
 UP retains live modifiers. The bound is measured from the same encoder with all
 supported modifier bits, not a guessed allowance or merely the DOWN-time release
 length: functional modifier maximum **208**, text **16** plus captured Shift
-alternates, derived by unchanged `KeyHandler.kittySequence()` and its text-lock
-mask. Near-full input that fits DOWN but not that bound rejects DOWN atomically.
+alternates, derived by unchanged [KeyHandler.kittySequence()](https://github.com/fitchmultz/termux-app/blob/756632f35dea15710f526c31c24e780c7d37d1c2/terminal-emulator/src/main/java/com/termux/terminal/KeyHandler.java#L249-L263) and its [text-lock mask](https://github.com/fitchmultz/termux-app/blob/756632f35dea15710f526c31c24e780c7d37d1c2/terminal-emulator/src/main/java/com/termux/terminal/KeyHandler.java#L214-L232). Near-full input that fits DOWN but not that bound rejects DOWN atomically.
 
-Accepted initial identity/token survives accepted or rejected repeats. A
-release-eligible repeat with no accepted initial press matching key/context/
-`downTime` is consumed after client/Fn/action hooks, without writing or allocating
-a token. This conservative pairing policy is not a claim that Kitty universally
-forbids standalone repeats. No-event-reporting, plain-text and recovery-key
-repeats remain unchanged. Flag2 legacy Ctrl+I reserves only with its actual TAB
-admission; FULL never falls back/retries legacy bytes.
+The first admitted event owns its identity/token. After an initial FULL
+rejection, a later actual REPEAT may be admitted atomically with its own future
+UP capacity, capturing that repeat's current layout/keypad identity and original
+physical `downTime`. It remains an encoded REPEAT, not a fabricated PRESS. Later
+matching repeats reuse the holder; failed admission stores nothing. An unrelated
+existing holder cannot be canceled or replaced. Client/Fn/action hooks still
+precede admission. No-event-reporting, plain-text and recovery-key repeats remain
+unchanged. Flag2 legacy Ctrl+I reserves with its actual TAB press or encoded
+repeat admission; FULL never falls back/retries legacy bytes.
 
 UP/cancellation spends or returns capacity idempotently. Session/screen/protocol
 changes, focus/window loss, detach, canceled or intercepted events cannot send a
@@ -123,9 +124,11 @@ is substantive: the original nonblocking integration admitted a short DOWN,
 removed its identity on UP, then ignored a FULL rejection of the longer release.
 The follow-up repairs the shared queue/session/physical-event paths rather than
 removing release reporting, adding a worker, blocking UI input or weakening tests.
-It also covers initial FULL rejection followed by a later untracked repeat.
+It also covers initial FULL rejection followed by a later first-admitted repeat,
+including changed keypad/layout identity; actual encoded repeat delivery is
+preserved rather than suppressed.
 
-Twenty-one additional regression methods are authored: fifteen real Session/FIFO
+Twenty-two additional regression methods are authored: sixteen real Session/FIFO
 physical-event methods, three Session admission/lifecycle methods and three queue
 methods. They keep ordinary capacity full through UP, test modifier growth,
 multiple owners/refunds, cancellation and IC rebinding. Existing methods remain.
