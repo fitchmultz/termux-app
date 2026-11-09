@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Kitty physical DOWN admission atomically protects encoder-bounded future UP capacity inside the existing input ring. Matching releases consume their original session-owned promise once even while ordinary input remains FULL; untracked release-eligible repeats cannot create an orphan stream after a rejected initial press. Context/lifecycle cancellation returns capacity without stale delivery, while IME-only rebinding retains valid physical releases. CI preserves the synthetic keyboard-capture JSON in addition to PNG/XML reports.
+
 - Test-only composing-preference fixture completes the first real PRIVATE preferences load before dual-mode construction and verifies backend identity/key absence. Default-OFF and immediate true/false readbacks stay intact; no production preference I/O, fake backend, seeded setting, or post-setter idle is introduced.
 
 - Reconciles opt-in composing preference changes even after an OFF connection was invalidated, with guarded/coalesced restart requests and stale legacy-draft cancellation only for admitted ON replacement. Collapsed/clipped composing regions finalize retained drafts once instead of hiding text ahead of terminal navigation/deletion; ordinary OFF behavior remains unchanged.

@@ -6,6 +6,8 @@ final class ByteQueue {
     private final byte[] mBuffer;
     private int mHead;
     private int mStoredBytes;
+    /** Capacity promised to admitted DOWN events, not a second byte queue. */
+    private int mReservedBytes;
     private boolean mOpen = true;
 
     public ByteQueue(int size) {
@@ -14,6 +16,7 @@ final class ByteQueue {
 
     public synchronized void close() {
         mOpen = false;
+        mReservedBytes = 0;
         notifyAll();
     }
 
@@ -33,7 +36,7 @@ final class ByteQueue {
 
         int totalRead = 0;
         int bufferLength = mBuffer.length;
-        boolean wasFull = bufferLength == mStoredBytes;
+        boolean wasFull = bufferLength == mStoredBytes + mReservedBytes;
         int length = buffer.length;
         int offset = 0;
         while (length > 0 && mStoredBytes > 0) {
@@ -47,7 +50,7 @@ final class ByteQueue {
             offset += bytesToCopy;
             totalRead += bytesToCopy;
         }
-        if (wasFull) notify();
+        if (wasFull) notifyAll();
         return totalRead;
     }
 
@@ -61,8 +64,72 @@ final class ByteQueue {
         checkRange(buffer, offset, length);
         if (length == 0) return WriteResult.ACCEPTED;
         if (!mOpen) return WriteResult.CLOSED;
-        if (length > mBuffer.length - mStoredBytes) return WriteResult.FULL;
+        if (length > mBuffer.length - mStoredBytes - mReservedBytes) return WriteResult.FULL;
+        append(buffer, offset, length);
+        return WriteResult.ACCEPTED;
+    }
 
+    /** A single-use promise of ring capacity, owned and guarded by its queue. */
+    static final class Reservation {
+        private final ByteQueue owner;
+        private final int capacity;
+        private boolean active;
+        private boolean used;
+
+        Reservation(ByteQueue owner, int capacity) {
+            if (capacity <= 0) throw new IllegalArgumentException("Reservation must be positive");
+            this.owner = owner;
+            this.capacity = capacity;
+        }
+    }
+
+    /** Admit DOWN and its future UP capacity in one critical section, or change nothing. */
+    synchronized WriteResult tryWriteAndReserve(byte[] buffer, int offset, int length, Reservation reservation) {
+        checkRange(buffer, offset, length);
+        checkOwner(reservation);
+        if (reservation.used) throw new IllegalArgumentException("Reservation already used");
+        if (!mOpen) return WriteResult.CLOSED;
+        int available = mBuffer.length - mStoredBytes - mReservedBytes;
+        if (reservation.capacity > available || length > available - reservation.capacity) return WriteResult.FULL;
+        mReservedBytes += reservation.capacity;
+        reservation.active = true;
+        reservation.used = true;
+        append(buffer, offset, length);
+        return WriteResult.ACCEPTED;
+    }
+
+    /** Spend a promise once; unrelated writes cannot have consumed its space. */
+    synchronized WriteResult tryWriteReserved(byte[] buffer, int offset, int length, Reservation reservation) {
+        checkRange(buffer, offset, length);
+        checkOwner(reservation);
+        if (!mOpen || !reservation.active) return WriteResult.CLOSED;
+        if (length > reservation.capacity) throw new IllegalArgumentException("Release exceeds reservation");
+        mReservedBytes -= reservation.capacity;
+        reservation.active = false;
+        append(buffer, offset, length);
+        notifyAll(); // Also release any unused portion to a legacy blocking producer.
+        return WriteResult.ACCEPTED;
+    }
+
+    synchronized void cancel(Reservation reservation) {
+        checkOwner(reservation);
+        if (!reservation.active) return;
+        reservation.active = false;
+        if (mOpen) mReservedBytes -= reservation.capacity;
+        notifyAll();
+    }
+
+    synchronized boolean isActive(Reservation reservation) {
+        checkOwner(reservation);
+        return mOpen && reservation.active;
+    }
+
+    private void checkOwner(Reservation reservation) {
+        if (reservation.owner != this) throw new IllegalArgumentException("Reservation belongs to another queue");
+    }
+
+    /** Called only with this locked and sufficient unreserved or promised capacity. */
+    private void append(byte[] buffer, int offset, int length) {
         boolean wasEmpty = mStoredBytes == 0;
         int tail = mHead + mStoredBytes;
         if (tail >= mBuffer.length) tail -= mBuffer.length;
@@ -70,8 +137,7 @@ final class ByteQueue {
         System.arraycopy(buffer, offset, mBuffer, tail, firstRun);
         if (firstRun < length) System.arraycopy(buffer, offset + firstRun, mBuffer, 0, length - firstRun);
         mStoredBytes += length;
-        if (wasEmpty) notifyAll();
-        return WriteResult.ACCEPTED;
+        if (wasEmpty && length > 0) notifyAll();
     }
 
     static void checkRange(byte[] buffer, int offset, int length) {
@@ -97,7 +163,7 @@ final class ByteQueue {
 
         synchronized (this) {
             while (lengthToWrite > 0) {
-                while (bufferLength == mStoredBytes && mOpen) {
+                while (bufferLength == mStoredBytes + mReservedBytes && mOpen) {
                     try {
                         wait();
                     } catch (InterruptedException e) {
@@ -106,7 +172,7 @@ final class ByteQueue {
                 }
                 if (!mOpen) return false;
                 final boolean wasEmpty = mStoredBytes == 0;
-                int bytesToWriteBeforeWaiting = Math.min(lengthToWrite, bufferLength - mStoredBytes);
+                int bytesToWriteBeforeWaiting = Math.min(lengthToWrite, bufferLength - mStoredBytes - mReservedBytes);
                 lengthToWrite -= bytesToWriteBeforeWaiting;
 
                 while (bytesToWriteBeforeWaiting > 0) {

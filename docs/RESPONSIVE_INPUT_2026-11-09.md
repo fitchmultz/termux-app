@@ -49,12 +49,32 @@ hunks were applied, not older whole-file snapshots.
 
 ## Keyboard and composing compatibility
 
-Remember Kitty release identity only after the actual press event is admitted;
-FULL remains consumed without falling back/retrying legacy bytes. Flag2 legacy
-Ctrl+I tracks only after its actual final TAB write. Accepted press identity
-survives rejected repeats. Client code-point/Fn/app-action precedence and literal
-C0-from-IME behavior remain unchanged. Preserve all newer guarded preference,
-window/session/generation, stale-legacy closure and collapsed-span fixes.
+A release-eligible physical DOWN is admitted only together with a promise of
+capacity for its future UP **inside the same existing ring**. Ordinary admission
+leaves that capacity untouched; matching UP appends once through its original
+session-owned token, in FIFO order, even while ordinary input remains FULL. This
+is actual ring-space ownership, not another payload queue or a heap/RSS budget.
+
+UP retains live modifiers. The bound is measured from the same encoder with all
+supported modifier bits, not a guessed allowance or merely the DOWN-time release
+length: functional modifier maximum **208**, text **16** plus captured Shift
+alternates, derived by unchanged `KeyHandler.kittySequence()` and its text-lock
+mask. Near-full input that fits DOWN but not that bound rejects DOWN atomically.
+
+Accepted initial identity/token survives accepted or rejected repeats. A
+release-eligible repeat with no accepted initial press matching key/context/
+`downTime` is consumed after client/Fn/action hooks, without writing or allocating
+a token. This conservative pairing policy is not a claim that Kitty universally
+forbids standalone repeats. No-event-reporting, plain-text and recovery-key
+repeats remain unchanged. Flag2 legacy Ctrl+I reserves only with its actual TAB
+admission; FULL never falls back/retries legacy bytes.
+
+UP/cancellation spends or returns capacity idempotently. Session/screen/protocol
+changes, focus/window loss, detach, canceled or intercepted events cannot send a
+stale release into a new context. A valid physical press survives an IME-only
+connection replacement. Client code-point/Fn/app-action precedence and literal
+C0-from-IME behavior remain unchanged. All newer guarded preference, session/
+generation, stale-legacy closure and collapsed-span repairs are preserved.
 
 **Not transactional:** existing unbracketed IME/CJK finish paths may admit a
 prefix of per-codepoint events before FULL. Editable/modifier state is not rolled
@@ -95,3 +115,27 @@ a provider/full Pi CLI/physical keyboard/tmux workflow or shared settings change
 No phone installation/restart or runtime/package/prefix/dotfile/shared Pi setting
 change is performed. Physical slow-reader/paste/IME/heap acceptance remains for
 owner-controlled installation; it is not an invented release blocker.
+
+## Cursor backpressure finding and evidence repair
+
+Cursor finding [4512414866](https://github.com/fitchmultz/termux-app/pull/40#discussion_r4512414866)
+is substantive: the original nonblocking integration admitted a short DOWN,
+removed its identity on UP, then ignored a FULL rejection of the longer release.
+The follow-up repairs the shared queue/session/physical-event paths rather than
+removing release reporting, adding a worker, blocking UI input or weakening tests.
+It also covers initial FULL rejection followed by a later untracked repeat.
+
+Twenty-one additional regression methods are authored: fifteen real Session/FIFO
+physical-event methods, three Session admission/lifecycle methods and three queue
+methods. They keep ordinary capacity full through UP, test modifier growth,
+multiple owners/refunds, cancellation and IC rebinding. Existing methods remain.
+These authored additions require fresh-head execution; source review is not a pass.
+
+Both original `756632f...` runs42611397157 and42611541651 executed531 cases
+without failures/errors/skips, including all31 initial regression methods and both
+SDK28/37 capture variants. Those results **did not detect the UP defect**. Their
+report artifacts contained zero JSON because the upload pattern selected only
+PNG/XML. No raw JSON was reconstructed and no Editor-consumption proof exists
+from those runs. The narrow added `pi-input-sdk-*.json` upload path retains the
+original generated captures on the new head; separate run/head/source/artifact
+binding and the unchanged pinned Editor probe remain required.

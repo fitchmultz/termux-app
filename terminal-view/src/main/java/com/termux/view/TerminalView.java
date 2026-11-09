@@ -41,6 +41,8 @@ import android.widget.Scroller;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Iterator;
+import java.nio.charset.StandardCharsets;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
@@ -194,15 +196,21 @@ public final class TerminalView extends View {
         final KeyHandler.KittyKey textKey;
         final int virtualModifiers;
         final String releaseCode;
+        final TerminalSession session;
         final TerminalEmulator emulator;
         final Object screen;
         final long generation;
         final long downTime;
+        final int releaseBytes;
+        TerminalSession.InputReservation reservation;
 
-        KittyKeyPress(KeyHandler.KittyKey textKey, int virtualModifiers, String releaseCode, TerminalEmulator emulator, KeyEvent event) {
+        KittyKeyPress(KeyHandler.KittyKey textKey, int virtualModifiers, String releaseCode,
+                      TerminalSession session, TerminalEmulator emulator, KeyEvent event, int releaseBytes) {
             this.textKey = textKey;
             this.virtualModifiers = virtualModifiers;
             this.releaseCode = releaseCode;
+            this.session = session;
+            this.releaseBytes = releaseBytes;
             this.emulator = emulator;
             screen = emulator.getScreen();
             generation = emulator.getKittyKeyboardGeneration();
@@ -225,13 +233,80 @@ public final class TerminalView extends View {
         return modifiers;
     }
 
-    private void rememberKittyKey(KeyEvent event, KeyHandler.KittyKey textKey, int modifiers, String releaseCode) {
-        // Repeats must not replace the identity or mode captured by the initial press.
-        if (event == null || event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() != 0 ||
-            (mEmulator.getKittyKeyboardFlags() & KeyHandler.KITTY_REPORT_EVENTS) == 0 ||
-            KeyHandler.isKittyRecoveryKey(event.getKeyCode())) return;
-        mKittyKeyPresses.put(kittyKeyId(event), new KittyKeyPress(textKey,
-            modifiers & ~kittyEventModifiers(event), releaseCode, mEmulator, event));
+    private boolean isKittyReleaseEvent(KeyEvent event) {
+        return event != null && event.getAction() == KeyEvent.ACTION_DOWN &&
+            (mEmulator.getKittyKeyboardFlags() & KeyHandler.KITTY_REPORT_EVENTS) != 0 &&
+            !KeyHandler.isKittyRecoveryKey(event.getKeyCode());
+    }
+
+    private boolean isUntrackedKittyRepeat(KeyEvent event) {
+        if (!isKittyReleaseEvent(event) || event.getRepeatCount() == 0) return false;
+        KittyKeyPress press = mKittyKeyPresses.get(kittyKeyId(event));
+        // Like unmatched UP, a repeat with no accepted initial press must not start an
+        // unowned event stream after FULL, cancellation, or a protocol/session transition.
+        return press == null || !isCurrentKittyKey(press) || press.downTime != event.getDownTime();
+    }
+
+    private KittyKeyPress prepareKittyKey(KeyEvent event, KeyHandler.KittyKey textKey, int modifiers, String releaseCode) {
+        // Repeats reuse the initial promise and identity, even when their own admission fails.
+        if (!isKittyReleaseEvent(event) || event.getRepeatCount() != 0) return null;
+        // UP uses live modifiers. Encode the largest supported variant, including Shift's captured
+        // alternate field; no arbitrary byte margin or changed DOWN-modifier semantics is used.
+        int allModifiers = KeyHandler.KEYMOD_SHIFT | KeyHandler.KEYMOD_ALT | KeyHandler.KEYMOD_CTRL |
+            KeyHandler.KEYMOD_SUPER | KeyHandler.KEYMOD_CAPS_LOCK | KeyHandler.KEYMOD_NUM_LOCK;
+        String largestRelease = textKey == null ? KeyHandler.getKittyReleaseCode(releaseCode, allModifiers) :
+            KeyHandler.getKittyCodePoint(textKey, allModifiers, mEmulator.getKittyKeyboardFlags(), KeyHandler.KEY_EVENT_RELEASE);
+        if (largestRelease == null) return null;
+        return new KittyKeyPress(textKey, modifiers & ~kittyEventModifiers(event), releaseCode,
+            mTermSession, mEmulator, event, largestRelease.getBytes(StandardCharsets.UTF_8).length);
+    }
+
+    private void writeKittyKey(String code, KeyEvent event, KeyHandler.KittyKey textKey, int modifiers, String releaseCode) {
+        if (isUntrackedKittyRepeat(event)) return;
+        KittyKeyPress press = prepareKittyKey(event, textKey, modifiers, releaseCode);
+        if (press == null) {
+            mTermSession.tryWrite(code);
+        } else {
+            press.reservation = press.session.tryWriteAndReserveRelease(code, press.releaseBytes);
+            if (press.reservation != null) mKittyKeyPresses.put(kittyKeyId(event), press);
+        }
+    }
+
+    private void writeKittyCodePoint(boolean altDown, int codePoint, KeyEvent event, KeyHandler.KittyKey textKey, int modifiers) {
+        if (isUntrackedKittyRepeat(event)) return;
+        KittyKeyPress press = prepareKittyKey(event, textKey, modifiers, null);
+        if (press == null) {
+            mTermSession.tryWriteCodePoint(altDown, codePoint);
+        } else {
+            press.reservation = press.session.tryWriteCodePointAndReserveRelease(altDown, codePoint, press.releaseBytes);
+            if (press.reservation != null) mKittyKeyPresses.put(kittyKeyId(event), press);
+        }
+    }
+
+    private void cancelKittyKey(KeyEvent event) {
+        KittyKeyPress press = mKittyKeyPresses.remove(kittyKeyId(event));
+        if (press != null) press.reservation.cancel();
+    }
+
+    private void clearKittyKeyPresses() {
+        for (KittyKeyPress press : mKittyKeyPresses.values()) press.reservation.cancel();
+        mKittyKeyPresses.clear();
+    }
+
+    private boolean isCurrentKittyKey(KittyKeyPress press) {
+        return mTermSession == press.session && mEmulator == press.emulator && mEmulator.getScreen() == press.screen &&
+            mEmulator.getKittyKeyboardGeneration() == press.generation;
+    }
+
+    private void pruneKittyKeyPresses() {
+        Iterator<KittyKeyPress> iterator = mKittyKeyPresses.values().iterator();
+        while (iterator.hasNext()) {
+            KittyKeyPress press = iterator.next();
+            if (!isCurrentKittyKey(press)) {
+                press.reservation.cancel();
+                iterator.remove();
+            }
+        }
     }
 
     /**
@@ -437,7 +512,7 @@ public final class TerminalView extends View {
      */
     public boolean attachSession(TerminalSession session) {
         if (session == mTermSession) return false;
-        mKittyKeyPresses.clear();
+        clearKittyKeyPresses();
         invalidateInputConnection();
         stopTextSelectionMode();
         cancelPendingInputGesture();
@@ -848,6 +923,7 @@ public final class TerminalView extends View {
     }
 
     public void onScreenUpdated(boolean skipScrolling) {
+        pruneKittyKeyPresses();
         if (mEmulator == null) return;
         if (mEmulator.isSynchronizedOutputActive()) {
             // Lifecycle refreshes may redraw the completed snapshot, but must not consume live state.
@@ -1175,9 +1251,10 @@ public final class TerminalView extends View {
         }
 
         // Forget stale or intercepted presses before dispatching this event to application shortcuts.
-        if (event.getRepeatCount() == 0) mKittyKeyPresses.remove(kittyKeyId(event));
+        pruneKittyKeyPresses();
+        if (event.getRepeatCount() == 0) cancelKittyKey(event);
         if (mClient.onKeyDown(keyCode, event, mTermSession)) {
-            mKittyKeyPresses.remove(kittyKeyId(event));
+            cancelKittyKey(event);
             invalidate();
             return true;
         } else if (event.isSystem() && (!mClient.shouldBackButtonBeMappedToEscape() || keyCode != KeyEvent.KEYCODE_BACK)) {
@@ -1302,7 +1379,7 @@ public final class TerminalView extends View {
         final boolean altDown = leftAltDownFromEvent || mClient.readAltKey();
 
         if (mClient.onCodePoint(codePoint, controlDown, mTermSession)) {
-            if (event != null) mKittyKeyPresses.remove(kittyKeyId(event));
+            if (event != null) cancelKittyKey(event);
             return;
         }
 
@@ -1317,8 +1394,8 @@ public final class TerminalView extends View {
                 mEmulator.getKittyKeyboardFlags(), eventType);
             rememberTextKey = KeyHandler.getKittyCodePoint(textKey.codePoint, keyMod) != null;
             if (kittyCode != null) {
-                if (mTermSession.tryWrite(kittyCode) && rememberTextKey)
-                    rememberKittyKey(event, textKey, keyMod, null);
+                if (rememberTextKey) writeKittyKey(kittyCode, event, textKey, keyMod, null);
+                else mTermSession.tryWrite(kittyCode);
                 // Recognized input is consumed even on rejection; never retry through legacy input.
                 return;
             }
@@ -1368,8 +1445,8 @@ public final class TerminalView extends View {
             }
 
             // If left alt, send escape before the code point to make e.g. Alt+B and Alt+F work in readline:
-            if (mTermSession.tryWriteCodePoint(altDown, codePoint) && rememberTextKey)
-                rememberKittyKey(event, textKey, keyMod, null);
+            if (rememberTextKey) writeKittyCodePoint(altDown, codePoint, event, textKey, keyMod);
+            else mTermSession.tryWriteCodePoint(altDown, codePoint);
         }
     }
 
@@ -1384,7 +1461,7 @@ public final class TerminalView extends View {
             mEmulator.setCursorBlinkState(true);
 
         if (handleKeyCodeAction(keyCode, keyMod)) {
-            if (event != null) mKittyKeyPresses.remove(kittyKeyId(event));
+            if (event != null) cancelKittyKey(event);
             return true;
         }
 
@@ -1393,11 +1470,10 @@ public final class TerminalView extends View {
             term.isKeypadApplicationMode(), term.getKittyKeyboardFlags(),
             event != null && event.getRepeatCount() > 0 ? KeyHandler.KEY_EVENT_REPEAT : KeyHandler.KEY_EVENT_PRESS);
         if (code == null) return false;
-        if (mTermSession.tryWrite(code)) {
-            String releaseCode = KeyHandler.getCode(keyCode, keyMod, term.isCursorKeysApplicationMode(),
-                term.isKeypadApplicationMode(), term.getKittyKeyboardFlags(), KeyHandler.KEY_EVENT_RELEASE);
-            if (releaseCode != null) rememberKittyKey(event, null, keyMod, releaseCode);
-        }
+        String releaseCode = KeyHandler.getCode(keyCode, keyMod, term.isCursorKeysApplicationMode(),
+            term.isKeypadApplicationMode(), term.getKittyKeyboardFlags(), KeyHandler.KEY_EVENT_RELEASE);
+        if (releaseCode != null) writeKittyKey(code, event, null, keyMod, releaseCode);
+        else mTermSession.tryWrite(code);
         return true;
     }
 
@@ -1433,39 +1509,39 @@ public final class TerminalView extends View {
         if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
             mClient.logInfo(LOG_TAG, "onKeyUp(keyCode=" + keyCode + ", event=" + event + ")");
 
-        // Do not return for KEYCODE_BACK and send it to the client since user may be trying
-        // to exit the activity.
+        pruneKittyKeyPresses();
+        // Do not return for BACK: the client may be exiting the activity.
         if (mEmulator == null && keyCode != KeyEvent.KEYCODE_BACK) return true;
-
         KittyKeyPress press = mKittyKeyPresses.remove(kittyKeyId(event));
-        if (mClient.onKeyUp(keyCode, event)) {
-            invalidate();
+        try {
+            if (mClient.onKeyUp(keyCode, event)) {
+                invalidate();
+                return true;
+            } else if (event.isSystem() && (!mClient.shouldBackButtonBeMappedToEscape() || keyCode != KeyEvent.KEYCODE_BACK)) {
+                return super.onKeyUp(keyCode, event);
+            }
+            if (press != null && isCurrentKittyKey(press) && event.getDownTime() == press.downTime &&
+                (mEmulator.getKittyKeyboardFlags() & KeyHandler.KITTY_REPORT_EVENTS) != 0 && !event.isCanceled()) {
+                int modifiers = kittyEventModifiers(event) | press.virtualModifiers;
+                if (press.textKey != null && (event.getMetaState() & KeyEvent.META_ALT_RIGHT_ON) != 0 &&
+                    (event.getMetaState() & KeyEvent.META_ALT_LEFT_ON) == 0)
+                    modifiers &= ~KeyHandler.KEYMOD_ALT;
+                String code = press.textKey == null ? KeyHandler.getKittyReleaseCode(press.releaseCode, modifiers) :
+                    KeyHandler.getKittyCodePoint(press.textKey, modifiers,
+                        mEmulator.getKittyKeyboardFlags(), KeyHandler.KEY_EVENT_RELEASE);
+                if (code != null) press.reservation.writeRelease(code);
+            }
             return true;
-        } else if (event.isSystem() && (!mClient.shouldBackButtonBeMappedToEscape() || keyCode != KeyEvent.KEYCODE_BACK)) {
-            // Let system key events through.
-            return super.onKeyUp(keyCode, event);
+        } finally {
+            if (press != null) press.reservation.cancel();
         }
-
-        if (press != null && mEmulator == press.emulator && mEmulator.getScreen() == press.screen &&
-            mEmulator.getKittyKeyboardGeneration() == press.generation && event.getDownTime() == press.downTime &&
-            (mEmulator.getKittyKeyboardFlags() & KeyHandler.KITTY_REPORT_EVENTS) != 0 && !event.isCanceled()) {
-            int modifiers = kittyEventModifiers(event) | press.virtualModifiers;
-            if (press.textKey != null && (event.getMetaState() & KeyEvent.META_ALT_RIGHT_ON) != 0 &&
-                (event.getMetaState() & KeyEvent.META_ALT_LEFT_ON) == 0)
-                modifiers &= ~KeyHandler.KEYMOD_ALT;
-            String code = press.textKey == null ? KeyHandler.getKittyReleaseCode(press.releaseCode, modifiers) :
-                KeyHandler.getKittyCodePoint(press.textKey, modifiers,
-                    mEmulator.getKittyKeyboardFlags(), KeyHandler.KEY_EVENT_RELEASE);
-            if (code != null) mTermSession.write(code);
-        }
-        return true;
     }
 
     @Override
     protected void onFocusChanged(boolean gainFocus, int direction, android.graphics.Rect previouslyFocusedRect) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
         if (!gainFocus) {
-            mKittyKeyPresses.clear();
+            clearKittyKeyPresses();
             invalidateInputConnection();
         }
     }
@@ -1475,7 +1551,7 @@ public final class TerminalView extends View {
         super.onWindowFocusChanged(hasWindowFocus);
         if (!hasWindowFocus) {
             mInputConnectionWindowFocusLost = true;
-            mKittyKeyPresses.clear();
+            clearKittyKeyPresses();
             invalidateInputConnection();
         } else {
             boolean restoreInvalidatedInput = mInputConnectionWindowFocusLost;
@@ -1968,7 +2044,7 @@ public final class TerminalView extends View {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        mKittyKeyPresses.clear();
+        clearKittyKeyPresses();
         invalidateInputConnection();
 
         if (mTextSelectionCursorController != null) {

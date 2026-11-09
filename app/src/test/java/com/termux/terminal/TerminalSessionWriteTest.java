@@ -450,4 +450,62 @@ public class TerminalSessionWriteTest {
         assertTrue(otherClient.rejected.isEmpty());
         assertSame(session, client.rejectedSessions.get(0));
     }
+
+    @Test public void releasePromiseProtectsAgainstEveryOrdinarySessionAdmissionPath() {
+        TerminalSession.InputReservation held = session.tryWriteAndReserveRelease("D", 8);
+        assertNotNull(held);
+        assertArrayEquals(new byte[]{'D'}, drain(session));
+        byte[] pending = new byte[TerminalSession.MAX_PENDING_INPUT_BYTES - 8];
+        assertTrue(session.tryWrite(pending, 0, pending.length));
+        assertFalse(session.tryWrite("string"));
+        assertFalse(session.tryWriteCodePoint(false, 'x'));
+        session.write("void");
+        session.writeCodePoint(false, 'y');
+        session.getEmulator().paste("paste");
+        append(session, "\033[6n"); // A terminal-generated reply must also leave the promise intact.
+        assertTrue(held.writeRelease("U"));
+        byte[] expected = Arrays.copyOf(pending, pending.length + 1);
+        expected[pending.length] = 'U';
+        assertArrayEquals(expected, drain(session));
+        assertFalse(held.writeRelease("duplicate"));
+        held.cancel();
+        held.cancel();
+        assertEquals(0, (int) ReflectionHelpers.<Integer>getField(session.mTerminalToProcessIOQueue, "mReservedBytes"));
+        assertTrue(session.tryWrite(new byte[TerminalSession.MAX_PENDING_INPUT_BYTES], 0, TerminalSession.MAX_PENDING_INPUT_BYTES));
+    }
+
+    @Test public void multipleProtocolStalePromisesArePrunedBeforeOrdinaryInputWithoutConcurrentModification() {
+        TerminalSession.InputReservation first = session.tryWriteAndReserveRelease("A", 3);
+        TerminalSession.InputReservation second = session.tryWriteCodePointAndReserveRelease(false, 'B', 4);
+        assertNotNull(first);
+        assertNotNull(second);
+        assertArrayEquals(new byte[]{'A', 'B'}, drain(session));
+        append(session, "\033[=3u");
+        byte[] pending = new byte[TerminalSession.MAX_PENDING_INPUT_BYTES];
+        assertTrue(session.tryWrite(pending, 0, pending.length));
+        assertFalse(first.writeRelease("old"));
+        assertFalse(second.writeRelease("old"));
+        first.cancel();
+        second.cancel();
+        assertArrayEquals(pending, drain(session));
+    }
+
+    @Test public void promiseUsesItsOriginalSessionAndCloseReturnsHeldCapacityIdempotently() {
+        TerminalSession.InputReservation held = session.tryWriteAndReserveRelease("A", 3);
+        assertNotNull(held);
+        Client otherClient = new Client();
+        TerminalSession other = fixture(otherClient);
+        assertTrue(other.tryWrite("B"));
+        assertTrue(held.writeRelease("U"));
+        assertArrayEquals(new byte[]{'A', 'U'}, drain(session));
+        assertArrayEquals(new byte[]{'B'}, drain(other));
+        TerminalSession.InputReservation closing = session.tryWriteAndReserveRelease("D", 3);
+        assertNotNull(closing);
+        session.cleanupResources(0);
+        closing.cancel();
+        closing.cancel();
+        assertFalse(closing.writeRelease("U"));
+        assertEquals(0, (int) ReflectionHelpers.<Integer>getField(session.mTerminalToProcessIOQueue, "mReservedBytes"));
+    }
+
 }

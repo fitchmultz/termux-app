@@ -18,6 +18,8 @@ import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -64,6 +66,39 @@ public final class TerminalSession extends TerminalOutput {
     public enum InputRejectionReason { FULL, CLOSED }
     /** Coalesce a rejection episode until input succeeds or the client changes. Guarded by this. */
     private InputRejectionReason mLastInputRejection;
+    /** Metadata only; positive reservations bound this set by the existing input-ring capacity. */
+    private final ArrayList<InputReservation> mInputReservations = new ArrayList<>();
+
+    /** One future release, bound to its original session, screen and keyboard generation. */
+    public static final class InputReservation {
+        private final TerminalSession session;
+        private final ByteQueue.Reservation reservation;
+        private final TerminalEmulator emulator;
+        private final Object screen;
+        private final long generation;
+
+        private InputReservation(TerminalSession session, int capacity) {
+            this.session = session;
+            reservation = new ByteQueue.Reservation(session.mTerminalToProcessIOQueue, capacity);
+            emulator = session.mEmulator;
+            screen = emulator == null ? null : emulator.getScreen();
+            generation = emulator == null ? 0 : emulator.getKittyKeyboardGeneration();
+        }
+
+        private boolean isCurrent() {
+            return emulator != null && session.mEmulator == emulator && emulator.getScreen() == screen &&
+                emulator.getKittyKeyboardGeneration() == generation;
+        }
+
+        /**
+         * Append the matching release once, without waiting for a PTY consumer. An oversized
+         * release throws before changing bytes/capacity; the owner may retry or cancel the promise.
+         */
+        public boolean writeRelease(String text) { return session.writeReservedRelease(this, text); }
+
+        /** Return unused capacity without delivering into an invalidated input context. */
+        public void cancel() { session.cancelInputReservation(this); }
+    }
     /** Guard reentrant PID callbacks until all existing I/O threads have started. Guarded by this. */
     private boolean mInputInitializing;
     /** Failed setup owns cleanup; the existing waiter must not publish a second UI exit. */
@@ -300,10 +335,75 @@ public final class TerminalSession extends TerminalOutput {
         return finishInputAdmission(result, report);
     }
 
+    /** Admit DOWN only if both its bytes and a positive future-release promise fit. */
+    public InputReservation tryWriteAndReserveRelease(String text, int releaseBytes) {
+        byte[] data = text.getBytes(StandardCharsets.UTF_8);
+        InputReservation reservation;
+        ByteQueue.WriteResult result;
+        InputRejectionReason report;
+        synchronized (this) {
+            reservation = new InputReservation(this, releaseBytes);
+            result = admitInputLocked(data, 0, data.length, reservation);
+            report = claimInputAdmissionLocked(result);
+        }
+        finishInputAdmission(result, report);
+        return result == ByteQueue.WriteResult.ACCEPTED ? reservation : null;
+    }
+
+    private boolean isAcceptingInputLocked() {
+        return mShellPid > 0 && !mInputInitializing && !mInitializationFailed;
+    }
+
     /** Called with this locked, including while the code-point scratch buffer is in use. */
     private ByteQueue.WriteResult admitInputLocked(byte[] data, int offset, int count) {
-        return mShellPid > 0 && !mInputInitializing && !mInitializationFailed
-            ? mTerminalToProcessIOQueue.tryWrite(data, offset, count) : ByteQueue.WriteResult.CLOSED;
+        return admitInputLocked(data, offset, count, null);
+    }
+
+    private ByteQueue.WriteResult admitInputLocked(byte[] data, int offset, int count, InputReservation reservation) {
+        pruneInputReservationsLocked();
+        if (!isAcceptingInputLocked() || (reservation != null && !reservation.isCurrent()))
+            return ByteQueue.WriteResult.CLOSED;
+        if (reservation == null) return mTerminalToProcessIOQueue.tryWrite(data, offset, count);
+        // Allocate tracking metadata before DOWN admission, not after bytes have been accepted.
+        mInputReservations.add(reservation);
+        ByteQueue.WriteResult result = mTerminalToProcessIOQueue.tryWriteAndReserve(data, offset, count, reservation.reservation);
+        if (result != ByteQueue.WriteResult.ACCEPTED) mInputReservations.remove(reservation);
+        return result;
+    }
+
+    /** Protocol/screen changes reclaim promises before any ordinary input can be rejected. */
+    private void pruneInputReservationsLocked() {
+        Iterator<InputReservation> iterator = mInputReservations.iterator();
+        while (iterator.hasNext()) {
+            InputReservation reservation = iterator.next();
+            if (!reservation.isCurrent() || !mTerminalToProcessIOQueue.isActive(reservation.reservation)) {
+                mTerminalToProcessIOQueue.cancel(reservation.reservation);
+                iterator.remove();
+            }
+        }
+    }
+
+    private synchronized void cancelInputReservation(InputReservation reservation) {
+        mTerminalToProcessIOQueue.cancel(reservation.reservation);
+        mInputReservations.remove(reservation);
+    }
+
+    private boolean writeReservedRelease(InputReservation reservation, String text) {
+        byte[] data = text.getBytes(StandardCharsets.UTF_8);
+        ByteQueue.WriteResult result;
+        InputRejectionReason report;
+        synchronized (this) {
+            pruneInputReservationsLocked();
+            if (isAcceptingInputLocked() && reservation.isCurrent()) {
+                result = mTerminalToProcessIOQueue.tryWriteReserved(data, 0, data.length, reservation.reservation);
+            } else {
+                mTerminalToProcessIOQueue.cancel(reservation.reservation);
+                result = ByteQueue.WriteResult.CLOSED;
+            }
+            mInputReservations.remove(reservation);
+            report = claimInputAdmissionLocked(result);
+        }
+        return finishInputAdmission(result, report);
     }
 
     /** Claim notification in the same critical section as admission, not after another writer. */
@@ -346,6 +446,16 @@ public final class TerminalSession extends TerminalOutput {
 
     /** Admission receipt for the exact UTF-8/optional-ESC event, without inventing a key identity. */
     public boolean tryWriteCodePoint(boolean prependEscape, int codePoint) {
+        return tryWriteCodePoint(prependEscape, codePoint, null);
+    }
+
+    public InputReservation tryWriteCodePointAndReserveRelease(boolean prependEscape, int codePoint, int releaseBytes) {
+        final InputReservation reservation;
+        synchronized (this) { reservation = new InputReservation(this, releaseBytes); }
+        return tryWriteCodePoint(prependEscape, codePoint, reservation) ? reservation : null;
+    }
+
+    private boolean tryWriteCodePoint(boolean prependEscape, int codePoint, InputReservation reservation) {
         if (codePoint > 1114111 || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
             // 1114111 (= 2**16 + 1024**2 - 1) is the highest code point, [0xD800,0xDFFF] is the surrogate range.
             throw new IllegalArgumentException("Invalid code point: " + codePoint);
@@ -381,7 +491,7 @@ public final class TerminalSession extends TerminalOutput {
                 /* 10xxxxxx continuation byte with following 6 bits */
                 mUtf8InputBuffer[bufferPosition++] = (byte) (0b10000000 | (codePoint & 0b111111));
             }
-            result = admitInputLocked(mUtf8InputBuffer, 0, bufferPosition);
+            result = admitInputLocked(mUtf8InputBuffer, 0, bufferPosition, reservation);
             report = claimInputAdmissionLocked(result);
         }
         return finishInputAdmission(result, report);
@@ -446,6 +556,9 @@ public final class TerminalSession extends TerminalOutput {
     void cleanupResources(int exitStatus) {
         final int descriptor;
         synchronized (this) {
+            for (InputReservation reservation : mInputReservations)
+                mTerminalToProcessIOQueue.cancel(reservation.reservation);
+            mInputReservations.clear();
             mShellPid = -1;
             mShellExitStatus = exitStatus;
             descriptor = mTerminalFileDescriptor;

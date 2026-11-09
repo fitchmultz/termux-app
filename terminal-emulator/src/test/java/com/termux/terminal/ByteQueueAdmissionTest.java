@@ -133,4 +133,97 @@ public class ByteQueueAdmissionTest extends TestCase {
             assertTrue(producers.awaitTermination(5, TimeUnit.SECONDS));
         }
     }
+
+    public void testReservationAdmissionIsAtomicAndReleaseUsesOnlyOwnedRingSpace() {
+        ByteQueue q = new ByteQueue(8);
+        ByteQueue.Reservation held = new ByteQueue.Reservation(q, 3);
+        assertEquals(ByteQueue.WriteResult.ACCEPTED, q.tryWriteAndReserve(new byte[]{1, 2}, 0, 2, held));
+        assertEquals(ByteQueue.WriteResult.ACCEPTED, q.tryWrite(new byte[]{3, 4, 5}, 0, 3));
+        assertEquals(ByteQueue.WriteResult.FULL, q.tryWrite(new byte[]{99}, 0, 1));
+        assertEquals(ByteQueue.WriteResult.ACCEPTED, q.tryWriteReserved(new byte[]{6, 7}, 0, 2, held));
+        assertEquals(ByteQueue.WriteResult.CLOSED, q.tryWriteReserved(new byte[]{99}, 0, 1, held));
+        // The same spent token must never free capacity twice.
+        q.cancel(held);
+        q.cancel(held);
+        assertEquals(ByteQueue.WriteResult.ACCEPTED, q.tryWrite(new byte[]{8}, 0, 1));
+        assertEquals(ByteQueue.WriteResult.FULL, q.tryWrite(new byte[]{99}, 0, 1));
+        byte[] actual = new byte[8];
+        assertEquals(8, q.read(actual, false));
+        assertArrayEquals(new byte[]{1, 2, 3, 4, 5, 6, 7, 8}, actual);
+    }
+
+    public void testInsufficientCombinedSpaceAndInvalidReleaseLeaveQueueAndPromiseIntact() {
+        ByteQueue q = new ByteQueue(5), other = new ByteQueue(5);
+        ByteQueue.Reservation tooLarge = new ByteQueue.Reservation(q, Integer.MAX_VALUE);
+        assertEquals(ByteQueue.WriteResult.FULL, q.tryWriteAndReserve(new byte[]{1}, 0, 1, tooLarge));
+        assertEquals(0, q.read(new byte[5], false));
+        ByteQueue.Reservation held = new ByteQueue.Reservation(q, 3);
+        assertEquals(ByteQueue.WriteResult.ACCEPTED, q.tryWriteAndReserve(new byte[]{1, 2}, 0, 2, held));
+        try {
+            q.tryWriteReserved(new byte[4], 0, 4, held);
+            fail("Oversized release must not consume or append");
+        } catch (IllegalArgumentException expected) { }
+        try {
+            other.cancel(held);
+            fail("A different queue must not free the owner's promise");
+        } catch (IllegalArgumentException expected) { }
+        assertTrue(q.isActive(held));
+        assertEquals(ByteQueue.WriteResult.FULL, q.tryWrite(new byte[]{99}, 0, 1));
+        assertEquals(ByteQueue.WriteResult.ACCEPTED, q.tryWriteReserved(new byte[]{3, 4, 5}, 0, 3, held));
+        byte[] actual = new byte[5];
+        assertEquals(5, q.read(actual, false));
+        assertArrayEquals(new byte[]{1, 2, 3, 4, 5}, actual);
+        try {
+            q.tryWriteAndReserve(new byte[]{99}, 0, 1, held);
+            fail("A spent promise must not be resurrected");
+        } catch (IllegalArgumentException expected) { }
+    }
+
+    public void testCancelWakesLegacyProducerAndCloseInvalidatesLateTokens() throws Exception {
+        ByteQueue q = new ByteQueue(1);
+        ByteQueue.Reservation held = new ByteQueue.Reservation(q, 1);
+        assertEquals(ByteQueue.WriteResult.ACCEPTED, q.tryWriteAndReserve(new byte[0], 0, 0, held));
+        ExecutorService producer = Executors.newSingleThreadExecutor();
+        CountDownLatch entered = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<Thread> writingThread = new java.util.concurrent.atomic.AtomicReference<>();
+        try {
+            Future<Boolean> done = producer.submit(() -> {
+                writingThread.set(Thread.currentThread());
+                entered.countDown();
+                return q.write(new byte[]{7}, 0, 1);
+            });
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            // Observe the real ByteQueue.wait(), not merely a submitted or idle executor task.
+            // This watchdog is test-only; no timing target, sleep or production seam is added.
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (writingThread.get().getState() != Thread.State.WAITING) {
+                assertFalse("Legacy writer bypassed the held capacity", done.isDone());
+                if (System.nanoTime() - deadline >= 0) fail("Writer did not enter ByteQueue.wait");
+                Thread.yield();
+            }
+            assertFalse("An idle executor is not a blocked writer", done.isDone());
+            q.cancel(held);
+            q.cancel(held);
+            assertTrue(done.get(5, TimeUnit.SECONDS));
+            assertFalse(q.isActive(held));
+            byte[] actual = new byte[1];
+            assertEquals(1, q.read(actual, false));
+            assertArrayEquals(new byte[]{7}, actual);
+            ByteQueue.Reservation closing = new ByteQueue.Reservation(q, 1);
+            assertEquals(ByteQueue.WriteResult.ACCEPTED, q.tryWriteAndReserve(new byte[0], 0, 0, closing));
+            q.close();
+            q.cancel(closing);
+            q.cancel(closing);
+            assertFalse(q.isActive(closing));
+            assertEquals(ByteQueue.WriteResult.CLOSED, q.tryWriteReserved(new byte[]{9}, 0, 1, closing));
+            java.lang.reflect.Field reserved = ByteQueue.class.getDeclaredField("mReservedBytes");
+            reserved.setAccessible(true);
+            assertEquals(0, reserved.getInt(q));
+        } finally {
+            q.close();
+            producer.shutdownNow();
+            assertTrue(producer.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
 }
