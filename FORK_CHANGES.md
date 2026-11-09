@@ -42,6 +42,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Features
 
+- Adds connection-scoped Samsung Honeyboard navigation metadata so its empty-editor arrow suppression can be addressed without inserting sentinels into terminal/editor text. Deferred updates require the current focused connection/session/generation and are invalidated on replacement, close or lifecycle changes. See [source and physical-acceptance limits](docs/HONEYBOARD_INPUT_2026-11-09.md).
+
 - Adds negotiated Kitty keyboard flags1|2|4 for distinct Pi Enter/newline and press/repeat/release input while preserving legacy mode, Fold shortcuts/panes/editor and literal IME control bytes. Main/alternate stacks retain PR5366's sourced 32-entry policy. See [source, IME repair and verification limits](docs/KITTY_KEYBOARD_2026-11-09.md).
 
 - Adds a native control editor in the session drawer and Terminal I/O settings. Drag or tap to reorder, move between rows, add keys/macros, remove keys, and reset. Saved app layouts override the file matrix explicitly; returning to the file layout leaves termux.properties untouched. Editor drafts survive activity recreation. Oversized app layouts scroll horizontally without shrinking touch targets. The default plus key starts a session through the existing new-session path; Home remains available in the editor.

@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -31,7 +32,10 @@ import android.view.autofill.AutofillManager;
 import android.view.autofill.AutofillValue;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.ExtractedText;
+import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Scroller;
 
 import java.util.HashMap;
@@ -88,6 +92,15 @@ public final class TerminalView extends View {
 
     /** If non-zero, this is the last unicode code point received if that was a combining character. */
     int mCombiningAccent;
+
+    /** Identity of the served terminal connection; deferred IME metadata must not outlive it. */
+    private BaseInputConnection mInputConnection;
+    private long mInputConnectionGeneration;
+
+    private void invalidateInputConnection() {
+        mInputConnection = null;
+        mInputConnectionGeneration++;
+    }
 
     /** Only terminal-delivered physical keys may produce a matching release. */
     private final Map<Long, KittyKeyPress> mKittyKeyPresses = new HashMap<>();
@@ -340,6 +353,7 @@ public final class TerminalView extends View {
     public boolean attachSession(TerminalSession session) {
         if (session == mTermSession) return false;
         mKittyKeyPresses.clear();
+        invalidateInputConnection();
         stopTextSelectionMode();
         cancelPendingInputGesture();
         setTerminalCursorBlinkerState(false, true);
@@ -365,6 +379,17 @@ public final class TerminalView extends View {
         mGestureRecognizer.onTouchEvent(cancel);
         cancel.recycle();
         mScroller.abortAnimation();
+    }
+
+    /** Match the selected IME, not a device model: other keyboards retain their normal context. */
+    private boolean isSamsungHoneyboardInputMethod() {
+        try {
+            String imeId = Settings.Secure.getString(getContext().getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
+            return imeId != null && (imeId.equals("com.samsung.android.honeyboard") ||
+                imeId.startsWith("com.samsung.android.honeyboard/"));
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     @Override
@@ -402,7 +427,103 @@ public final class TerminalView extends View {
         // keyboard on Android TV (see https://github.com/termux/termux-app/issues/221).
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN;
 
-        return new BaseInputConnection(this, true) {
+        // Honeyboard may suppress RIGHT before emitting a DPAD event if an empty terminal
+        // Editable looks like its right boundary. This virtual context is metadata only.
+        final boolean honeyboard = mClient.isTerminalViewSelected() && hasFocus() && isSamsungHoneyboardInputMethod();
+        if (honeyboard) {
+            outAttrs.initialSelStart = outAttrs.initialSelEnd = 1;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) outAttrs.setInitialSurroundingText("xx");
+        }
+        final long generation = ++mInputConnectionGeneration;
+        final TerminalSession boundSession = mTermSession;
+        BaseInputConnection connection = new BaseInputConnection(this, true) {
+            private boolean mClosed;
+            private int mExtractedTextToken = -1;
+            private boolean mExtractedTextMonitor;
+
+            private boolean isCurrentConnection() {
+                return !mClosed && mInputConnection == this && generation == mInputConnectionGeneration &&
+                    boundSession == mTermSession;
+            }
+
+            private boolean useHoneyboardVirtualEditor() {
+                return honeyboard && isCurrentConnection() && hasFocus() && isAttachedToWindow() &&
+                    mClient.isTerminalViewSelected() && isSamsungHoneyboardInputMethod();
+            }
+
+            private ExtractedText honeyboardExtractedText() {
+                ExtractedText result = new ExtractedText();
+                result.text = "xx";
+                result.startOffset = 0;
+                result.partialStartOffset = result.partialEndOffset = -1;
+                result.selectionStart = result.selectionEnd = 1;
+                return result;
+            }
+
+            private void synchronizeHoneyboardVirtualEditor() {
+                if (!useHoneyboardVirtualEditor()) return;
+                post(() -> {
+                    if (!useHoneyboardVirtualEditor()) return;
+                    InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm == null) return;
+                    imm.updateSelection(TerminalView.this, 1, 1, -1, -1);
+                    if (mExtractedTextMonitor && mExtractedTextToken >= 0)
+                        imm.updateExtractedText(TerminalView.this, mExtractedTextToken, honeyboardExtractedText());
+                });
+            }
+
+            @Override
+            public CharSequence getTextBeforeCursor(int length, int flags) {
+                return useHoneyboardVirtualEditor() ? (length > 0 ? "x" : "") : super.getTextBeforeCursor(length, flags);
+            }
+
+            @Override
+            public CharSequence getTextAfterCursor(int length, int flags) {
+                return useHoneyboardVirtualEditor() ? (length > 0 ? "x" : "") : super.getTextAfterCursor(length, flags);
+            }
+
+            @Override
+            public CharSequence getSelectedText(int flags) {
+                return useHoneyboardVirtualEditor() ? null : super.getSelectedText(flags);
+            }
+
+            @Override
+            public ExtractedText getExtractedText(ExtractedTextRequest request, int flags) {
+                if (!useHoneyboardVirtualEditor()) return super.getExtractedText(request, flags);
+                if (request != null) {
+                    mExtractedTextToken = request.token;
+                    mExtractedTextMonitor = (flags & InputConnection.GET_EXTRACTED_TEXT_MONITOR) != 0;
+                }
+                return honeyboardExtractedText();
+            }
+
+            @Override
+            public boolean setSelection(int start, int end) {
+                return useHoneyboardVirtualEditor() || super.setSelection(start, end);
+            }
+
+            @Override
+            public boolean setComposingText(CharSequence text, int newCursorPosition) {
+                boolean result = super.setComposingText(text, newCursorPosition);
+                synchronizeHoneyboardVirtualEditor();
+                return result;
+            }
+
+            @Override
+            public boolean setComposingRegion(int start, int end) {
+                boolean result = super.setComposingRegion(start, end);
+                synchronizeHoneyboardVirtualEditor();
+                return result;
+            }
+
+            @Override
+            public void closeConnection() {
+                if (mClosed) return;
+                mClosed = true;
+                mExtractedTextMonitor = false;
+                super.closeConnection();
+                if (mInputConnection == this) invalidateInputConnection();
+            }
 
             @Override
             public boolean finishComposingText() {
@@ -411,6 +532,7 @@ public final class TerminalView extends View {
 
                 sendTextToTerminal(getEditable());
                 getEditable().clear();
+                synchronizeHoneyboardVirtualEditor();
                 return true;
             }
 
@@ -421,7 +543,10 @@ public final class TerminalView extends View {
                 }
                 super.commitText(text, newCursorPosition);
 
-                if (mEmulator == null) return true;
+                if (mEmulator == null) {
+                    synchronizeHoneyboardVirtualEditor();
+                    return true;
+                }
 
                 Editable content = getEditable();
                 // IMEs can commit a multiline paste at once; a lone newline is still Enter.
@@ -433,6 +558,7 @@ public final class TerminalView extends View {
                     sendTextToTerminal(content);
                 }
                 content.clear();
+                synchronizeHoneyboardVirtualEditor();
                 return true;
             }
 
@@ -444,7 +570,16 @@ public final class TerminalView extends View {
                 // The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
                 KeyEvent deleteKey = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL);
                 for (int i = 0; i < leftLength; i++) sendKeyEvent(deleteKey);
-                return super.deleteSurroundingText(leftLength, rightLength);
+                boolean result = super.deleteSurroundingText(leftLength, rightLength);
+                synchronizeHoneyboardVirtualEditor();
+                return result;
+            }
+
+            @Override
+            public boolean deleteSurroundingTextInCodePoints(int beforeLength, int afterLength) {
+                boolean result = super.deleteSurroundingTextInCodePoints(beforeLength, afterLength);
+                synchronizeHoneyboardVirtualEditor();
+                return result;
             }
 
             void sendTextToTerminal(CharSequence text) {
@@ -507,6 +642,8 @@ public final class TerminalView extends View {
             }
 
         };
+        mInputConnection = connection;
+        return connection;
     }
 
     @Override
@@ -1136,7 +1273,10 @@ public final class TerminalView extends View {
     @Override
     protected void onFocusChanged(boolean gainFocus, int direction, android.graphics.Rect previouslyFocusedRect) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
-        if (!gainFocus) mKittyKeyPresses.clear();
+        if (!gainFocus) {
+            mKittyKeyPresses.clear();
+            invalidateInputConnection();
+        }
     }
 
     /**
@@ -1617,6 +1757,7 @@ public final class TerminalView extends View {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         mKittyKeyPresses.clear();
+        invalidateInputConnection();
 
         if (mTextSelectionCursorController != null) {
             // Might solve the following exception
