@@ -57,10 +57,14 @@ final class ByteQueue {
      * Returns whether the output was totally written, false if it was closed before.
      */
     public boolean write(byte[] buffer, int offset, int lengthToWrite) {
-        if (lengthToWrite + offset > buffer.length) {
-            throw new IllegalArgumentException("length + offset > buffer.length");
-        } else if (lengthToWrite <= 0) {
-            throw new IllegalArgumentException("length <= 0");
+        if (offset < 0 || lengthToWrite < 0 || offset > buffer.length ||
+            lengthToWrite > buffer.length - offset) {
+            throw new IllegalArgumentException("Invalid offset or length");
+        } else if (lengthToWrite == 0) {
+            // A zero-length write is a no-op. This can happen when pasting text
+            // that TerminalEmulator.paste() fully strips of escape/control
+            // characters, which previously crashed the app (issue #5119).
+            return true;
         }
 
         final int bufferLength = mBuffer.length;

@@ -46,6 +46,17 @@ public class ScrollRegionTest extends TerminalTestCase {
 		enterString("\n").assertLinesAre("GHY", "IJ ", "   ");
 	}
 
+	public void testScrollCounterCountsOnlyRowsMovedIntoTheTranscript() {
+		// A full width scroll moves the screen one row up in the transcript, which TerminalView follows
+		// through the scroll counter while text is selected:
+		withTerminalSized(3, 3).enterString("ABCDEFGHI\r\n").assertLinesAre("DEF", "GHI", "   ").assertHistoryStartsWith("ABC");
+		assertEquals(1, mTerminal.getScrollCounter());
+		// A scroll between the left and right margins moves no row of the screen or the transcript:
+		withTerminalSized(3, 3).enterString("\033[?69h\033[2sABCDEFG\n").assertLinesAre("ADE", " FG", "   ");
+		assertEquals(0, mTerminal.getScreen().getActiveTranscriptRows());
+		assertEquals(0, mTerminal.getScrollCounter());
+	}
+
 	public void testScrollRegionOnAllSides() {
 		// ${CSI}?69h for DECLRMM enabling, ${CSI}${LEFTMARGIN};${RIGHTMARGIN}s for DECSLRM margin setting.
 		withTerminalSized(4, 4).enterString("ABCDEFGHIJKLMNOP").assertLinesAre("ABCD", "EFGH", "IJKL", "MNOP");
@@ -78,6 +89,15 @@ public class ScrollRegionTest extends TerminalTestCase {
 	public void testRiRespectsLeftMargin() {
 		// Reverse Index (RI), ${ESC}M, should respect horizontal margins:
 		withTerminalSized(4, 3).enterString("ABCD\033[?69h\033[2;3s\033[?6h\033M").assertLinesAre("A  D", " BC ", "    ");
+	}
+
+	public void testRiAboveTopMargin() {
+		// Reverse Index (RI), ${ESC}M, above the top margin moves the cursor up and does not scroll the region:
+		withTerminalSized(3, 5).enterString("111222333444555\033[3;5r\033[2;1H\033MX").assertLinesAre("X11", "222", "333", "444", "555");
+		// On the first line, above the top margin, it does nothing:
+		withTerminalSized(3, 5).enterString("111222333444555\033[3;5r\033[1;1H\033MX").assertLinesAre("X11", "222", "333", "444", "555");
+		// At the top margin it scrolls the region down:
+		withTerminalSized(3, 5).enterString("111222333444555\033[3;5r\033[3;1H\033MX").assertLinesAre("111", "222", "X  ", "333", "444");
 	}
 
 	public void testSdRespectsLeftMargin() {
@@ -118,24 +138,40 @@ public class ScrollRegionTest extends TerminalTestCase {
 	}
 
 	/** See https://github.com/termux/termux-app/issues/1340 */
-	public void testScrollRegionDoesNotLimitCursorMovement() {
-		withTerminalSized(6, 4)
+	public void testScrollRegionDoesNotLimitCursorMovementOutsideIt() {
+		// Cursor above the scroll region:
+		withTerminalSized(6, 8)
 			.enterString("\033[4;7r\033[3;1Haaa\033[Axxx")
 			.assertLinesAre(
 				"      ",
 				"   xxx",
 				"aaa   ",
+				"      ",
+				"      ",
+				"      ",
+				"      ",
 				"      "
 			);
 
+		// Cursor below the scroll region:
 		withTerminalSized(6, 4)
-			.enterString("\033[1;3r\033[3;1Haaa\033[Bxxx")
+			.enterString("\033[1;2r\033[3;1Haaa\033[Bxxx")
 			.assertLinesAre(
 				"      ",
 				"      ",
 				"aaa   ",
 				"   xxx"
 			);
+	}
+
+	public void testScrollRegionLimitsCursorMovementInsideIt() {
+		// Inside the scroll region, CUU and CUD stop at the margins (as in xterm):
+		withTerminalSized(3, 5).enterString("\033[2;4r\033[3;1HA\033[9AB\033[9BC").assertLinesAre("   ", " B ", "A  ", "  C", "   ");
+		// And so do CNL and CPL:
+		withTerminalSized(3, 5).enterString("\033[2;4r\033[3;2H\033[9EA\033[9FB").assertLinesAre("   ", "B  ", "   ", "A  ", "   ");
+		// With origin mode, CNL and CPL move relative to the cursor:
+		withTerminalSized(3, 5).enterString("\033[2;4r\033[?6h\033[1;2H\033[EA").assertLinesAre("   ", "   ", "A  ", "   ", "   ");
+		withTerminalSized(3, 5).enterString("\033[2;4r\033[?6h\033[3;2H\033[FA").assertLinesAre("   ", "   ", "A  ", "   ", "   ");
 	}
 
 	/**

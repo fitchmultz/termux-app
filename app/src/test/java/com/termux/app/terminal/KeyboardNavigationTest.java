@@ -91,6 +91,42 @@ public class KeyboardNavigationTest {
         return new String(bytes, 0, count, StandardCharsets.UTF_8);
     }
 
+    @Test public void unmatchedCtrlAltReachesActivePaneAndRecognizedShortcutStillSwitches() {
+        Application app = RuntimeEnvironment.getApplication();
+        TermuxShellManager manager = TermuxShellManager.init(app);
+        manager.mTermuxSessions.clear();
+        TerminalSession first = session("one", manager), second = session("two", manager);
+        ActivityController<TermuxActivity> controller = start();
+        try {
+            TermuxActivity activity = controller.get();
+            View root = activity.findViewById(com.termux.R.id.activity_termux_root_view);
+            TerminalPaneLayoutTest.size(root, 900, 650);
+            activity.getTerminalPanes().openBeside(first);
+            TerminalPaneLayoutTest.size(root, 900, 650);
+            idle();
+            assertSame(first, activity.getCurrentSession());
+            int modifiers = KeyEvent.META_CTRL_ON | KeyEvent.META_ALT_ON | KeyEvent.META_ALT_LEFT_ON;
+
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(0, 0, KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_X, 0, modifiers)));
+            assertEquals("\033\u0018", input(first));
+            assertEquals("", input(second));
+
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(0, 0, KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_N, 0, modifiers)));
+            assertSame(second, activity.getCurrentSession());
+            assertEquals("", input(first));
+            assertEquals("", input(second));
+
+            assertTrue(activity.dispatchKeyEvent(new KeyEvent(0, 0, KeyEvent.ACTION_DOWN,
+                KeyEvent.KEYCODE_X, 0, modifiers)));
+            assertEquals("", input(first));
+            assertEquals("\033\u0018", input(second));
+        } finally {
+            controller.pause().stop().destroy();
+        }
+    }
+
     @Test public void savedControlsApplyOnReturnWithoutReplacingTheSession() throws Exception {
         Application app = RuntimeEnvironment.getApplication();
         TermuxShellManager manager = TermuxShellManager.init(app);

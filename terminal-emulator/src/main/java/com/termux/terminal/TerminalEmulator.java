@@ -720,10 +720,9 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             case 24: // CAN.
             case 26: // SUB.
+                // Cancel any escape sequence in progress. Nothing is printed, as in xterm.
                 if (mEscapeState != ESC_NONE) {
-                    // FIXME: What is this??
                     mEscapeState = ESC_NONE;
-                    emitCodePoint(127);
                 }
                 break;
             case 27: // ESC
@@ -742,7 +741,8 @@ public final class TerminalEmulator implements TerminalRendererState {
                 mContinueSequence = false;
                 switch (mEscapeState) {
                     case ESC_NONE:
-                        if (b >= 32) emitCodePoint(b);
+                        // DEL (127) is not a graphic character and is ignored, as in xterm.
+                        if (b >= 32 && b != 127) emitCodePoint(b);
                         break;
                     case ESC:
                         doEsc(b);
@@ -1569,10 +1569,11 @@ public final class TerminalEmulator implements TerminalRendererState {
             case 'M': // "${ESC}M" - reverse index (RI).
                 // http://www.vt100.net/docs/vt100-ug/chapter3.html: "Move the active position to the same horizontal
                 // position on the preceding line. If the active position is at the top margin, a scroll down is performed".
-                if (mCursorRow <= mTopMargin) {
+                // Above the top margin it is a plain cursor up, which stops at the top of the screen (as in xterm).
+                if (mCursorRow == mTopMargin) {
                     mScreen.blockCopy(mLeftMargin, mTopMargin, mRightMargin - mLeftMargin, mBottomMargin - (mTopMargin + 1), mLeftMargin, mTopMargin + 1);
                     blockClear(mLeftMargin, mTopMargin, mRightMargin - mLeftMargin);
-                } else {
+                } else if (mCursorRow > 0) {
                     mCursorRow--;
                 }
                 break;
@@ -1663,10 +1664,10 @@ public final class TerminalEmulator implements TerminalRendererState {
             }
             break;
             case 'A': // "CSI${n}A" - Cursor up (CUU) ${n} rows.
-                setCursorRow(Math.max(0, mCursorRow - getArg0(1)));
+                setCursorRow(cursorRowUp(getArg0(1)));
                 break;
             case 'B': // "CSI${n}B" - Cursor down (CUD) ${n} rows.
-                setCursorRow(Math.min(mRows - 1, mCursorRow + getArg0(1)));
+                setCursorRow(cursorRowDown(getArg0(1)));
                 break;
             case 'C': // "CSI${n}C" - Cursor forward (CUF).
             case 'a': // "CSI${n}a" - Horizontal position relative (HPR). From ISO-6428/ECMA-48.
@@ -1676,10 +1677,10 @@ public final class TerminalEmulator implements TerminalRendererState {
                 setCursorCol(Math.max(mLeftMargin, mCursorCol - getArg0(1)));
                 break;
             case 'E': // "CSI{n}E - Cursor Next Line (CNL). From ISO-6428/ECMA-48.
-                setCursorPosition(0, mCursorRow + getArg0(1));
+                setCursorRowCol(cursorRowDown(getArg0(1)), isDecsetInternalBitSet(DECSET_BIT_ORIGIN_MODE) ? mLeftMargin : 0);
                 break;
             case 'F': // "CSI{n}F - Cursor Previous Line (CPL). From ISO-6428/ECMA-48.
-                setCursorPosition(0, mCursorRow - getArg0(1));
+                setCursorRowCol(cursorRowUp(getArg0(1)), isDecsetInternalBitSet(DECSET_BIT_ORIGIN_MODE) ? mLeftMargin : 0);
                 break;
             case 'G': // "CSI${n}G" - Cursor horizontal absolute (CHA) to column ${n}.
                 setCursorCol(Math.min(Math.max(1, getArg0(1)), mColumns) - 1);
@@ -1767,7 +1768,10 @@ public final class TerminalEmulator implements TerminalRendererState {
             }
             break;
             case 'S': { // "${CSI}${N}S" - scroll up ${N} lines (default = 1) (SU).
-                final int linesToScroll = getArg0(1);
+                // Like SD below, scroll at most the height of the scroll region: once every line in it
+                // has been scrolled out, scrolling further only pushes blank lines into the transcript
+                // and evicts real history. This matches xterm and tmux.
+                final int linesToScroll = Math.min(getArg0(1), mBottomMargin - mTopMargin);
                 for (int i = 0; i < linesToScroll; i++)
                     scrollDownOneLine();
                 break;
@@ -1829,10 +1833,10 @@ public final class TerminalEmulator implements TerminalRendererState {
                 if (getArg0(0) == 0) mSession.write("\033[?64;1;2;6;9;15;18;21;22c");
                 break;
             case 'd': // ESC [ Pn d - Vert Position Absolute
-                setCursorRow(Math.min(Math.max(1, getArg0(1)), mRows) - 1);
+                setCursorRowRespectingOriginMode(getArg0(1) - 1);
                 break;
             case 'e': // Vertical Position Relative (VPR). From ISO-6429 (ECMA-48).
-                setCursorPosition(mCursorCol, mCursorRow + getArg0(1));
+                setCursorRowRespectingOriginMode(mCursorRow - (isDecsetInternalBitSet(DECSET_BIT_ORIGIN_MODE) ? mTopMargin : 0) + getArg0(1));
                 break;
             // case 'f': "${CSI}${ROW};${COLUMN}f" - Horizontal and Vertical Position (HVP). Grouped with case 'H'.
             case 'g': // Clear tab stop
@@ -2318,8 +2322,26 @@ public final class TerminalEmulator implements TerminalRendererState {
     }
 
     /**
+     * The row ${n} rows above the cursor for CUU and CPL. As in xterm, the cursor stops at the top margin if it starts
+     * at or below it, and at the first row if it starts above it (see https://github.com/termux/termux-app/issues/1340).
+     */
+    private int cursorRowUp(int n) {
+        int limit = mCursorRow >= mTopMargin ? mTopMargin : 0;
+        return Math.max(limit, mCursorRow - n);
+    }
+
+    /**
+     * The row ${n} rows below the cursor for CUD and CNL. As in xterm, the cursor stops at the bottom margin if it
+     * starts at or above it, and at the last row if it starts below it.
+     */
+    private int cursorRowDown(int n) {
+        int limit = mCursorRow < mBottomMargin ? mBottomMargin - 1 : mRows - 1;
+        return Math.min(limit, mCursorRow + n);
+    }
+
+    /**
      * NOTE: The parameters of this function respect the {@link #DECSET_BIT_ORIGIN_MODE}. Use
-     * {@link #setCursorRowCol(int, int)} for absolute pos.
+     * {@link #setCursorRowCol(int, int)} for absolute pos.
      */
     private void setCursorPosition(int x, int y) {
         boolean originMode = isDecsetInternalBitSet(DECSET_BIT_ORIGIN_MODE);
@@ -2333,14 +2355,15 @@ public final class TerminalEmulator implements TerminalRendererState {
     }
 
     private void scrollDownOneLine() {
-        mScrollCounter++;
         long currentStyle = getStyle();
         if (mLeftMargin != 0 || mRightMargin != mColumns) {
             // Horizontal margin: Do not put anything into scroll history, just non-margin part of screen up.
+            // The rows of the screen and the transcript do not move, so the scroll counter is left alone.
             mScreen.blockCopy(mLeftMargin, mTopMargin + 1, mRightMargin - mLeftMargin, mBottomMargin - mTopMargin - 1, mLeftMargin, mTopMargin);
             // .. and blank bottom row between margins:
             mScreen.blockSet(mLeftMargin, mBottomMargin - 1, mRightMargin - mLeftMargin, 1, ' ', currentStyle);
         } else {
+            mScrollCounter++;
             mScreen.scrollDownOneLine(mTopMargin, mBottomMargin, currentStyle);
         }
     }
@@ -2637,9 +2660,26 @@ public final class TerminalEmulator implements TerminalRendererState {
         mAboutToAutoWrap = false;
     }
 
-    /** Set the cursor mode, but limit it to margins if {@link #DECSET_BIT_ORIGIN_MODE} is enabled. */
+    /**
+     * Set the cursor column, relative to the left margin and limited to the margins if
+     * {@link #DECSET_BIT_ORIGIN_MODE} is enabled. The cursor row is not changed.
+     */
     private void setCursorColRespectingOriginMode(int col) {
-        setCursorPosition(col, mCursorRow);
+        boolean originMode = isDecsetInternalBitSet(DECSET_BIT_ORIGIN_MODE);
+        int effectiveLeftMargin = originMode ? mLeftMargin : 0;
+        int effectiveRightMargin = originMode ? mRightMargin : mColumns;
+        setCursorCol(Math.max(effectiveLeftMargin, Math.min(effectiveLeftMargin + col, effectiveRightMargin - 1)));
+    }
+
+    /**
+     * Set the cursor row, relative to the top margin and limited to the margins if
+     * {@link #DECSET_BIT_ORIGIN_MODE} is enabled. The cursor column is not changed.
+     */
+    private void setCursorRowRespectingOriginMode(int row) {
+        boolean originMode = isDecsetInternalBitSet(DECSET_BIT_ORIGIN_MODE);
+        int effectiveTopMargin = originMode ? mTopMargin : 0;
+        int effectiveBottomMargin = originMode ? mBottomMargin : mRows;
+        setCursorRow(Math.max(effectiveTopMargin, Math.min(effectiveTopMargin + row, effectiveBottomMargin - 1)));
     }
 
     /** TODO: Better name, distinguished from {@link #setCursorPosition(int, int)} by not regarding origin mode. */

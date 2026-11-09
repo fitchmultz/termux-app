@@ -13,6 +13,9 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Selectively adapts source-confirmed open upstream fixes for valid empty/sanitized writes, coalesced PTY input wakeups, overlapping cell styles, cursor/scroll-margin/cancellation correctness, wrapped transcript words and unmatched Ctrl+Alt active-pane routing. Existing Fold shortcuts, synchronized-output timeout and queue behavior remain; focused regressions cover those contracts. See the [correctness source map](docs/UPSTREAM_CORRECTNESS_2026-11-09.md).
+- Adapts fuller JNI partial-allocation/UTF/local-reference/PTY failure cleanup, preserving pending exceptions and validating PID output, plus connected-client-FD and single AM-error-result repairs. Does not import unsafe unconditional process killing or change the independently pinned API companion producer.
+
 - This source branch batches ordinary printable ASCII into row-bounded runs instead of repeating decoding, width lookup, and cell setup for every byte. UTF-8, escapes, line drawing, insert mode, wrapping, cursor normalization, and complex Unicode rows retain their existing paths.
 - This source branch schedules terminal flings on Android's animation frames instead of immediately reposting the polling loop. It retains the existing scrolling physics, history bounds, mouse reporting, and pane/session cancellation.
 - Routes multiline IME commits through the existing paste path when bracketed paste is enabled, while keeping ordinary text, single Enter, and unbracketed terminal input unchanged.
@@ -62,6 +65,9 @@ This is the canonical concise inventory of intentional differences from the audi
 - Keeps explicit keyboard controls because full-screen TUIs such as Pi use terminal mouse tracking and consume terminal taps.
 
 ## Contracts, tests, and repository policy
+
+- Adds included-source JNI host fault injection with fake JNI/PTY/fork boundaries and tracked allocations, and focused Java socket wrapper/framing regressions. The read-only job provisions GCC/libc headers; Android NDK compilation remains separate. Host/shadow tests do not prove ART, real child lifecycle or socket execution.
+- If a content-addressed bootstrap snapshot's browser download fails, tries its exact public same-repository REST asset; all archive/member/profile/cache hashes and input pins remain required. Integrity failures never trigger alternate downloads. Bootstrap failure-path fixtures use the same existing authenticated snapshot recovery as production; no package or prefix contents change.
 
 - This source branch combines wrapper validation, full tests, metadata and one validated unsigned release APK in PR and main checks, reusing Gradle state between runs. Signed release compares a successful exact-tag main APK with a clean build; if they differ, it requires two matching clean release-job builds instead. Bootstrap reproducibility runs for bootstrap changes; unrelated inventory changes do not trigger the independently pinned Termux:API companion.
 - Documents the observed Android child-process restriction and optional temporary-file retention for background work. These are device/user settings, not APK defaults or guarantees; see [background-session guidance](docs/ANDROID_BACKGROUND.md).
