@@ -1,0 +1,16 @@
+{
+  "repository": "fitchmultz/termux-app",
+  "pull_request": 41,
+  "run_id": 42622666664,
+  "job_id": 129178485535,
+  "head_commit": "6e4e8386daa1b50d819965ef0b61415bf8795963",
+  "checkout_commit": "77142f34d312a0778364a97ca5743a381f9ba6c5",
+  "artifact_id": 13678181090,
+  "artifact_sha256": "07c14d410afa46ca3c26c44234d03204a9e5573951a3a7cabf31edb83579c6d1",
+  "run_conclusion": "cancelled",
+  "description": "Unmodified synthetic Android-rendered captures from the original touch fixture. Plain and OSC8-linked labels intentionally have identical pixels. Before/after refers to attaching metadata in one fixture, not two APK versions. This cancelled run is not passing test/build evidence and does not qualify the subsequent scroll-clamp repair. No physical-device claim.",
+  "files": {
+    "osc8-before-plain-label.png": "ca30affd04f136ab51ab7281c5fa8c47bad117982a91401cc2edfdbc5f7655a5",
+    "osc8-after-linked-label.png": "ca30affd04f136ab51ab7281c5fa8c47bad117982a91401cc2edfdbc5f7655a5"
+  }
+}
