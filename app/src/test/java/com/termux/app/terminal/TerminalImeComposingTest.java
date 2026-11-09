@@ -2,6 +2,8 @@ package com.termux.app.terminal;
 
 import android.app.Activity;
 import android.app.Application;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -22,7 +24,9 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 
+import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
+import com.termux.shared.termux.settings.preferences.TermuxPreferenceConstants.TERMUX_APP;
 import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
 import com.termux.shared.termux.terminal.TermuxTerminalViewClientBase;
 import com.termux.terminal.TerminalEmulator;
@@ -1009,13 +1013,26 @@ public class TerminalImeComposingTest {
         assertEquals("current OFF draft", received(session));
     }
 
-    @Test public void preferenceDefaultsOffAndRefreshDoesNotStealEditorFocus() {
+    @Test public void preferenceDefaultsOffAndRefreshDoesNotStealEditorFocus() throws Exception {
+        // build() opens this XML in PRIVATE and MULTI_PROCESS modes. Complete the first
+        // private load before that dual-mode construction, so API28 cannot start both
+        // initial and reload threads before either publishes its map.
+        Context packageContext = activity.createPackageContext(TermuxConstants.TERMUX_PACKAGE_NAME,
+            Context.CONTEXT_RESTRICTED);
+        assertEquals(TermuxConstants.TERMUX_PACKAGE_NAME, packageContext.getPackageName());
+        SharedPreferences primed = packageContext.getSharedPreferences(
+            TermuxConstants.TERMUX_DEFAULT_PREFERENCES_FILE_BASENAME_WITHOUT_EXTENSION, Context.MODE_PRIVATE);
+        assertTrue("The isolated preference fixture must start empty", primed.getAll().isEmpty());
+        assertFalse(primed.contains(TERMUX_APP.KEY_IME_COMPOSING_ENABLED));
         TermuxAppSharedPreferences preferences = TermuxAppSharedPreferences.build(activity, true);
         assertNotNull(preferences);
+        assertSame("The initial-load barrier must cover the production preference backend",
+            primed, preferences.getSharedPreferences());
         assertFalse(preferences.isImeComposingEnabled());
         preferences.setImeComposingEnabled(true);
         assertTrue(preferences.isImeComposingEnabled());
         preferences.setImeComposingEnabled(false);
+        assertFalse(preferences.isImeComposingEnabled());
         terminal.onCreateInputConnection(new EditorInfo());
         enabled = true;
         terminal.refreshImeComposingPreference();

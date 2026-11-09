@@ -160,3 +160,34 @@ native API28/37 configuration are retained. These changes are independently sour
 reviewed, **not yet current-head runtime qualification**. The recording IMM/manual
 replacement tests do not establish a physical Settings/notification-shade/OEM trace.
 Fresh final-pair Pi Durable/Cursor review and full CI remain required.
+
+
+## SDK28 preference-fixture initialization
+
+At exact `2c15d0f7cbf1b9fb7113b66d1948e8851a307e6b`, push run
+42601106522 failed only the SDK28 preference test's immediate true readback at
+line1017, before reaching its input-connection/refresh assertions. Digest-verified
+reports counted462 executed cases: app276 (275 passed,1 failed), emulator186
+passed, no shared-module report/task; the composing suite passed66/67 cases,
+including all three explicit minimum-SDK cases. SDK37's preference counterpart
+passed. This is not a compile failure or another API24 graphics/layout failure.
+
+Source inspection of AOSP28's SharedPreferencesImpl permits overlapping initial
+PRIVATE/MULTI_PROCESS loaders to publish their maps after their earlier loaded
+checks. Robolectric4.17's apply shadow drains QueuedWork, not those raw loader
+threads. This is a plausible initialization-race mechanism, **not conclusive
+attribution of the observed failure**; apply's ordinary synchronous in-memory
+contract is not weakened or redefined.
+
+The test now obtains the same real package/file's PRIVATE handle first and calls
+getAll() to finish that first load **before** production dual-mode construction.
+It checks key absence and identical production cached backend, then retains the
+default-false and immediate true/false production setter/getter assertions. The
+existing looper idle remains only after queued preference refresh. There is no
+empty commit, clearing/seeding settings, fake backend, sleep, post-setter idle,
+production workaround, or claim that already-overlapping loaders are drained.
+The earlier empty-commit candidate was superseded and is not applied.
+
+This one-file fixture increment is independently source-reviewed. Only fresh-
+head full CI can establish recovery; final-pair Pi Durable/Cursor reviews remain
+mandatory. No actual user preferences or phone/runtime configuration were touched.
