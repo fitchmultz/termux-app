@@ -39,7 +39,7 @@ service-daemon start >/dev/null 2>&1
 exec tail -s 5 --pid="$(cat "$PREFIX/var/run/service-daemon.pid")" -f /dev/null
 ```
 
-The last line keeps the script running, which matters. Termux stays a foreground service, with its notification, only while a session, a background task, or the wake lock exists. When a boot script exits and nothing else holds the service, [the service stops](../app/src/main/java/com/termux/app/TermuxService.java#L855-L862) and Android may end the programs that the script started. The example therefore waits for as long as the service supervisor runs. It starts the supervisor the same way a login shell does, so opening a session later does not start a second one. `termux-wake-lock` also holds the service, but it keeps the CPU awake.
+The last line keeps the script running, which matters. Termux stays a foreground service, with its notification, only while a session, a background task, or the wake lock exists. When a boot script exits and nothing else holds the service, [the service stops](../app/src/main/java/com/termux/app/TermuxService.java#L855-L862) and Android treats Termux as a cached app. On an Android 17 emulator, Android froze every Termux process 30 seconds later and `sshd` stopped answering. The example therefore waits for as long as the service supervisor runs. It starts the supervisor the same way a login shell does, so opening a session later does not start a second one. `termux-wake-lock` also holds the service, but it keeps the CPU awake.
 
 The notification's **Exit** action ends boot scripts along with all sessions. They start again after the next restart or APK update. Android does not deliver either event to an app that was force-stopped and not opened since.
 
