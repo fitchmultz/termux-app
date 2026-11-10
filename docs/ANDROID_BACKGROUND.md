@@ -24,6 +24,25 @@ adb logcat -d -b events -b system -v threadtime | grep -Ei 'am_kill|phantom|lmkd
 
 Look for the recorded reason, such as `Trimming phantom processes`, rather than treating every signal 9 as the same problem.
 
+## Start programs at boot
+
+Android stops every Termux process when the phone restarts and when the Termux APK is updated. After either event, this fork starts each regular file in `~/.termux/boot` as a background task, in name order. After a restart, that happens once the phone is unlocked for the first time. Nothing starts if the directory is missing or empty.
+
+No separate app is needed. The upstream [Termux:Boot](https://github.com/termux/termux-boot#readme) plugin must be signed with the same key as Termux, so its public builds cannot be installed beside this fork. Scripts written for Termux:Boot work unchanged, with one difference: this fork also starts them after an APK update.
+
+For example, `~/.termux/boot/start-services` starts the services enabled through `termux-services`, such as `sshd`:
+
+```sh
+#!/data/data/com.termux/files/usr/bin/sh
+export SVDIR="$PREFIX/var/service" LOGDIR="$PREFIX/var/log"
+service-daemon start >/dev/null 2>&1
+exec tail -s 5 --pid="$(cat "$PREFIX/var/run/service-daemon.pid")" -f /dev/null
+```
+
+The last line keeps the script running, which matters. Termux stays a foreground service, with its notification, only while a session, a background task, or the wake lock exists. When a boot script exits and nothing else holds the service, [the service stops](../app/src/main/java/com/termux/app/TermuxService.java#L855-L862) and Android treats Termux as a cached app. On an Android 17 emulator, Android froze every Termux process 30 seconds later and `sshd` stopped answering. The example therefore waits for as long as the service supervisor runs. It starts the supervisor the same way a login shell does, so opening a session later does not start a second one. `termux-wake-lock` also holds the service, but it keeps the CPU awake.
+
+The notification's **Exit** action ends sessions and stops the service. It does not end boot scripts or the programs that they started, but Termux stops tracking them, so they no longer hold the service. On the same emulator, Android froze them ten seconds after **Exit**, and they resumed when Termux was opened again. A restart or an APK update starts the scripts as tracked tasks again. Android delivers neither event to an app that was force-stopped and not opened since.
+
 ## Temporary files on service shutdown
 
 The current fork attempts to clear Termux's temporary directory when its [service is destroyed](../app/src/main/java/com/termux/app/TermuxService.java#L172-L175). In one observed shutdown on the Fold, that cleanup blocked the app's main thread long enough for Android to record an application-not-responding event. The existing [cleanup option](../termux-shared/src/main/java/com/termux/shared/termux/shell/TermuxShellUtils.java#L86-L110) can retain temporary files instead. Add this to `~/.termux/termux.properties`:

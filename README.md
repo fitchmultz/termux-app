@@ -8,7 +8,7 @@ For an artifact-only build, run [Fold signed release](https://github.com/fitchmu
 
 The [offline default-tools profile](tools/bootstrap/README.md) adds Git, OpenSSH/SFTP, tmux, jq, ripgrep, fd, fzf, rsync, tree, zip, wget, zsh with completions, lsd, bat, git-delta, direnv, git-lfs, chezmoi, and the termux-api client to fresh installations without a first-launch network install. Existing nonempty prefixes are never replaced or automatically upgraded. To add these tools explicitly to an existing installation, run `pkg update` then `pkg install git openssh tmux jq ripgrep fd fzf rsync tree zip wget zsh zsh-completions lsd bat git-delta direnv git-lfs chezmoi termux-api` and review the proposed changes. Bash remains the default; no aliases, shell hooks, direnv activation, or global Git configuration are added. Mise, Node/Python versioned development environments, and compilers remain separate, opt-in installations. Clipboard/API access still requires the separately installed, same-Fold-key Termux:API Android app and only the Android permissions needed for the chosen APIs; bundling the client alone does not enable it. Do not mix stock F-Droid/GitHub plugin APKs with Fold-signed Termux.
 
-For background work, see [Android process restrictions and temporary-file cleanup](docs/ANDROID_BACKGROUND.md).
+For background work, see [Android process restrictions, boot scripts, and temporary-file cleanup](docs/ANDROID_BACKGROUND.md).
 
 ## Upstream documentation (reference)
 

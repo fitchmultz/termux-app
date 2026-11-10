@@ -34,6 +34,7 @@ The integrated Fold profile:
 - uses a compact session-title header without a single-pane focus border; Compose and Split are available at the bottom of the session drawer;
 - starts shells without the termux-tools welcome banner through its native `TERMUX_HUSHLOGIN` switch; Help remains available from the terminal context menu;
 - advertises the terminal emulator's implemented DEC mode 2026 synchronized-output support to tmux;
+- starts the owner's `~/.termux/boot` scripts after boot and after APK updates, with no separate Termux:Boot app; nothing starts by default;
 - renders Sixel and iTerm single/multipart inline-image previews with platform-checked bitmap geometry, cumulative encoded-input bounds and completed-frame ownership, without adding packages, changing shell configuration, downloading files, or upgrading an existing prefix.
 
 Properties remain available as recovery switches, but their defaults are the Fold choices rather than upstream's general-purpose choices. Release metadata is centralized in the root `build.gradle` and asserted by the read-only integration workflow so label/version drift fails CI.
@@ -81,4 +82,4 @@ Source integration is not APK publication or physical offline-bootstrap validati
 
 Installation remains owner-controlled. Verify the dedicated signing identity and its Proton Pass backup, an encrypted Termux data backup and recovery procedure, reviewed bootstrap evidence, and the physical Fold test plan before updating. Physical fresh-bootstrap completion and heap acceptance are not established by CI; updating a nonempty prefix does not exercise that path. Never replace a real prefix just to test it.
 
-APK replacement can stop running Termux processes. Save work and wait for native builds and other critical jobs to finish before choosing **Update**; never uninstall to update. Android normally rejects a lower version code, so recovery is a same-key, higher-code roll-forward or an explicitly prepared backup/restore procedure, not an ordinary APK downgrade.
+APK replacement can stop running Termux processes. [Boot scripts](docs/ANDROID_BACKGROUND.md#start-programs-at-boot) start again afterwards; sessions do not. Save work and wait for native builds and other critical jobs to finish before choosing **Update**; never uninstall to update. Android normally rejects a lower version code, so recovery is a same-key, higher-code roll-forward or an explicitly prepared backup/restore procedure, not an ordinary APK downgrade.

@@ -5,22 +5,32 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.Uri;
+import android.os.Build;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.termux.app.TermuxService;
 import com.termux.shared.data.IntentUtils;
 import com.termux.shared.logger.Logger;
+import com.termux.shared.termux.TermuxConstants;
+import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_SERVICE;
 import com.termux.shared.termux.TermuxUtils;
 import com.termux.shared.termux.file.TermuxFileUtils;
 import com.termux.shared.termux.shell.command.environment.TermuxShellEnvironment;
 import com.termux.shared.termux.shell.TermuxShellManager;
+
+import java.io.File;
+import java.util.Arrays;
 
 public class SystemEventReceiver extends BroadcastReceiver {
 
     private static SystemEventReceiver mInstance;
 
     private static final String LOG_TAG = "SystemEventReceiver";
+
+    /** The Termux:Boot plugin's scripts directory, {@code ~/.termux/boot}. */
+    private static final File BOOT_SCRIPTS_DIR = new File(TermuxConstants.TERMUX_DATA_HOME_DIR, "boot");
 
     public static synchronized SystemEventReceiver getInstance() {
         if (mInstance == null) {
@@ -40,6 +50,10 @@ public class SystemEventReceiver extends BroadcastReceiver {
         switch (action) {
             case Intent.ACTION_BOOT_COMPLETED:
                 onActionBootCompleted(context, intent);
+                startBootScripts(context);
+                break;
+            case Intent.ACTION_MY_PACKAGE_REPLACED:
+                startBootScripts(context);
                 break;
             case Intent.ACTION_PACKAGE_ADDED:
             case Intent.ACTION_PACKAGE_REMOVED:
@@ -53,6 +67,38 @@ public class SystemEventReceiver extends BroadcastReceiver {
 
     public synchronized void onActionBootCompleted(@NonNull Context context, @NonNull Intent intent) {
         TermuxShellManager.onActionBootCompleted(context, intent);
+    }
+
+    /**
+     * Start each regular file in {@link #BOOT_SCRIPTS_DIR} as a background {@link TermuxService}
+     * task, in name order, as the Termux:Boot plugin does. Android kills every Termux process on
+     * reboot and on app update, so both events start the scripts. A script that keeps running
+     * keeps the service in the foreground without a terminal session or wake lock.
+     */
+    private static void startBootScripts(@NonNull Context context) {
+        File[] scripts = BOOT_SCRIPTS_DIR.listFiles(File::isFile);
+        if (scripts == null || scripts.length == 0) return;
+        Arrays.sort(scripts);
+
+        StringBuilder names = new StringBuilder();
+        for (File script : scripts) {
+            // Termux:Boot runs scripts whose owner forgot to make them executable.
+            if (!script.canRead()) script.setReadable(true);
+            if (!script.canExecute()) script.setExecutable(true);
+
+            Uri scriptUri = new Uri.Builder().scheme(TERMUX_SERVICE.URI_SCHEME_SERVICE_EXECUTE)
+                .path(script.getAbsolutePath()).build();
+            Intent executeIntent = new Intent(TERMUX_SERVICE.ACTION_SERVICE_EXECUTE, scriptUri)
+                .setClass(context, TermuxService.class)
+                .putExtra(TERMUX_SERVICE.EXTRA_BACKGROUND, true);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                context.startForegroundService(executeIntent);
+            else
+                context.startService(executeIntent);
+
+            names.append(names.length() == 0 ? "" : ", ").append(script.getName());
+        }
+        Logger.logInfo(LOG_TAG, "Started boot scripts: " + names);
     }
 
     public synchronized void onActionPackageUpdated(@NonNull Context context, @NonNull Intent intent) {
