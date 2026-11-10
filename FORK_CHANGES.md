@@ -76,6 +76,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Features
 
+- Starts each regular file in `~/.termux/boot` as a background task, in name order, after boot and after an APK update. This replaces the Termux:Boot plugin, whose public builds cannot share this fork's signing identity. A script that keeps running holds the foreground service without a session or wake lock. See [boot scripts](docs/ANDROID_BACKGROUND.md#start-programs-at-boot).
+
 - Adapts upstream PR5390 OSC 8 cell metadata for labeled links, including the Fold ASCII fast path, Unicode/reflow/history, and immutable synchronized-frame targets. With the existing transcript-click setting enabled, tapping a label opens its URI through Android's existing URL handler; ordinary detected URLs and disabled-click behavior remain unchanged.
 - Uses the renderer's completed-screen scroll clamp for link taps, so a scrollback offset during DEC 2026 cannot redirect a visible label or ordinary URL to another row.
 
