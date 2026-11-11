@@ -111,9 +111,13 @@ public final class TerminalSession extends TerminalOutput {
      * accepted. {@link #EXITED}: the process was reaped and its exit status is valid. {@link #FAILED}:
      * setup threw; the same cleanup ran, and the waiter must not publish a second UI exit.
      *
-     * <p>Only {@code STARTING → RUNNING/FAILED} and {@code RUNNING → EXITED} happen.
+     * <p>{@link #CANCELLED} is a session finished before its shell ever started: nothing was
+     * signalled, and it must stop reporting itself as running.
+     *
+     * <p>Only {@code STARTING → RUNNING/FAILED}, {@code RUNNING → EXITED} and
+     * {@code CREATED → CANCELLED} happen.
      */
-    public enum ShellState { CREATED, STARTING, RUNNING, EXITED, FAILED }
+    public enum ShellState { CREATED, STARTING, RUNNING, EXITED, FAILED, CANCELLED }
     private volatile ShellState mShellState = ShellState.CREATED;
     /** UTF-8 scratch for one code point; guarded by this until copied into the input ring. */
     private final byte[] mUtf8InputBuffer = new byte[5];
@@ -556,8 +560,14 @@ public final class TerminalSession extends TerminalOutput {
     /** Finish this terminal session by sending SIGKILL to the shell. */
     public void finishIfRunning() {
         final int pid;
-        synchronized (this) { pid = mShellPid; }
-        // 0 means no process was started; signalling it would target the app's own process group.
+        synchronized (this) {
+            pid = mShellPid;
+            // Nothing to signal before a shell starts, and pid 0 would target our own process group.
+            if (pid <= 0 && mShellState == ShellState.CREATED) {
+                mShellState = ShellState.CANCELLED;
+                return;
+            }
+        }
         if (pid <= 0) return;
         try {
             Os.kill(pid, OsConstants.SIGKILL);
@@ -576,7 +586,8 @@ public final class TerminalSession extends TerminalOutput {
             mShellPid = -1;
             mShellExitStatus = exitStatus;
             // Failed setup already recorded its own terminal state.
-            if (mShellState != ShellState.FAILED) mShellState = ShellState.EXITED;
+            if (mShellState != ShellState.FAILED && mShellState != ShellState.CANCELLED)
+                mShellState = ShellState.EXITED;
             descriptor = mTerminalFileDescriptor;
             mTerminalFileDescriptor = -1;
         }
@@ -594,7 +605,8 @@ public final class TerminalSession extends TerminalOutput {
 
     public synchronized boolean isRunning() {
         // Preserved meaning: false only once the process is unreachable (finished or failed setup).
-        return mShellState != ShellState.EXITED && mShellState != ShellState.FAILED;
+        return mShellState != ShellState.EXITED && mShellState != ShellState.FAILED &&
+            mShellState != ShellState.CANCELLED;
     }
 
     /** Only valid if not {@link #isRunning()}. */
