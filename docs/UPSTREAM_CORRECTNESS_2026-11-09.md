@@ -70,5 +70,5 @@ package versions, source hashes, artifact contents, lock/snapshot pins, credenti
 URLs or environment policies change.
 
 Fourteen new fully mocked fetch tests and the eleven unchanged snapshot tests
-passed in the isolated authoring worktree. Actual current-head M1 CI/live transport
+passed in the isolated authoring worktree. Actual current-head Actions CI/live transport
 remains a separate gate; this result is not a full Android/bootstrap build claim.

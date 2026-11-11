@@ -195,7 +195,7 @@ provenance and reproducibility update, not a silent production-source overlay.
    engine. Add real Android protocol/bitmap/rendering and snapshot regressions;
    retain the existing Fold behavior suite.
 4. Run before/after native-render fixtures and complete exact-head read-only Fold
-   checks on the M1 Linux Actions runners. Independent Pi Durable **and** Cursor
+   checks in GitHub Actions. Independent Pi Durable **and** Cursor
    review, current base/head, and addressed findings are required before merge.
 5. After merge, require the actual merged-main check; create a new annotated
    Fold17 tag, dispatch `Fold signed release` from `fold/main` with

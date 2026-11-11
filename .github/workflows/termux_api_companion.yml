@@ -27,7 +27,7 @@ concurrency:
 
 # These are reviewed workflow code, never downloaded scripts or artifact-provided policy.
 # Signing receives reviewed policy, never artifact-provided scripts.
-# The self-hosted VM persists; each job uses its own container and temporary directories.
+# Each job runs on its own GitHub-hosted VM; build-job environment changes cannot cross jobs.
 env:
   SHELL: /bin/bash
   API_SOURCE_COMMIT: 6c8eaa223bcc387e6b28146d340acb20712aa3e7
@@ -37,7 +37,7 @@ env:
   WORKFLOW_RUN_ID: ${{ github.run_id }}
   WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
   CANDIDATE_CONTRACT: >-
-    {"schema":4,"source_repository":"https://github.com/termux/termux-api",
+    {"schema":5,"source_repository":"https://github.com/termux/termux-api",
     "source_tag":"v0.53.0","source_commit":"6c8eaa223bcc387e6b28146d340acb20712aa3e7",
     "source_tree":"f7262e96f32bb63c654396a1adc370c89395bec8","source_date_epoch":1756768574,
     "package":"com.termux.api","shared_user_id":"com.termux","version_name":"0.53.0",
@@ -47,7 +47,7 @@ env:
     "gradle_distribution_sha256":"258e722ec21e955201e31447b0aed14201765a3bfbae296a46cf60b70e66db70",
     "upstream_wrapper_sha256":"e996d452d2645e70c01c11143ca2d3742734a28da2bf61f25c82bdc288c9e637",
     "upstream_wrapper_properties_sha256":"c4fcac9a6f994b73c3e402d75ad6bd07d51b66ee01e935663a3388b2c034bd37",
-    "java_major":21,"java_source_target":11,"runner":"self-hosted/Linux/home-linux",
+    "java_major":21,"java_source_target":11,"runner":"github-hosted/ubuntu-24.04/X64",
     "execution":{"os":"ubuntu-24.04","platform":"linux/amd64",
     "image":"ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac",
     "java_architecture":"x64"},
@@ -329,10 +329,9 @@ env:
 jobs:
   build:
     name: Two independent pinned source chains
-    runs-on: [self-hosted, Linux, home-linux]
+    runs-on: ubuntu-24.04
     container:
       image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
-      options: --platform linux/amd64
     timeout-minutes: 60
     permissions:
       contents: read
@@ -342,31 +341,13 @@ jobs:
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
     steps:
-      - name: Prepare home Linux job container
+      - name: Prepare job container
         run: |
           set -euo pipefail
-          test "$RUNNER_OS" = Linux
-          [[ "$RUNNER_ARCH" = X64 || "$RUNNER_ARCH" = ARM64 ]]
-          test "$(uname -m)" = x86_64
           work="$(mktemp -d "$RUNNER_TEMP/fold-ci.XXXXXXXX")"
-          {
-            printf 'FOLD_CI_WORK=%s\n' "$work"
-            printf 'ANDROID_SDK_ROOT=%s/android-sdk\n' "$work"
-            printf 'ANDROID_HOME=%s/android-sdk\n' "$work"
-            printf 'ANDROID_USER_HOME=%s/android-user-home\n' "$work"
-          } >> "$GITHUB_ENV"
-          runner_node_libs=()
-          if [ "$RUNNER_ARCH" = ARM64 ]; then
-            # JavaScript actions run this ARM64 runner's own Node inside the amd64 container.
-            dpkg --add-architecture arm64
-            sed -i '/^Types:/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
-            printf '%s\n' 'Types: deb' 'URIs: http://ports.ubuntu.com/ubuntu-ports/' 'Suites: noble noble-updates noble-security' \
-              'Components: main' 'Architectures: arm64' 'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
-              > /etc/apt/sources.list.d/ubuntu-ports.sources
-            runner_node_libs=(libc6:arm64 libstdc++6:arm64 libgcc-s1:arm64)
-          fi
+          printf 'FOLD_CI_WORK=%s\n' "$work" >> "$GITHUB_ENV"
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates git curl unzip python3 make file libstdc++6 "${runner_node_libs[@]}"
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates git curl unzip python3 make file libstdc++6
       - name: Check out the pinned API release
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -396,7 +377,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$RUNNER_OS" = Linux
-          [[ "$RUNNER_ARCH" = X64 || "$RUNNER_ARCH" = ARM64 ]]
+          test "$RUNNER_ARCH" = X64
           test "$(uname -m)" = x86_64
           python3 -I - <<'PY'
           import hashlib, json, os, pathlib, subprocess
@@ -447,7 +428,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          architecture: x64
           check-latest: true
 
       - name: Install the retained producer and consumer SDK recipes
@@ -464,7 +444,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '11'
-          architecture: x64
           check-latest: true
 
       - name: Independently build and publish both complete source dependency chains
@@ -575,7 +554,6 @@ jobs:
           apk = candidate / "termux-api-unsigned.apk"
           manifest.update(workflow_repository="fitchmultz/termux-app", workflow_commit=os.environ["WORKFLOW_COMMIT"],
                           workflow_run_id=os.environ["WORKFLOW_RUN_ID"], workflow_run_attempt=os.environ["WORKFLOW_RUN_ATTEMPT"],
-                          runner_arch=os.environ["RUNNER_ARCH"],
                           unsigned_apk_sha256=record(apk)["sha256"], unsigned_apk_size=apk.stat().st_size,
                           build_inputs={"overlays": overlays, "tools": tools, "java_versions": java_versions, "rounds": rounds})
           encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
@@ -603,40 +581,21 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' && inputs.sign_companion == true &&
       github.ref == 'refs/heads/fold/main' && github.repository == 'fitchmultz/termux-app'
-    runs-on: [self-hosted, Linux, home-linux]
+    runs-on: ubuntu-24.04
     container:
       image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
-      options: --platform linux/amd64
     timeout-minutes: 20
     environment: termux-fold-signing
     permissions:
       actions: read
     steps:
-      - name: Prepare home Linux job container
+      - name: Prepare job container
         run: |
           set -euo pipefail
-          test "$RUNNER_OS" = Linux
-          [[ "$RUNNER_ARCH" = X64 || "$RUNNER_ARCH" = ARM64 ]]
-          test "$(uname -m)" = x86_64
           work="$(mktemp -d "$RUNNER_TEMP/fold-ci.XXXXXXXX")"
-          {
-            printf 'FOLD_CI_WORK=%s\n' "$work"
-            printf 'ANDROID_SDK_ROOT=%s/android-sdk\n' "$work"
-            printf 'ANDROID_HOME=%s/android-sdk\n' "$work"
-            printf 'ANDROID_USER_HOME=%s/android-user-home\n' "$work"
-          } >> "$GITHUB_ENV"
-          runner_node_libs=()
-          if [ "$RUNNER_ARCH" = ARM64 ]; then
-            # JavaScript actions run this ARM64 runner's own Node inside the amd64 container.
-            dpkg --add-architecture arm64
-            sed -i '/^Types:/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
-            printf '%s\n' 'Types: deb' 'URIs: http://ports.ubuntu.com/ubuntu-ports/' 'Suites: noble noble-updates noble-security' \
-              'Components: main' 'Architectures: arm64' 'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
-              > /etc/apt/sources.list.d/ubuntu-ports.sources
-            runner_node_libs=(libc6:arm64 libstdc++6:arm64 libgcc-s1:arm64)
-          fi
+          printf 'FOLD_CI_WORK=%s\n' "$work" >> "$GITHUB_ENV"
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates curl unzip libstdc++6 python3 "${runner_node_libs[@]}"
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates curl unzip libstdc++6 python3
           gh_archive="$work/gh.tar.gz"
           curl --disable --fail --location --proto '=https' --proto-redir '=https' --retry 3 \
             https://github.com/cli/cli/releases/download/v2.103.2/gh_2.103.2_linux_amd64.tar.gz \
@@ -679,7 +638,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          architecture: x64
           check-latest: true
 
       - name: Install trusted APK parsers and signing tools (not from artifact)
@@ -719,10 +677,6 @@ jobs:
                           workflow_run_attempt=os.environ["WORKFLOW_RUN_ATTEMPT"],
                           unsigned_apk_sha256=hashlib.sha256(apk.read_bytes()).hexdigest(),
                           unsigned_apk_size=apk.stat().st_size)
-          # Either host may serve the route; the build job asserted its own runner architecture.
-          if manifest.get("runner_arch") not in ("X64", "ARM64"):
-              raise SystemExit("Unexpected build runner architecture")
-          expected["runner_arch"] = manifest["runner_arch"]
           # Source inputs are public build claims, not executable signing inputs or independently rebuilt here.
           inputs = manifest.get("build_inputs")
           if not isinstance(inputs, dict) or set(inputs) != {"overlays", "tools", "java_versions", "rounds"}:

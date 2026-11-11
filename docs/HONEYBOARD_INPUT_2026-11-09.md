@@ -28,7 +28,7 @@ production focusability. Its native graphics cases use SDK28/37; API24 coverage 
 explicitly legacy, not native graphics. Authoring/independent static reread and
 patch/tree checks do not establish execution.
 
-Exact-head M1 CI and independent Pi Durable/Cursor reviews are required. Current
+Exact-head Actions CI and independent Pi Durable/Cursor reviews are required. Current
 Samsung One UI/Keys Cafe emission, hardware keyboards and physical Fold behavior
 remain unverified until owner acceptance; they are not invented release-blocking
 gates. The phone's ongoing source build must not be interrupted.
@@ -47,14 +47,14 @@ not executed at this commit's preparation. Robolectric does not supply Android's
 hidden IMM key-dispatch bridge. The fixture therefore explicitly posts events to
 the supplied target view, preserving asynchronous timing and real TerminalView
 byte production. It does **not** model served-view fallback or full ViewRoot/system
-routing; no PTY bytes are fabricated. Actual final-head M1 checks and independent
+routing; no PTY bytes are fabricated. Actual final-head Actions checks and independent
 reviews remain required before merge, and physical Honeyboard acceptance is not
 claimed.
 
 
 ## Actual eda3 execution and minimum-SDK fixture repair
 
-The M1 run [42589073268](https://github.com/fitchmultz/termux-app/actions/runs/42589073268)
+The Actions run [42589073268](https://github.com/fitchmultz/termux-app/actions/runs/42589073268)
 at `eda3dcf3e694097728612a5ec72ea1f38f7299b1` executed208 app cases with two
 failures: the inherited negotiated-drawer assertion and the API24 Honeyboard
 case. All16 native API28/37 Honeyboard cases passed. The minimum-SDK case failed

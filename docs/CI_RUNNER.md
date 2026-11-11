@@ -1,63 +1,40 @@
-# Home Linux Actions runners
+# GitHub Actions runners
 
-Jobs in `run_tests.yml`, `bootstrap_validation.yml`, `signed_release.yml`, and
-`termux_api_companion.yml` are configured for `[self-hosted, Linux, home-linux]`.
-The owner's runner fleet serves that label from repository workers in a
-persistent Ubuntu 24.04 x64 VM on a private Linux desktop by default and in the
-persistent Ubuntu 24.04 ARM64 VM on a private M1 Mac as the automatic backup.
-The fleet, not this repository, decides which host is eligible; every job accepts
-either runner architecture.
-This configuration does not re-enable Actions: the owner does that separately.
-If no eligible runner is idle, jobs queue; there is **no hosted fallback**.
+Every job in `run_tests.yml`, `bootstrap_validation.yml`, `signed_release.yml`, and
+`termux_api_companion.yml` runs on a GitHub-hosted `ubuntu-24.04` x64 runner.
+GitHub starts a new virtual machine for each job and discards it when the job
+ends, so no workspace, tool cache or temporary file carries over between jobs.
 
 ## Execution environment
 
-Every job uses `--platform linux/amd64` with:
+Every job runs in this digest-pinned Ubuntu 24.04 container:
 
 ```text
 ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 ```
 
-On the x64 runner, the amd64 userland, the runner's injected Node and the Android
-host tools run natively. On the M1, the VM's Rosetta/binfmt support executes the
-amd64 userland and Android host tools, while the runner and its injected Node
-remain ARM64. That Node needs Ubuntu's ARM64 loader and C/C++ runtime inside the
-container, so when `RUNNER_ARCH=ARM64` each job's first shell step, before any
-JavaScript action:
+The digest names a multi-platform image; the x64 runner selects its
+`linux/amd64` variant. The container userland, the runner's injected Node and
+the Android host tools all run natively as amd64. The image is immutable, but
+the runner software and VM image belong to GitHub and the packages below come
+from Ubuntu's current signed archive; this is not a wholly hermetic machine
+image. Bash is the run shell, with `SHELL=/bin/bash` for the retained NDK's
+shell inspection.
 
-- adds the `arm64` dpkg architecture;
-- restricts the image's existing Ubuntu sources to `Architectures: amd64`;
-- adds Ubuntu's `ubuntu-ports` `main` component for `arm64` only (`noble`,
-  `noble-updates`, `noble-security`), authenticated by the image's Ubuntu
-  archive keyring; and
-- installs `libc6:arm64`, `libstdc++6:arm64`, and `libgcc-s1:arm64`.
+Java setup installs Temurin for the runner's x64 architecture: major 21 for the
+main project/SDK/API consumer and major 11 for the unchanged companion producers.
 
-X64 runners skip this setup. No host library is mounted. No workflow hardcodes a
-runner Node directory. The image is immutable, but runner software belongs to the
-maintained host and the ARM64 runtime packages come from Ubuntu's current signed
-archive; this is not a wholly hermetic machine image. Steps assert
-`RUNNER_OS=Linux`, `RUNNER_ARCH` of `X64` or `ARM64`, and userland
-`uname -m=x86_64`. Bash is the run shell, with `SHELL=/bin/bash` for the
-retained NDK's shell inspection.
+## Tools and job state
 
-Java setup explicitly selects Temurin **x64**, retaining major 21 for the main
-project/SDK/API consumer and major 11 for the unchanged companion producers.
-NDK 21.1 and r30 launchers inspect the shell's host architecture before Make;
-individual amd64 binary translation on a native aarch64 shell was not enough.
-The amd64 job userland preserves their existing Linux x86_64 tool paths, recipes,
-and producer ABIs without SDK patches or architecture-spoofing wrappers.
-
-## Tools and persistent state
-
-The minimal container is not the old hosted tool image. Inline first steps run
-root `apt-get` **inside the job container**, before checkout or tool-installing
-actions. They provide Git/CA certificates where checkout is needed; curl/unzip,
-Python, dpkg/gpgv/binutils, ZIP/compression tools, jq, Make, `file`, and the x64
-C++ runtime where builds need them. Jobs using Java setup also install GnuPG
-before the action so its default JDK signature verification is not silently
-skipped on the minimal image. No host package/repository configuration is changed.
+The job container is minimal: the tools preinstalled on the hosted VM are not
+available inside it. Inline first steps run root `apt-get` **inside the job
+container**, before checkout or tool-installing actions. They provide Git/CA
+certificates where checkout is needed; curl/unzip, Python, dpkg/gpgv/binutils,
+ZIP/compression tools, jq, Make, `file`, and the x64 C++ runtime where builds
+need them. Jobs using Java setup also install GnuPG before the action so its
+default JDK signature verification is not silently skipped on the minimal image.
 Make serves the actual native incremental gate; `file` serves NDK 21.1's 64-bit
-shell check. Existing SDK, NDK, Gradle, library and action pins remain.
+shell check.
 
 Signers install [GitHub CLI 2.103.2](https://github.com/cli/cli/releases/tag/v2.103.2)
 from the official `gh_2.103.2_linux_amd64.tar.gz`, not Ubuntu's older package.
@@ -70,23 +47,17 @@ The inline workflow checks its 15,031,001-byte size and SHA-256 before extractio
 The release fixes attachment-token authorization; it does not change this
 workflow's artifact-envelope/release gates. No downloaded shell script is run.
 
-Build/validation jobs with generated payloads and both signers create a new
-private directory beneath runner temporary storage. SDK-using jobs export
-job-specific `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and `ANDROID_USER_HOME` under
-that directory before setup-android runs. This directs the modern Android CLI's
-bundles into the job's private tree instead of reusing the shared
-`$HOME/.android` bundle; the workflow does not remove shared runner state. The
-combined main test/build job uses `$GITHUB_WORKSPACE/.gradle/ci-user-home` as
-its `GRADLE_USER_HOME`. Checkout cleans the ignored `.gradle` directory before
-the setup action restores the cache; the consistent path avoids changing the
-cache version merely because a temporary path changed. Gradle's setup action
-validates the wrapper and restores reusable Gradle state from the Actions cache;
-its default-branch jobs save updated state, while PR jobs read it without
-publishing their own. The main build enables Gradle's task cache.
+Each job creates a private working directory beneath runner temporary storage,
+exported as `FOLD_CI_WORK`, for generated payloads, signing inputs and outputs.
+setup-android installs the SDK into its default location under the job's home
+directory and exports `ANDROID_HOME`. The combined main test/build job uses
+Gradle's default user home. Gradle's setup action validates the wrapper and
+restores reusable Gradle state from the Actions cache; its default-branch jobs
+save updated state, while PR jobs read it without publishing their own. The main
+build enables Gradle's task cache.
 Companion source rounds retain six separate Gradle homes and two empty local Maven
 repositories, with build/configuration caches disabled. Release reproducibility
-builds do not restore this cache or enable the task cache. Java's runner tool
-cache may persist, separated by architecture. Bootstrap inputs are still rehashed;
+builds do not restore this cache or enable the task cache. Bootstrap inputs are still rehashed;
 its second generation deliberately reuses the first generation's verified
 download cache offline.
 
@@ -108,21 +79,18 @@ for the test dependency and test JVMs. The clean reproducibility build does not
 use the init script. Companion source rounds and signers do not use this seed.
 
 Signers have no repository checkout, Gradle invocation or cache restore. Their
-candidate/output directories are below their new job root, not an old workspace.
+candidate/output directories are below their job's working directory.
 Signing policy and validators remain reviewed workflow literals; APK/manifest
-artifacts are data, never executable scripts. The companion's strict schema 4
-records the `home-linux` route and the build runner's `X64` or `ARM64`
-architecture separately from container/platform/Java execution and still
-verifies selected SDK/JDK records and actual verification-tool hashes.
+artifacts are data, never executable scripts. The companion's strict schema 5
+records the GitHub-hosted `ubuntu-24.04` X64 runner separately from
+container/platform/Java execution and still verifies selected SDK/JDK records
+and actual verification-tool hashes.
 Container identity supplements those hashes; it does not replace them.
 
-A **fresh job/container is not a fresh machine**. Each host's VM, runner
-workspace, mounted storage and tool cache persist. Traps and `always()` steps
-remove key and password files on ordinary completion/failure/cancellation; a hard
-termination can leave files requiring runner cleanup. Container root can also leave
-root-owned bind-mounted files, so runner ownership/temporary-file cleanup remains
-an infrastructure responsibility. No new ephemeral-host or separate-machine
-signing requirement is implied.
+Build and signing jobs run on separate VMs; a signer receives only the build
+job's uploaded artifact. Traps remove key and password files when the signing
+step exits, including on failure or cancellation, and an `always()` step repeats
+the removal.
 
 ## Workflow and release boundaries
 
@@ -133,12 +101,11 @@ work for that source branch, including the duplicate run for the same commit.
 Different fork repositories and main remain separate. This uses GitHub's
 [native concurrency behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
-PR workflows still run `pull_request`, not `pull_request_target`, with read-only
+PR workflows run `pull_request`, not `pull_request_target`, with read-only
 repository access and no signing environment. PR-controlled workflow/build/test
-code executes on the self-hosted service; the private location does not make it
-trusted or reset persistent storage. Existing repository workflow/dispatch and
-protected-environment controls remain necessary. Do not claim that job containers
-establish independent host isolation.
+code executes on a hosted VM that GitHub discards after the job. Repository
+workflow/dispatch and protected-environment controls remain what keeps that code
+away from the signing key.
 
 The main release requires explicit dispatch and signs in its separate
 `termux-fold-signing` job; public publication is a separate **default-false**
@@ -177,8 +144,8 @@ and independent optional signature/certificate/archive validation. API unit
 sources remain absent; `NO-SOURCE` is not an additional passing suite. Git
 commands reading the main workspace or a companion source checkout authorize
 only that exact checkout for their own process, including source archiving.
-This avoids the container's host-ownership error without changing host or global
-Git configuration.
+This avoids the container's host-ownership error without changing global Git
+configuration.
 
 ## Creating a signed update
 
@@ -215,17 +182,11 @@ and physical installation remain separate decisions; see the
 
 ## Qualification
 
-An M1 mechanism probe ran the runner's ARM64 Node 24 and an amd64 shell/`uname`
-in the same pinned container after installing the container-local Ubuntu ARM64
-runtime above, without host library mounts. Earlier M1 probes installed x64 Java
-11/21 and the retained SDK/NDK packages, then launched the ordinary NDK 21.1/r30
-wrappers/compilers and APK tools. These checks establish the mechanism and
-installer/tool-launch compatibility, **not** a passing Actions run, Android
-build, signer, publication or device result on either host.
-Historical hosted results in the dependency/companion audits remain historical
-evidence for their stated revisions. Full current-revision runner gates on each
-host and separately authorized signing invocations remain unverified until
-actually run after owner re-enablement.
+Pull requests and `fold/main` pushes run Fold checks on these runners; bootstrap
+validation and the companion build run when their inputs change or on dispatch.
+Both signing jobs run only on owner dispatch; a passing build job does not
+qualify a signer. Results in the dependency/companion audits are evidence for
+their stated revisions only.
 Physical installation/backup/recovery and Fold acceptance remain separate
 owner-controlled steps; never execute SDK x86_64 tools on ARM64 Termux to replace
 that qualification.
