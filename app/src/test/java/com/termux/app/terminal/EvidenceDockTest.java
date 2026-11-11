@@ -176,7 +176,7 @@ public class EvidenceDockTest {
         activity.setContentView(R.layout.activity_termux);
         TerminalPaneLayout panes = activity.findViewById(R.id.terminal_panes);
         ReflectionHelpers.setField(activity, "mTerminalPanes", panes);
-        ReflectionHelpers.setField(activity, "mIsVisible", true);
+        TestActivities.markStarted(activity);
         for (TerminalView terminal : panes.getTerminals()) {
             terminal.setTerminalViewClient(new TermuxTerminalViewClientBase());
             panes.setFontSize(terminal, 16);
