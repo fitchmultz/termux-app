@@ -13,7 +13,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
-- Gives the bell one value meaning "earliest time the next bell may sound" instead of a last-bell timestamp whose future values meant "already scheduled", the file receiver's name dialog an explicit `FINISH_ACTIVITY`/`KEEP_ACTIVITY` dismissal, and the installer a `BootstrapState` read from the prefix directory instead of nested existence checks. The keyboard-margin workaround's two debounce timestamps are named for the adjustment each guards, with the 40 ms interval as a constant.
+- Gives the bell the earliest time the next bell may sound plus whether a follow-up is already posted, instead of one timestamp that had to mean both, the file receiver's name dialog an explicit `FINISH_ACTIVITY`/`KEEP_ACTIVITY` dismissal, and the installer a `BootstrapState` read from the prefix directory instead of nested existence checks. The keyboard-margin workaround's two debounce timestamps are named for the adjustment each guards, with the 40 ms interval as a constant.
 
 - Gives image placement one record instead of an "open" boolean beside its margins and scroll action, so the three cannot get out of step, and an open OSC 8 hyperlink has a `NO_HYPERLINK` value instead of a bare `0`. The pending line wrap is named for what it is.
 
