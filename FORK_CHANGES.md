@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives UTF-8 decoding and OSC recognition one explicit state each. `Utf8Decoder` holds either no bytes or one incomplete sequence, so partial input can no longer be mistaken for a decoded character. The OSC string is `AWAITING_TYPE`, `UNKNOWN`, `TYPED` or `ITERM_IMAGE`, with the image phase replacing the two fast-path flags.
+
 - Gives the DCS parser one explicit phase (`DETECTING`, `SIXEL`, `OTHER`) instead of two booleans that always moved together. A separate flag names the pending `ESC` that may complete the string terminator.
 
 - Gives the APC parser and image draining one explicit state each. An APC string is now in `TYPE`, `IGNORED`, `HEADER` or `PAYLOAD`, instead of three booleans. A rejected control string records `NONE`, `OSC`, `DCS` or `APC` plus whether an ESC is pending, so draining can no longer be confused with a real escape state.

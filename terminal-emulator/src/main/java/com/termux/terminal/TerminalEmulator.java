@@ -116,14 +116,9 @@ public final class TerminalEmulator implements TerminalRendererState {
      *     {@link #mTerminalControlArgs}, and for later code points {@link #receiveOsc(int)} is called
      *     instead.
      * <p>
-     * While an `OSC` is being received, {@link #mOscType} may be set to the command type when it
-     * has been fully received by {@link #setOscTypeVariables()}.
-     * <p>
-     * See also {@link #mIsFastPathOsc} for enabling fast path for specific `OSC` commands if required
-     * via {@link #setOscTypeVariables()}.
-     * <p>
-     * See also {@link #mIgnoreCrLfForOsc} to prevent printing of CR/LF characters for specific
-     * `OSC` commands if required via {@link #setOscTypeVariables()}.
+     * While an `OSC` is being received, {@link #mOscPhase} and {@link #mOscType} describe the
+     * command once its `type;` prefix has been received by {@link #setOscTypeVariables()}. The
+     * iTerm2 image phase also enables the byte fast path and suppresses printed CR/LF.
      * <p>
      * - https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands
      */
@@ -319,27 +314,16 @@ public final class TerminalEmulator implements TerminalRendererState {
 
 
     /**
-     * The integer Operating System Command `type` received as `ESC ] type ;`.
-     * This will be set as soon as `type` followed by `;` is received, and before any further
-     * optional parameters are received.
+     * Recognition of the Operating System Command being received. The numeric type is known once
+     * `type;` has arrived; {@link #ITERM_IMAGE} is the large-payload command that takes the byte
+     * fast path and does not print CR/LF.
      */
+    private enum OscPhase { AWAITING_TYPE, UNKNOWN, TYPED, ITERM_IMAGE }
+    private OscPhase mOscPhase = OscPhase.AWAITING_TYPE;
+    /** The integer type of a recognized command (`ESC ] type ;`); meaningful only once typed. */
     private int mOscType = -1;
 
-    /**
-     * If `true`, then `processCodePoint()` will directly call `receiveOsc()` as a fast path
-     * without additional checks.
-     *
-     * Can be enabled for OSC commands via {@link #setOscTypeVariables()}.
-     */
-    private boolean mIsFastPathOsc = false;
-
-    /**
-     * If `true`, then `processCodePoint()` will not print any CR/LF characters received.
-     * This is ignored if `mIsFastPathOsc` is already `true` for a command.
-     *
-     * Can be enabled for OSC commands via {@link #setOscTypeVariables()}.
-     */
-    private boolean mIgnoreCrLfForOsc = false;
+    private boolean isItermImageOsc() { return mOscPhase == OscPhase.ITERM_IMAGE; }
 
 
     /** Whether an `ESC` inside a DCS is waiting for the `\` that completes the string terminator. */
@@ -509,9 +493,57 @@ public final class TerminalEmulator implements TerminalRendererState {
         return (snapshot == null ? mHyperlinkUris : snapshot.mHyperlinkUris)[link];
     }
 
-    private byte mUtf8ToFollow, mUtf8Index;
-    private final byte[] mUtf8InputBuffer = new byte[4];
+    private final Utf8Decoder mUtf8Decoder = new Utf8Decoder();
     private int mLastEmittedCodePoint = -1;
+
+    /**
+     * Incremental UTF-8 decoder for PTY bytes. It is idle, or collecting exactly one 2-4 byte
+     * sequence; bytes are never accepted partially. Invalid input is reported, not guessed.
+     */
+    private static final class Utf8Decoder {
+        /** The byte was stored; a later byte completes the sequence. */
+        static final int NEED_MORE = -1;
+        /** The byte does not continue the held sequence; the caller reports it and retries the byte. */
+        static final int REPROCESS = -2;
+
+        private final byte[] mBytes = new byte[4];
+        private int mLength;
+        private int mExpectedLength;
+
+        boolean isIdle() { return mExpectedLength == 0; }
+
+        int feed(byte b) {
+            if (mExpectedLength == 0) {
+                if ((b & 0b10000000) == 0) return b; // 7-bit ASCII
+                else if ((b & 0b11100000) == 0b11000000) mExpectedLength = 2; // 110xxxxx
+                else if ((b & 0b11110000) == 0b11100000) mExpectedLength = 3; // 1110xxxx
+                else if ((b & 0b11111000) == 0b11110000) mExpectedLength = 4; // 11110xxx
+                else return UNICODE_REPLACEMENT_CHAR; // Not a valid sequence start.
+                mBytes[mLength++] = b;
+                return NEED_MORE;
+            }
+
+            if ((b & 0b11000000) != 0b10000000) { // 10xxxxxx is the only continuation byte.
+                reset();
+                return REPROCESS;
+            }
+
+            mBytes[mLength++] = b;
+            if (mLength < mExpectedLength) return NEED_MORE;
+
+            byte firstByteMask = (byte) (mLength == 2 ? 0b00011111 : (mLength == 3 ? 0b00001111 : 0b00000111));
+            int codePoint = mBytes[0] & firstByteMask;
+            for (int i = 1; i < mLength; i++) codePoint = (codePoint << 6) | (mBytes[i] & 0b00111111);
+            if (((codePoint <= 0b1111111) && mLength > 1) || (codePoint < 0b11111111111 && mLength > 2)
+                || (codePoint < 0b1111111111111111 && mLength > 3)) {
+                codePoint = UNICODE_REPLACEMENT_CHAR; // Overlong encoding.
+            }
+            reset();
+            return codePoint;
+        }
+
+        void reset() { mLength = mExpectedLength = 0; }
+    }
 
     public final TerminalColors mColors = new TerminalColors();
 
@@ -830,7 +862,7 @@ public final class TerminalEmulator implements TerminalRendererState {
      */
     public void append(byte[] buffer, int length) {
         for (int i = 0; i < length; ) {
-            if (buffer[i] >= 32 && buffer[i] < 127 && mEscapeState == ESC_NONE && mDiscardControlString == DiscardControlString.NONE && mUtf8ToFollow == 0
+            if (buffer[i] >= 32 && buffer[i] < 127 && mEscapeState == ESC_NONE && mDiscardControlString == DiscardControlString.NONE && mUtf8Decoder.isIdle()
                 && !mAboutToAutoWrap && !mInsertMode && mCursorCol >= 0 && mCursorCol < mRightMargin
                 && !(mUseLineDrawingUsesG0 ? mUseLineDrawingG0 : mUseLineDrawingG1)) {
                 int end = i + 1;
@@ -852,68 +884,31 @@ public final class TerminalEmulator implements TerminalRendererState {
     }
 
     private void processByte(byte byteToProcess) {
-        if (mUtf8ToFollow > 0) {
-            if ((byteToProcess & 0b11000000) == 0b10000000) {
-                // 10xxxxxx, a continuation byte.
-                mUtf8InputBuffer[mUtf8Index++] = byteToProcess;
-                if (--mUtf8ToFollow == 0) {
-                    byte firstByteMask = (byte) (mUtf8Index == 2 ? 0b00011111 : (mUtf8Index == 3 ? 0b00001111 : 0b00000111));
-                    int codePoint = (mUtf8InputBuffer[0] & firstByteMask);
-                    for (int i = 1; i < mUtf8Index; i++)
-                        codePoint = ((codePoint << 6) | (mUtf8InputBuffer[i] & 0b00111111));
-                    if (((codePoint <= 0b1111111) && mUtf8Index > 1) || (codePoint < 0b11111111111 && mUtf8Index > 2)
-                        || (codePoint < 0b1111111111111111 && mUtf8Index > 3)) {
-                        // Overlong encoding.
-                        codePoint = UNICODE_REPLACEMENT_CHAR;
-                    }
-
-                    mUtf8Index = mUtf8ToFollow = 0;
-
-                    if (codePoint >= 0x80 && codePoint <= 0x9F) {
-                        // Sequence decoded to a C1 control character which we ignore. They are
-                        // not used nowadays and increases the risk of messing up the terminal state
-                        // on binary input. XTerm does not allow them in utf-8:
-                        // "It is not possible to use a C1 control obtained from decoding the
-                        // UTF-8 text" - http://invisible-island.net/xterm/ctlseqs/ctlseqs.html
-                    } else {
-                        switch (Character.getType(codePoint)) {
-                            case Character.UNASSIGNED:
-                            case Character.SURROGATE:
-                                codePoint = UNICODE_REPLACEMENT_CHAR;
-                        }
-                        processCodePoint(codePoint);
-                    }
-                }
-            } else {
-                // Not a UTF-8 continuation byte so replace the entire sequence up to now with the replacement char:
-                mUtf8Index = mUtf8ToFollow = 0;
-                emitCodePoint(UNICODE_REPLACEMENT_CHAR);
-                // The Unicode Standard Version 6.2 – Core Specification
-                // (http://www.unicode.org/versions/Unicode6.2.0/ch03.pdf):
-                // "If the converter encounters an ill-formed UTF-8 code unit sequence which starts with a valid first
-                // byte, but which does not continue with valid successor bytes (see Table 3-7), it must not consume the
-                // successor bytes as part of the ill-formed subsequence
-                // whenever those successor bytes themselves constitute part of a well-formed UTF-8 code unit
-                // subsequence."
-                processByte(byteToProcess);
-            }
-        } else {
-            if ((byteToProcess & 0b10000000) == 0) { // The leading bit is not set so it is a 7-bit ASCII character.
-                processCodePoint(byteToProcess);
-                return;
-            } else if ((byteToProcess & 0b11100000) == 0b11000000) { // 110xxxxx, a two-byte sequence.
-                mUtf8ToFollow = 1;
-            } else if ((byteToProcess & 0b11110000) == 0b11100000) { // 1110xxxx, a three-byte sequence.
-                mUtf8ToFollow = 2;
-            } else if ((byteToProcess & 0b11111000) == 0b11110000) { // 11110xxx, a four-byte sequence.
-                mUtf8ToFollow = 3;
-            } else {
-                // Not a valid UTF-8 sequence start, signal invalid data:
-                processCodePoint(UNICODE_REPLACEMENT_CHAR);
-                return;
-            }
-            mUtf8InputBuffer[mUtf8Index++] = byteToProcess;
+        final int decoded = mUtf8Decoder.feed(byteToProcess);
+        if (decoded == Utf8Decoder.NEED_MORE) return;
+        if (decoded == Utf8Decoder.REPROCESS) {
+            // Replace the truncated sequence, then retry this byte unchanged. The Unicode Standard
+            // 6.2, Table 3-7: successor bytes that form a valid sequence are not consumed as part of
+            // the ill-formed one.
+            emitCodePoint(UNICODE_REPLACEMENT_CHAR);
+            processByte(byteToProcess);
+            return;
         }
+
+        int codePoint = decoded;
+        if (codePoint >= 0x80 && codePoint <= 0x9F) {
+            // A C1 control decoded from UTF-8 is ignored. They are not used nowadays and increase
+            // the risk of messing up the terminal state on binary input. XTerm does not allow them
+            // in utf-8: "It is not possible to use a C1 control obtained from decoding the UTF-8
+            // text" - http://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+            return;
+        }
+        switch (Character.getType(codePoint)) {
+            case Character.UNASSIGNED:
+            case Character.SURROGATE:
+                codePoint = UNICODE_REPLACEMENT_CHAR;
+        }
+        processCodePoint(codePoint);
     }
 
     /** Start draining a rejected control string after its remaining bytes are unusable. */
@@ -957,7 +952,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             finishSequence();
             return;
         }
-        if (mEscapeState == ESC_OSC && mIsFastPathOsc) {
+        if (mEscapeState == ESC_OSC && isItermImageOsc()) {
             mContinueSequence = false;
             receiveOsc(b);
             if (!mContinueSequence) mEscapeState = ESC_NONE;
@@ -1025,14 +1020,14 @@ public final class TerminalEmulator implements TerminalRendererState {
                 // Ignore CR/LF inside DCS by default (including sixel) or OSC if requested (like for iTerm).
                 if (!
                     (mEscapeState == ESC_DCS ||
-                    ((mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC) && mIgnoreCrLfForOsc))) {
+                    ((mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC) && isItermImageOsc()))) {
                     doLinefeed();
                 }
                 break;
             case 13: // Carriage return (CR, \r).
                 if (!
                     (mEscapeState == ESC_DCS ||
-                    ((mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC) && mIgnoreCrLfForOsc))) {
+                    ((mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC) && isItermImageOsc()))) {
                     setCursorCol(mLeftMargin);
                 }
                 break;
@@ -3005,7 +3000,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             default:
                 if (!collectTerminalControlArgs(b)) return;
-                if (mOscType == -1) {
+                if (mOscPhase == OscPhase.AWAITING_TYPE) {
                     setOscTypeVariables();
                 }
                 break;
@@ -3035,7 +3030,7 @@ public final class TerminalEmulator implements TerminalRendererState {
      * Set {@link #ESC_OSC} type variables.
      */
     void setOscTypeVariables() {
-        if (mOscType >= 0) return;
+        if (mOscPhase != OscPhase.AWAITING_TYPE) return;
         if (mTerminalControlArgs.indexOf(";") < 0) return;
 
         int value = -1;
@@ -3046,22 +3041,21 @@ public final class TerminalEmulator implements TerminalRendererState {
             char b = mTerminalControlArgs.charAt(i);
             if (b == ';') {
                 mOscType = value;
+                mOscPhase = value == 1337 ? OscPhase.ITERM_IMAGE : OscPhase.TYPED;
                 break;
             } else if (b >= '0' && b <= '9') {
                 value = ((value < 0) ? 0 : value * 10) + (b - '0');
             } else {
-                mOscType = -2; // Unknown sequence.
+                mOscPhase = OscPhase.UNKNOWN; // Non-numeric type.
                 return;
             }
         }
 
-        if (mOscType >= 0) {
+        if (mOscPhase == OscPhase.ITERM_IMAGE || mOscPhase == OscPhase.TYPED) {
             Integer terminalControlArgsCapacity = null;
             Integer terminalControlArgsMaxLength = null;
             switch (mOscType) {
                 case 1337: // iTerm image command sends the base64 encoded image, do not run complex logic for each byte.
-                    mIsFastPathOsc = true;
-                    mIgnoreCrLfForOsc = true;
                     // Expect large amount of data for image bytes.
                     // `imgcat` utility splits image bytes into 200-byte chunks when sending with `FilePart=` commands.
                     // - https://github.com/gnachman/iTerm2-shell-integration/blob/d1d4012068c3c6761d5676c28ed73e0e2df2b715/utilities/imgcat#L89
@@ -3090,9 +3084,8 @@ public final class TerminalEmulator implements TerminalRendererState {
      * Clear {@link #ESC_OSC} type variables.
      */
     public void clearOscTypeVariables() {
+        mOscPhase = OscPhase.AWAITING_TYPE;
         mOscType = -1;
-        mIsFastPathOsc = false;
-        mIgnoreCrLfForOsc = false;
     }
 
     /**
@@ -4039,7 +4032,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         mSavedDecSetFlags = mSavedStateMain.mSavedDecFlags = mSavedStateAlt.mSavedDecFlags = mCurrentDecSetFlags;
 
         // XXX: Should we set terminal driver back to IUTF8 with termios?
-        mUtf8Index = mUtf8ToFollow = 0;
+        mUtf8Decoder.reset();
 
         mColors.reset();
         mSession.onColorsChanged();
