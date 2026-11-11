@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Kills a background task's process when the service stops. Recording the kill failure previously moved the command past its executing state, so the task was reported failed while its process kept running; terminal sessions were already killed unconditionally.
+
 - Groups Fold checks by source repository and branch, so push and PR runs cancel superseded work together while preserving branch/main checks and keeping fork branches independent.
 
 - Kitty physical DOWN admission atomically protects encoder-bounded future UP capacity inside the existing input ring. Matching releases consume their original session-owned promise once even while ordinary input remains FULL; only an admitted initial DOWN owns a future release; ordinary repeat bytes remain unchanged and cannot create or revive release ownership after initial rejection or context cancellation. Context/lifecycle cancellation returns capacity without stale delivery, while IME-only rebinding retains valid physical releases. CI preserves the synthetic keyboard-capture JSON in addition to PNG/XML reports.
