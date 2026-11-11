@@ -6,10 +6,11 @@ import android.widget.ArrayAdapter;
 
 import androidx.annotation.NonNull;
 
-import com.termux.shared.shell.command.ExecutionCommand;
 import com.termux.shared.shell.command.runner.app.AppShell;
-import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
+import com.termux.shared.shell.command.ExecutionCommand;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
+
+import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +40,39 @@ public class TermuxShellManager {
      * The pending plugin ExecutionCommands that have yet to be processed by this service.
      */
     public final List<ExecutionCommand> mPendingPluginExecutionCommands = new ArrayList<>();
+
+    /**
+     * Where an execution command currently lives. A command moves
+     * {@code PENDING → SESSION} or {@code PENDING → TASK}, and leaves either place when it finishes.
+     * These are the only mutations this class performs on the lists above, so a command cannot be
+     * pending and started at the same time.
+     */
+    public enum Placement { PENDING, SESSION, TASK }
+
+    /** Track a command that has been accepted but has not started a session or task yet. */
+    public synchronized void trackPending(@NonNull ExecutionCommand command) {
+        mPendingPluginExecutionCommands.add(command);
+    }
+
+    /** Track a started session, removing its command from the pending list. */
+    public synchronized void trackSession(@NonNull TermuxSession session) {
+        mPendingPluginExecutionCommands.remove(session.getExecutionCommand());
+        mTermuxSessions.add(session);
+    }
+
+    /** Track a started background task, removing its command from the pending list. */
+    public synchronized void trackTask(@NonNull AppShell task) {
+        mPendingPluginExecutionCommands.remove(task.getExecutionCommand());
+        mTermuxTasks.add(task);
+    }
+
+    public synchronized void untrackSession(@NonNull TermuxSession session) {
+        mTermuxSessions.remove(session);
+    }
+
+    public synchronized void untrackTask(@NonNull AppShell task) {
+        mTermuxTasks.remove(task);
+    }
 
     /**
      * The {@link ExecutionCommand.Runner#APP_SHELL} number after app process was started/restarted.

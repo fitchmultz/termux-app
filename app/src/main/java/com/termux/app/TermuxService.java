@@ -68,6 +68,7 @@ import java.util.List;
 public final class TermuxService extends Service implements AppShell.AppShellClient, TermuxSession.TermuxSessionClient {
 
     /** View arrangement retained while terminal processes outlive their activity. */
+    /** Workbench layout saved by a stopped activity and consumed by the next bind. */
     public android.os.Bundle mWorkbenchState;
 
     /** This service is only bound from inside the same process and never uses IPC. */
@@ -83,6 +84,10 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     /** The full implementation of the {@link TerminalSessionClient} interface to be used by {@link TerminalSession}
      * that holds activity references for activity related functions.
      * Note that the service may often outlive the activity, so need to clear this reference.
+     *
+     * <p>The client has two states: {@code null} while only the service is bound, in which case
+     * sessions use {@link #mTermuxTerminalSessionServiceClient}, and set while an activity is bound.
+     * Every set/unset updates all existing sessions in the same step.
      */
     private TermuxTerminalSessionActivityClient mTermuxTerminalSessionActivityClient;
 
@@ -101,12 +106,25 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
      */
     private TermuxShellManager mShellManager;
 
-    /** The wake lock and wifi lock are always acquired and released together. */
-    private PowerManager.WakeLock mWakeLock;
-    private WifiManager.WifiLock mWifiLock;
+    /**
+     * The service's wake locks. They are always acquired and released together, so they are held as
+     * one value instead of two nullable fields that callers must keep in step.
+     */
+    private static final class WakeLocks {
+        final PowerManager.WakeLock power;
+        final WifiManager.WifiLock wifi;
 
-    /** If the user has executed the {@link TERMUX_SERVICE#ACTION_STOP_SERVICE} intent. */
-    boolean mWantsToStop = false;
+        WakeLocks(PowerManager.WakeLock power, WifiManager.WifiLock wifi) {
+            this.power = power;
+            this.wifi = wifi;
+        }
+    }
+
+    private WakeLocks mWakeLocks;
+
+    /** Why the service has been asked to stop, or {@link StopRequest#NONE}. */
+    private enum StopRequest { NONE, USER, NOTHING_LEFT }
+    private StopRequest mStopRequest = StopRequest.NONE;
 
     private static final String LOG_TAG = "TermuxService";
 
@@ -175,7 +193,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         TermuxShellUtils.clearTermuxTMPDIR(true);
 
         actionReleaseWakeLock(false);
-        if (!mWantsToStop)
+        if (mStopRequest != StopRequest.USER)
             killAllTermuxExecutionCommands();
 
         TermuxShellManager.onAppExit(this);
@@ -223,7 +241,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
     /** Process action to stop service. */
     private void actionStopService() {
-        mWantsToStop = true;
+        mStopRequest = StopRequest.USER;
         killAllTermuxExecutionCommands();
         requestStopService();
     }
@@ -276,10 +294,10 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
         for (int i = 0; i < termuxSessions.size(); i++) {
             ExecutionCommand executionCommand = termuxSessions.get(i).getExecutionCommand();
-            processResult = mWantsToStop || executionCommand.isPluginExecutionCommandWithPendingResult();
+            processResult = mStopRequest == StopRequest.USER || executionCommand.isPluginExecutionCommandWithPendingResult();
             termuxSessions.get(i).killIfExecuting(this, processResult);
             if (!processResult)
-                mShellManager.mTermuxSessions.remove(termuxSessions.get(i));
+                mShellManager.untrackSession(termuxSessions.get(i));
         }
 
 
@@ -288,7 +306,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             if (executionCommand.isPluginExecutionCommandWithPendingResult())
                 termuxTasks.get(i).killIfExecuting(this, true);
             else
-                mShellManager.mTermuxTasks.remove(termuxTasks.get(i));
+                mShellManager.untrackTask(termuxTasks.get(i));
         }
 
         for (int i = 0; i < pendingPluginExecutionCommands.size(); i++) {
@@ -306,7 +324,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     /** Process action to acquire Power and Wi-Fi WakeLocks. */
     @SuppressLint({"WakelockTimeout", "BatteryLife"})
     private void actionAcquireWakeLock() {
-        if (mWakeLock != null) {
+        if (mWakeLocks != null) {
             Logger.logDebug(LOG_TAG, "Ignoring acquiring WakeLocks since they are already held");
             return;
         }
@@ -314,13 +332,15 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         Logger.logDebug(LOG_TAG, "Acquiring WakeLocks");
 
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TermuxConstants.TERMUX_APP_NAME.toLowerCase() + ":service-wakelock");
-        mWakeLock.acquire();
+        PowerManager.WakeLock wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TermuxConstants.TERMUX_APP_NAME.toLowerCase() + ":service-wakelock");
+        wakeLock.acquire();
 
         // http://tools.android.com/tech-docs/lint-in-studio-2-3#TOC-WifiManager-Leak
         WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        mWifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, TermuxConstants.TERMUX_APP_NAME.toLowerCase());
-        mWifiLock.acquire();
+        WifiManager.WifiLock wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, TermuxConstants.TERMUX_APP_NAME.toLowerCase());
+        wifiLock.acquire();
+
+        mWakeLocks = new WakeLocks(wakeLock, wifiLock);
 
         if (!PermissionUtils.checkIfBatteryOptimizationsDisabled(this)) {
             PermissionUtils.requestDisableBatteryOptimizations(this);
@@ -334,22 +354,17 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
     /** Process action to release Power and Wi-Fi WakeLocks. */
     private void actionReleaseWakeLock(boolean updateNotification) {
-        if (mWakeLock == null && mWifiLock == null) {
+        WakeLocks wakeLocks = mWakeLocks;
+        if (wakeLocks == null) {
             Logger.logDebug(LOG_TAG, "Ignoring releasing WakeLocks since none are already held");
             return;
         }
 
         Logger.logDebug(LOG_TAG, "Releasing WakeLocks");
 
-        if (mWakeLock != null) {
-            mWakeLock.release();
-            mWakeLock = null;
-        }
-
-        if (mWifiLock != null) {
-            mWifiLock.release();
-            mWifiLock = null;
-        }
+        mWakeLocks = null;
+        wakeLocks.power.release();
+        wakeLocks.wifi.release();
 
         if (updateNotification)
             updateNotification();
@@ -413,8 +428,8 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         if (executionCommand.shellCreateMode == null)
             executionCommand.shellCreateMode = ShellCreateMode.ALWAYS.getMode();
 
-        // Add the execution command to pending plugin execution commands list
-        mShellManager.mPendingPluginExecutionCommands.add(executionCommand);
+        // Track the command as pending until it starts a session or task.
+        mShellManager.trackPending(executionCommand);
 
         if (Runner.APP_SHELL.equalsRunner(executionCommand.runner))
             executeTermuxTaskCommand(executionCommand);
@@ -494,12 +509,8 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             return null;
         }
 
-        mShellManager.mTermuxTasks.add(newTermuxTask);
-
-        // Remove the execution command from the pending plugin execution commands list since it has
-        // now been processed
-        if (executionCommand.isPluginExecutionCommand)
-            mShellManager.mPendingPluginExecutionCommands.remove(executionCommand);
+        // The task now owns the command; it leaves the pending list in the same step.
+        mShellManager.trackTask(newTermuxTask);
 
         updateNotification();
 
@@ -519,7 +530,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
                 if (executionCommand != null && executionCommand.isPluginExecutionCommand)
                     TermuxPluginUtils.processPluginExecutionCommandResult(this, LOG_TAG, executionCommand);
 
-                mShellManager.mTermuxTasks.remove(termuxTask);
+                mShellManager.untrackTask(termuxTask);
             }
 
             updateNotification();
@@ -608,12 +619,8 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             return null;
         }
 
-        mShellManager.mTermuxSessions.add(newTermuxSession);
-
-        // Remove the execution command from the pending plugin execution commands list since it has
-        // now been processed
-        if (executionCommand.isPluginExecutionCommand)
-            mShellManager.mPendingPluginExecutionCommands.remove(executionCommand);
+        // The session now owns the command; it leaves the pending list in the same step.
+        mShellManager.trackSession(newTermuxSession);
 
         // Notify {@link TermuxSessionsListViewController} that sessions list has been updated if
         // activity in is foreground
@@ -650,7 +657,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             if (executionCommand != null && executionCommand.isPluginExecutionCommand)
                 TermuxPluginUtils.processPluginExecutionCommandResult(this, LOG_TAG, executionCommand);
 
-            mShellManager.mTermuxSessions.remove(termuxSession);
+            mShellManager.untrackSession(termuxSession);
 
             // Notify {@link TermuxSessionsListViewController} that sessions list has been updated if
             // activity in is foreground
@@ -798,7 +805,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             notificationText += ", " + taskCount + " task" + (taskCount == 1 ? "" : "s");
         }
 
-        final boolean wakeLockHeld = mWakeLock != null;
+        final boolean wakeLockHeld = mWakeLocks != null;
         if (wakeLockHeld) notificationText += " (wake lock held)";
 
 
@@ -853,8 +860,9 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
     /** Update the shown foreground service notification after making any changes that affect it. */
     private synchronized void updateNotification() {
-        if (mWakeLock == null && mShellManager.mTermuxSessions.isEmpty() && mShellManager.mTermuxTasks.isEmpty()) {
+        if (mWakeLocks == null && mShellManager.mTermuxSessions.isEmpty() && mShellManager.mTermuxTasks.isEmpty()) {
             // Exit if we are updating after the user disabled all locks with no sessions or tasks running.
+            mStopRequest = StopRequest.NOTHING_LEFT;
             requestStopService();
         } else {
             ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).notify(TermuxConstants.TERMUX_APP_NOTIFICATION_ID, buildNotification());
@@ -956,7 +964,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
 
     public boolean wantsToStop() {
-        return mWantsToStop;
+        return mStopRequest != StopRequest.NONE;
     }
 
 }
