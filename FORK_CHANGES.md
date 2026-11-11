@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives the bell one value meaning "earliest time the next bell may sound" instead of a last-bell timestamp whose future values meant "already scheduled", the file receiver's name dialog an explicit `FINISH_ACTIVITY`/`KEEP_ACTIVITY` dismissal, and the installer a `BootstrapState` read from the prefix directory instead of nested existence checks. The keyboard-margin workaround's two debounce timestamps are named for the adjustment each guards, with the 40 ms interval as a constant.
+
 - Gives image placement one record instead of an "open" boolean beside its margins and scroll action, so the three cannot get out of step, and an open OSC 8 hyperlink has a `NO_HYPERLINK` value instead of a bare `0`. The pending line wrap is named for what it is.
 
 - Gives the stream gobbler a `RUNNING`/`SUSPENDED` state and one claim on its close notification, the local socket server a `STOPPED`/`RUNNING`/`CLOSED` lifecycle, and the AM socket server a `SETUP_NOT_RUN`/`ENABLED`/`DISABLED` value instead of a nullable `Boolean`. A local socket manager now reports running only after its server starts, and starting a closed server returns an explicit error instead of leaving a server that reports running with no listener.

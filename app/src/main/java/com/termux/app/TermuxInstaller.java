@@ -95,16 +95,18 @@ final class TermuxInstaller {
             return;
         }
 
-        // If prefix directory exists, even if its a symlink to a valid directory and symlink is not broken/dangling
-        if (FileUtils.directoryFileExists(TERMUX_PREFIX_DIR_PATH, true)) {
-            if (TermuxFileUtils.isTermuxPrefixDirectoryEmpty()) {
-                Logger.logInfo(LOG_TAG, "The termux prefix directory \"" + TERMUX_PREFIX_DIR_PATH + "\" exists but is empty or only contains specific unimportant files.");
-            } else {
+        switch (readBootstrapState()) {
+            case INSTALLED:
                 whenDone.run();
                 return;
-            }
-        } else if (FileUtils.fileExists(TERMUX_PREFIX_DIR_PATH, false)) {
-            Logger.logInfo(LOG_TAG, "The termux prefix directory \"" + TERMUX_PREFIX_DIR_PATH + "\" does not exist but another file exists at its destination.");
+            case EMPTY_PREFIX:
+                Logger.logInfo(LOG_TAG, "The termux prefix directory \"" + TERMUX_PREFIX_DIR_PATH + "\" exists but is empty or only contains specific unimportant files.");
+                break;
+            case PATH_NOT_DIRECTORY:
+                Logger.logInfo(LOG_TAG, "The termux prefix directory \"" + TERMUX_PREFIX_DIR_PATH + "\" does not exist but another file exists at its destination.");
+                break;
+            case MISSING:
+                break;
         }
 
         final ProgressDialog progress = ProgressDialog.show(activity, null, activity.getString(R.string.bootstrap_installer_body), true, false);
@@ -204,6 +206,25 @@ final class TermuxInstaller {
                 // Activity already dismissed - ignore.
             }
         });
+    }
+
+    /** What the prefix directory on disk says about the last install. */
+    private enum BootstrapState {
+        /** A usable prefix is installed. */
+        INSTALLED,
+        /** The prefix directory exists but holds nothing useful, so it must be installed again. */
+        EMPTY_PREFIX,
+        /** Nothing exists at the prefix path. */
+        MISSING,
+        /** A regular file occupies the prefix path, so installing must replace it. */
+        PATH_NOT_DIRECTORY
+    }
+
+    private static BootstrapState readBootstrapState() {
+        // A prefix directory that is a symlink to a valid directory counts as installed.
+        if (FileUtils.directoryFileExists(TERMUX_PREFIX_DIR_PATH, true))
+            return TermuxFileUtils.isTermuxPrefixDirectoryEmpty() ? BootstrapState.EMPTY_PREFIX : BootstrapState.INSTALLED;
+        return FileUtils.fileExists(TERMUX_PREFIX_DIR_PATH, false) ? BootstrapState.PATH_NOT_DIRECTORY : BootstrapState.MISSING;
     }
 
     private static void sendBootstrapCrashReportNotification(Activity activity, String message) {
