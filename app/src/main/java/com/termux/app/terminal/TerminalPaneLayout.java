@@ -36,8 +36,16 @@ public final class TerminalPaneLayout extends LinearLayout {
     private final View divider;
     private Consumer<TerminalView> onActiveChanged;
     private int active;
-    private boolean paired, maximized, reversed, allowCompact;
-    private Boolean compactState;
+    /**
+     * What the user asked the layout to show. {@link #DUAL_COMPACT_FORCED} keeps both panes on a
+     * narrow screen, which is the explicit override the resize path clears.
+     */
+    private enum SplitMode { SINGLE, DUAL, DUAL_COMPACT_FORCED }
+    private SplitMode mode = SplitMode.SINGLE;
+    private boolean maximized, reversed;
+    /** Measured width class; {@link #UNMEASURED} only until the first measure pass. */
+    private enum WidthClass { UNMEASURED, COMPACT, WIDE }
+    private WidthClass widthClass = WidthClass.UNMEASURED;
     private float fraction = 0.5f;
 
     public TerminalPaneLayout(Context context, AttributeSet attrs) {
@@ -102,8 +110,8 @@ public final class TerminalPaneLayout extends LinearLayout {
 
     public TerminalView[] getTerminals() { return terminals.clone(); }
     public TerminalView getActiveTerminal() { return terminals[active]; }
-    public boolean isPaired() { return paired; }
-    public boolean isShowingBoth() { return paired && panes[0].getVisibility() == VISIBLE && panes[1].getVisibility() == VISIBLE; }
+    public boolean isPaired() { return mode != SplitMode.SINGLE; }
+    public boolean isShowingBoth() { return isPaired() && panes[0].getVisibility() == VISIBLE && panes[1].getVisibility() == VISIBLE; }
     public float getFraction() { return fraction; }
     public void setOnActiveChanged(Consumer<TerminalView> listener) { onActiveChanged = listener; }
 
@@ -141,9 +149,8 @@ public final class TerminalPaneLayout extends LinearLayout {
         if (getActiveTerminal().getCurrentSession() == null) { showSession(session); return; }
         int other = 1 - active;
         terminals[other].attachSession(session);
-        paired = true;
+        mode = SplitMode.DUAL_COMPACT_FORCED;
         maximized = false;
-        allowCompact = true;
         if (getWidth() / getResources().getDisplayMetrics().density < 600) setOrientation(VERTICAL);
         activate(other, true);
     }
@@ -153,7 +160,7 @@ public final class TerminalPaneLayout extends LinearLayout {
             if (terminals[i].getCurrentSession() != session) continue;
             terminals[i].stopTextSelectionMode();
             terminals[i].attachSession(null);
-            paired = false;
+            mode = SplitMode.SINGLE;
             if (i == active && terminals[1 - i].getCurrentSession() != null) activate(1 - i, true);
         }
         updateLayout();
@@ -162,14 +169,14 @@ public final class TerminalPaneLayout extends LinearLayout {
     public void singlePane() {
         terminals[1 - active].stopTextSelectionMode();
         terminals[1 - active].attachSession(null);
-        paired = false;
+        mode = SplitMode.SINGLE;
         maximized = false;
         updateLayout();
     }
 
     public void toggleMaximize() {
         if (isShowingBoth()) maximized = true;
-        else { maximized = false; allowCompact = true; }
+        else { maximized = false; if (isPaired()) mode = SplitMode.DUAL_COMPACT_FORCED; }
         updateLayout();
     }
 
@@ -190,7 +197,7 @@ public final class TerminalPaneLayout extends LinearLayout {
     public void showOptions(View anchor, Runnable newSplit) {
         PopupMenu menu = new PopupMenu(getContext(), anchor, Gravity.END);
         menu.getMenu().add(Menu.NONE, 1, Menu.NONE, R.string.split_new);
-        if (paired) {
+        if (isPaired()) {
             menu.getMenu().add(Menu.NONE, 2, Menu.NONE, R.string.split_horizontal);
             menu.getMenu().add(Menu.NONE, 3, Menu.NONE, R.string.split_vertical);
             menu.getMenu().add(Menu.NONE, 4, Menu.NONE, isShowingBoth() ? R.string.split_maximize : R.string.split_restore);
@@ -253,7 +260,7 @@ public final class TerminalPaneLayout extends LinearLayout {
             titles[i].setText((i == active ? "● " : "○ ") + (i == 0 ? "A · " : "B · ") + name);
             titles[i].setContentDescription(getContext().getString(i == active ? R.string.split_active_pane : R.string.split_focus_pane, name));
             headers[i].setVisibility(singlePaneTitle == null || isShowingBoth() ? VISIBLE : GONE);
-            zoom[i].setVisibility(paired ? VISIBLE : GONE);
+            zoom[i].setVisibility(isPaired() ? VISIBLE : GONE);
             zoom[i].setContentDescription(getContext().getString(isShowingBoth() ? R.string.split_maximize : R.string.split_restore));
             int border = isShowingBoth() ? dp(2) : 0;
             panes[i].setPadding(border, border, border, border);
@@ -268,9 +275,11 @@ public final class TerminalPaneLayout extends LinearLayout {
     @Override
     protected void onMeasure(int widthSpec, int heightSpec) {
         boolean compact = MeasureSpec.getSize(widthSpec) / getResources().getDisplayMetrics().density < 600;
-        if (compactState == null || compactState != compact) {
-            if (compactState != null) allowCompact = false;
-            compactState = compact;
+        WidthClass measured = compact ? WidthClass.COMPACT : WidthClass.WIDE;
+        if (widthClass != measured) {
+            // A width-class change drops the explicit narrow-screen override.
+            if (widthClass != WidthClass.UNMEASURED && mode == SplitMode.DUAL_COMPACT_FORCED) mode = SplitMode.DUAL;
+            widthClass = measured;
             updateLayout();
         }
         super.onMeasure(widthSpec, heightSpec);
@@ -278,8 +287,9 @@ public final class TerminalPaneLayout extends LinearLayout {
 
     private void updateLayout() {
         if (divider == null) return;
-        boolean compact = compactState == null || compactState;
-        boolean both = paired && !maximized && (!compact || allowCompact);
+        boolean compact = widthClass != WidthClass.WIDE;
+        boolean both = isPaired() && !maximized &&
+            (!compact || mode == SplitMode.DUAL_COMPACT_FORCED);
         boolean horizontal = getOrientation() == HORIZONTAL;
         divider.setVisibility(both ? VISIBLE : GONE);
         divider.setLayoutParams(new LayoutParams(horizontal ? dp(16) : LayoutParams.MATCH_PARENT, horizontal ? LayoutParams.MATCH_PARENT : dp(16)));
@@ -300,10 +310,10 @@ public final class TerminalPaneLayout extends LinearLayout {
             state.putInt("font" + i, fontSizes[i]);
         }
         state.putInt("active", active);
-        state.putBoolean("paired", paired);
+        state.putBoolean("paired", isPaired());
         state.putBoolean("maximized", maximized);
         state.putBoolean("reversed", reversed);
-        state.putBoolean("allowCompact", allowCompact);
+        state.putBoolean("allowCompact", mode == SplitMode.DUAL_COMPACT_FORCED);
         state.putInt("orientation", getOrientation());
         state.putFloat("fraction", fraction);
         return state;
@@ -317,9 +327,11 @@ public final class TerminalPaneLayout extends LinearLayout {
             int size = state.getInt("font" + i, fontSizes[i]);
             if (size > 0) setFontSize(terminals[i], size);
         }
-        paired = state.getBoolean("paired") && terminals[0].getCurrentSession() != null && terminals[1].getCurrentSession() != null;
+        boolean paired = state.getBoolean("paired") &&
+            terminals[0].getCurrentSession() != null && terminals[1].getCurrentSession() != null;
+        mode = !paired ? SplitMode.SINGLE :
+            state.getBoolean("allowCompact") ? SplitMode.DUAL_COMPACT_FORCED : SplitMode.DUAL;
         maximized = state.getBoolean("maximized");
-        allowCompact = state.getBoolean("allowCompact");
         if (state.getBoolean("reversed") != reversed) swap();
         setOrientation(state.getInt("orientation") == VERTICAL ? VERTICAL : HORIZONTAL);
         setFraction(state.getFloat("fraction", 0.5f));
