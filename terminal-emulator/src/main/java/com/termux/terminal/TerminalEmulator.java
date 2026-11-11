@@ -436,7 +436,12 @@ public final class TerminalEmulator implements TerminalRendererState {
      * output in the last column, the cursor not moving but this flag will be set. When outputting another character
      * this will move to the next line.
      */
-    private boolean mAboutToAutoWrap;
+    /**
+     * Set when the last printed character ended exactly at the right margin. The next character
+     * wraps first, which is what keeps a full-width line from showing a blank continuation row.
+     * Any cursor movement clears it.
+     */
+    private boolean mAutoWrapPending;
 
     /**
      * Whether the view's blinker drives the cursor. Orthogonal to {@link #mCursorBlinkState}: the
@@ -483,7 +488,9 @@ public final class TerminalEmulator implements TerminalRendererState {
     private final String[] mHyperlinkKeys = new String[MAX_HYPERLINKS + 1];
     private final HashMap<String, Integer> mHyperlinkIds = new HashMap<>();
     /** The link cells are printed under now, 0 for none. Not part of the pen SGR resets or DECSC saves. */
-    private int mHyperlink = 0;
+    /** The open OSC 8 hyperlink, or {@link #NO_HYPERLINK} when none is open. */
+    private static final int NO_HYPERLINK = 0;
+    private int mHyperlinkId = NO_HYPERLINK;
     private int mNextHyperlink = 1;
     /** Opens since the table was last swept. */
     private int mHyperlinkOpensSinceSweep = 0;
@@ -888,18 +895,18 @@ public final class TerminalEmulator implements TerminalRendererState {
     public void append(byte[] buffer, int length) {
         for (int i = 0; i < length; ) {
             if (buffer[i] >= 32 && buffer[i] < 127 && mEscapeState == ESC_NONE && mDiscardControlString == DiscardControlString.NONE && mUtf8Decoder.isIdle()
-                && !mAboutToAutoWrap && !mInsertMode && mCursorCol >= 0 && mCursorCol < mRightMargin
+                && !mAutoWrapPending && !mInsertMode && mCursorCol >= 0 && mCursorCol < mRightMargin
                 && !(mUseLineDrawingUsesG0 ? mUseLineDrawingG0 : mUseLineDrawingG1)) {
                 int end = i + 1;
                 int limit = i + Math.min(length - i, mRightMargin - mCursorCol);
                 while (end < limit && buffer[end] >= 32 && buffer[end] < 127) end++;
 
                 TerminalRow row = mScreen.allocateFullLineIfNecessary(mScreen.externalToInternalRow(mCursorRow));
-                row.setAscii(mCursorCol, buffer, i, end - i, getStyle(), mHyperlink);
+                row.setAscii(mCursorCol, buffer, i, end - i, getStyle(), mHyperlinkId);
                 mLastEmittedCodePoint = buffer[end - 1];
                 int columnAfterRun = mCursorCol + end - i;
                 if (isDecsetInternalBitSet(DECSET_BIT_AUTOWRAP))
-                    mAboutToAutoWrap = columnAfterRun == mRightMargin;
+                    mAutoWrapPending = columnAfterRun == mRightMargin;
                 mCursorCol = Math.min(columnAfterRun, mRightMargin - 1);
                 i = end;
             } else {
@@ -1970,7 +1977,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             case 'J': // Selective erase in display (DECSED) - http://www.vt100.net/docs/vt510-rm/DECSED.
             case 'K': // Selective erase in line (DECSEL) - http://vt100.net/docs/vt510-rm/DECSEL.
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 int fillChar = ' ';
                 int startCol = -1;
                 int startRow = -1;
@@ -2434,7 +2441,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             case '@': {
                 // "CSI{n}@" - Insert ${n} space characters (ICH) - http://www.vt100.net/docs/vt510-rm/ICH.
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 int columnsAfterCursor = mColumns - mCursorCol;
                 int spacesToInsert = Math.min(getArg0(1), columnsAfterCursor);
                 int charsToMove = columnsAfterCursor - spacesToInsert;
@@ -2493,7 +2500,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                         unknownSequence(b);
                         return;
                 }
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 break;
             case 'K': // "CSI{n}K" - Erase in line (EL).
                 switch (getArg0(0)) {
@@ -2510,7 +2517,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                         unknownSequence(b);
                         return;
                 }
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 break;
             case 'L': // "${CSI}{N}L" - insert ${N} lines (IL).
             {
@@ -2523,7 +2530,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             break;
             case 'M': // "${CSI}${N}M" - delete N lines (DL).
             {
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 int linesAfterCursor = mBottomMargin - mCursorRow;
                 int linesToDelete = Math.min(getArg0(1), linesAfterCursor);
                 int linesToMove = linesAfterCursor - linesToDelete;
@@ -2538,7 +2545,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 // As characters are deleted, the remaining characters between the cursor and right margin move to the left.
                 // Character attributes move with the characters. The terminal adds blank spaces with no visual character
                 // attributes at the right margin. DCH has no effect outside the scrolling margins."
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 int cellsAfterCursor = mColumns - mCursorCol;
                 int cellsToDelete = Math.min(getArg0(1), cellsAfterCursor);
                 int cellsToMove = cellsAfterCursor - cellsToDelete;
@@ -2572,7 +2579,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 }
                 break;
             case 'X': // "${CSI}${N}X" - Erase ${N:=1} character(s) (ECH). FIXME: Clears character attributes?
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 mScreen.blockSet(mCursorCol, mCursorRow, Math.min(getArg0(1), mColumns - mCursorCol), 1, ' ', getStyle());
                 break;
             case 'Z': // Cursor Backward Tabulation (CBT). Move the active position n tabs backward.
@@ -3002,7 +3009,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             // Kitty's production graphics.c moves by effective rows-1, unlike its prose.
             advanceImageRows(Math.max(0, delta[0] - 1), canScroll);
             mCursorCol = Math.min(right - 1, mCursorCol + delta[1]);
-            mAboutToAutoWrap = false;
+            mAutoWrapPending = false;
         }
     }
 
@@ -3451,7 +3458,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         int split = parameters.indexOf(';');
         String uri = split < 0 ? "" : parameters.substring(split + 1);
         if (uri.isEmpty()) {
-            mHyperlink = 0;
+            mHyperlinkId = NO_HYPERLINK;
             return;
         }
         String id = null;
@@ -3459,7 +3466,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             if (parameter.startsWith("id=") && parameter.length() > 3) id = parameter.substring(3);
         String key = id == null ? null : id + '\u0000' + uri;
         Integer existing = key == null ? null : mHyperlinkIds.get(key);
-        mHyperlink = existing != null ? existing : allocateHyperlink(key, uri);
+        mHyperlinkId = existing != null ? existing : allocateHyperlink(key, uri);
     }
 
     private int allocateHyperlink(String key, String uri) {
@@ -3491,7 +3498,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     /** Frees every id no cell of either buffer holds, and that is not the link being printed now. */
     private void sweepHyperlinks() {
         boolean[] live = new boolean[MAX_HYPERLINKS + 1];
-        live[mHyperlink] = true;
+        live[mHyperlinkId] = true;
         for (TerminalBuffer buffer : new TerminalBuffer[]{mMainBuffer, mAltBuffer})
             for (TerminalRow row : buffer.mLines)
                 if (row != null && row.mLinks != null)
@@ -3919,7 +3926,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         final boolean cursorInLastColumn = mCursorCol == mRightMargin - 1;
 
         if (autoWrap) {
-            if (cursorInLastColumn && ((mAboutToAutoWrap && displayWidth == 1) || displayWidth == 2)) {
+            if (cursorInLastColumn && ((mAutoWrapPending && displayWidth == 1) || displayWidth == 2)) {
                 mScreen.setLineWrap(mCursorRow);
                 mCursorCol = mLeftMargin;
                 if (mCursorRow + 1 < mBottomMargin) {
@@ -3941,7 +3948,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 mScreen.blockCopy(mCursorCol, mCursorRow, mRightMargin - destCol, 1, destCol, mCursorRow);
         }
 
-        int offsetDueToCombiningChar = ((displayWidth <= 0 && mCursorCol > 0 && !mAboutToAutoWrap) ? 1 : 0);
+        int offsetDueToCombiningChar = ((displayWidth <= 0 && mCursorCol > 0 && !mAutoWrapPending) ? 1 : 0);
         int column = mCursorCol - offsetDueToCombiningChar;
 
         // Fix TerminalRow.setChar() ArrayIndexOutOfBoundsException index=-1 exception reported
@@ -3949,22 +3956,22 @@ public final class TerminalEmulator implements TerminalRendererState {
         // so was mCursorCol changed after the offsetDueToCombiningChar conditional by another thread?
         // TODO: Check if there are thread synchronization issues with mCursorCol and mCursorRow, possibly causing others bugs too.
         if (column < 0) column = 0;
-        mScreen.setChar(column, mCursorRow, codePoint, getStyle(), mHyperlink);
+        mScreen.setChar(column, mCursorRow, codePoint, getStyle(), mHyperlinkId);
 
         if (autoWrap && displayWidth > 0)
-            mAboutToAutoWrap = (mCursorCol == mRightMargin - displayWidth);
+            mAutoWrapPending = (mCursorCol == mRightMargin - displayWidth);
 
         mCursorCol = Math.min(mCursorCol + displayWidth, mRightMargin - 1);
     }
 
     private void setCursorRow(int row) {
         mCursorRow = row;
-        mAboutToAutoWrap = false;
+        mAutoWrapPending = false;
     }
 
     private void setCursorCol(int col) {
         mCursorCol = col;
-        mAboutToAutoWrap = false;
+        mAutoWrapPending = false;
     }
 
     /**
@@ -3993,7 +4000,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     private void setCursorRowCol(int row, int col) {
         mCursorRow = Math.max(0, Math.min(row, mRows - 1));
         mCursorCol = Math.max(0, Math.min(col, mColumns - 1));
-        mAboutToAutoWrap = false;
+        mAutoWrapPending = false;
     }
 
     public int getScrollCounter() {
@@ -4025,7 +4032,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     public void reset() {
         mKittyKeyboardMain.reset();
         mKittyKeyboardAlt.reset();
-        mHyperlink = 0;
+        mHyperlinkId = NO_HYPERLINK;
         setCursorStyle();
         mArgIndex = 0;
         mContinueSequence = false;
@@ -4034,7 +4041,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         mTopMargin = mLeftMargin = 0;
         mBottomMargin = mRows;
         mRightMargin = mColumns;
-        mAboutToAutoWrap = false;
+        mAutoWrapPending = false;
         mForeColor = mSavedStateMain.mSavedForeColor = mSavedStateAlt.mSavedForeColor = TextStyle.COLOR_INDEX_FOREGROUND;
         mBackColor = mSavedStateMain.mSavedBackColor = mSavedStateAlt.mSavedBackColor = TextStyle.COLOR_INDEX_BACKGROUND;
         setDefaultTabStops();

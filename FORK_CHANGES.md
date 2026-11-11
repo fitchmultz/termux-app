@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives image placement one record instead of an "open" boolean beside its margins and scroll action, so the three cannot get out of step, and an open OSC 8 hyperlink has a `NO_HYPERLINK` value instead of a bare `0`. The pending line wrap is named for what it is.
+
 - Gives the stream gobbler a `RUNNING`/`SUSPENDED` state and one claim on its close notification, the local socket server a `STOPPED`/`RUNNING`/`CLOSED` lifecycle, and the AM socket server a `SETUP_NOT_RUN`/`ENABLED`/`DISABLED` value instead of a nullable `Boolean`. A local socket manager now reports running only after its server starts, and starting a closed server returns an explicit error instead of leaving a server that reports running with no listener.
 
 - Gives text selection a named lifecycle (`HIDDEN`, `JUST_SHOWN`, `ACTIVE`). The 300 ms guard against a hide that follows a show is part of the state instead of an age check on a bare boolean, and the action mode is documented as owned for exactly the active interval.

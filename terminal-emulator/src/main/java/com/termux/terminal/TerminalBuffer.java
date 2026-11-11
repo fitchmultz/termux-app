@@ -41,9 +41,23 @@ public final class TerminalBuffer {
      * {@link TerminalBitmap} is created.
      */
     private TerminalSixel mTerminalSixel;
-    private boolean mHasImagePlacementContext;
-    private int mImageRightMargin, mImageBottomMargin;
-    private Runnable mImageScroll;
+
+    /**
+     * The image placement currently being written, or {@code null} when writing happens outside one.
+     * Its margins and its scroll operation belong to the same placement, so they cannot get out of
+     * step the way separate fields can.
+     */
+    private static final class ImagePlacement {
+        final int rightMargin, bottomMargin;
+        final Runnable scroll;
+
+        ImagePlacement(int rightMargin, int bottomMargin, Runnable scroll) {
+            this.rightMargin = rightMargin;
+            this.bottomMargin = bottomMargin;
+            this.scroll = scroll;
+        }
+    }
+    private ImagePlacement mImagePlacement;
 
 
     /** The map for bitmap number to the {@link TerminalBitmap} loaded in the terminal. */
@@ -863,25 +877,33 @@ public final class TerminalBuffer {
 
     /** Set one synchronous placement's geometry and its emulator-owned scrolling operation. */
     public synchronized void beginImagePlacement(int right, int bottom, Runnable scroll) {
-        mHasImagePlacementContext = true;
-        mImageRightMargin = right;
-        mImageBottomMargin = bottom;
-        mImageScroll = scroll;
+        mImagePlacement = new ImagePlacement(right, bottom, scroll);
     }
 
     public synchronized void endImagePlacement() {
-        mHasImagePlacementContext = false;
-        mImageScroll = null;
+        mImagePlacement = null;
     }
 
-    public int getImageRightMargin() { return mHasImagePlacementContext ? mImageRightMargin : mColumns; }
-    public int getImageBottomMargin() { return mHasImagePlacementContext ? mImageBottomMargin : mScreenRows; }
-    public boolean canScrollImage() { return !mHasImagePlacementContext || mImageScroll != null; }
+    public int getImageRightMargin() {
+        ImagePlacement placement = mImagePlacement;
+        return placement == null ? mColumns : placement.rightMargin;
+    }
+
+    public int getImageBottomMargin() {
+        ImagePlacement placement = mImagePlacement;
+        return placement == null ? mScreenRows : placement.bottomMargin;
+    }
+
+    public boolean canScrollImage() {
+        ImagePlacement placement = mImagePlacement;
+        return placement == null || placement.scroll != null;
+    }
 
     public synchronized boolean scrollForImage() {
-        if (mHasImagePlacementContext) {
-            if (mImageScroll == null) return false;
-            mImageScroll.run();
+        ImagePlacement placement = mImagePlacement;
+        if (placement != null) {
+            if (placement.scroll == null) return false;
+            placement.scroll.run();
         } else {
             scrollDownOneLine(0, mScreenRows, TextStyle.NORMAL);
         }
