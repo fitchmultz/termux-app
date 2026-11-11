@@ -74,7 +74,7 @@ public class TerminalPaneLayoutTest {
         TermuxTerminalSessionClientBase client = new TermuxTerminalSessionClientBase();
         TerminalSession session = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
         ReflectionHelpers.setField(session, "mEmulator", new TerminalEmulator(session, 80, 24, 8, 16, 100, client));
-        ReflectionHelpers.setField(session, "mShellPid", 1234);
+        TestSessions.markShell(session, 1234);
         session.mSessionName = name;
         byte[] output = ("\033[1;36m" + name + "\033[0m\r\n\r\nIndependent terminal output\r\n$ npm test\r\nTests: 24 passed\r\n\r\nReady for your next command.\r\n").getBytes(StandardCharsets.UTF_8);
         session.getEmulator().append(output, output.length);

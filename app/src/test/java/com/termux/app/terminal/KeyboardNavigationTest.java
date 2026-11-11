@@ -56,7 +56,7 @@ public class KeyboardNavigationTest {
         TerminalSession terminal = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
         ReflectionHelpers.setField(terminal, "mEmulator", new TerminalEmulator(terminal, 80, 24, 8, 16, 100, client));
         // The session has no real child process; native PTY calls are shadowed.
-        ReflectionHelpers.setField(terminal, "mShellPid", Integer.MAX_VALUE);
+        TestSessions.markShell(terminal, Integer.MAX_VALUE);
         terminal.mSessionName = name;
         ExecutionCommand command = new ExecutionCommand(1, "/unused", new String[0], null, "/",
             ExecutionCommand.Runner.TERMINAL_SESSION.getName(), true);
@@ -293,7 +293,7 @@ public class KeyboardNavigationTest {
                 ClassParameter.from(ExecutionCommand.class, existing.getExecutionCommand()),
                 ClassParameter.from(TermuxSession.TermuxSessionClient.class, activity.getTermuxService()),
                 ClassParameter.from(boolean.class, false)));
-            ReflectionHelpers.setField(first, "mShellPid", -1);
+            TestSessions.markShell(first, -1);
             TerminalImeComposingTest.RecordingImm.clear();
             activity.getTermuxTerminalSessionClient().removeFinishedSession(first);
             assertEquals(1, activity.getTermuxService().getTermuxSessionsSize());

@@ -54,7 +54,7 @@ public class KittyKeyboardAdmissionTest {
         session = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
         TerminalEmulator emulator = new TerminalEmulator(session, 20, 4, 8, 16, 100, client);
         ReflectionHelpers.setField(session, "mEmulator", emulator);
-        ReflectionHelpers.setField(session, "mShellPid", 1);
+        TestSessions.markShell(session, 1);
         queue = ReflectionHelpers.getField(session, "mTerminalToProcessIOQueue");
         view = new TerminalView(RuntimeEnvironment.getApplication(), null);
         view.setTerminalViewClient(new TermuxTerminalViewClientBase() {
@@ -412,7 +412,7 @@ public class KittyKeyboardAdmissionTest {
         TerminalEmulator emulator = new TerminalEmulator(other, 20, 4, 8, 16, 100,
             new TermuxTerminalSessionClientBase());
         ReflectionHelpers.setField(other, "mEmulator", emulator);
-        ReflectionHelpers.setField(other, "mShellPid", 1);
+        TestSessions.markShell(other, 1);
         Object otherQueue = ReflectionHelpers.getField(other, "mTerminalToProcessIOQueue");
         try {
             assertTrue(view.attachSession(other));

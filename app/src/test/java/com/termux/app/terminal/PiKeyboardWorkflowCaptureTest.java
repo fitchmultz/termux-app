@@ -60,7 +60,7 @@ public class PiKeyboardWorkflowCaptureTest {
             session = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
             ReflectionHelpers.setField(session, "mEmulator", new TerminalEmulator(session, 80, 24, 8, 16, 100, client));
             // Same no-child fixture boundary as TerminalImePasteTest: real FIFO, no subprocess.
-            ReflectionHelpers.setField(session, "mShellPid", 1234);
+            TestSessions.markShell(session, 1234);
             queue = ReflectionHelpers.getField(session, "mTerminalToProcessIOQueue");
             terminal = new TerminalView(controller.get(), null);
             terminal.setTerminalViewClient(new TermuxTerminalViewClientBase() {

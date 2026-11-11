@@ -55,7 +55,7 @@ public class TerminalImeAdmissionTest {
         };
         TerminalSession session = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
         ReflectionHelpers.setField(session, "mEmulator", new TerminalEmulator(session, 80, 24, 8, 16, 100, client));
-        ReflectionHelpers.setField(session, "mShellPid", 1);
+        TestSessions.markShell(session, 1);
         Object queue = ReflectionHelpers.getField(session, "mTerminalToProcessIOQueue");
         try {
             TerminalView terminal = new TerminalView(controller.get(), null);

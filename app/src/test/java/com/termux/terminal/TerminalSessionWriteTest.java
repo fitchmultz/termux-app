@@ -131,6 +131,7 @@ public class TerminalSessionWriteTest {
         s.mEmulator = new TerminalEmulator(s, 80, 24, 8, 16, 100, c);
         // Preserve the existing IME/pane fixture contract: no real child or transport worker.
         s.mShellPid = 1;
+        ReflectionHelpers.setField(s, "mShellState", TerminalSession.ShellState.RUNNING);
         return s;
     }
 

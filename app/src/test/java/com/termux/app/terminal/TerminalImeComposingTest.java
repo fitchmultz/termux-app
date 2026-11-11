@@ -149,7 +149,7 @@ public class TerminalImeComposingTest {
         TermuxTerminalSessionClientBase client = new TermuxTerminalSessionClientBase();
         TerminalSession result = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
         ReflectionHelpers.setField(result, "mEmulator", new TerminalEmulator(result, 80, 24, 8, 16, 100, client));
-        ReflectionHelpers.setField(result, "mShellPid", 1234);
+        TestSessions.markShell(result, 1234);
         return result;
     }
 
