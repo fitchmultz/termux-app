@@ -209,9 +209,9 @@ public class TermuxAmSocketServer {
         @Override
         public void onError(@NonNull LocalSocketManager localSocketManager,
                             @Nullable LocalClientSocket clientSocket, @NonNull Error error) {
-            // Don't show notification if server is not running since errors may be triggered
-            // when server is stopped and server and client sockets are closed.
-            if (localSocketManager.isRunning()) {
+            // Don't show shutdown noise, but do report a start that failed: the manager is only
+            // closed once stop() ran, while a failed start leaves it stopped.
+            if (!localSocketManager.isClosed()) {
                 TermuxAmSocketServer.showErrorNotification(localSocketManager.getContext(), error,
                     localSocketManager.getLocalSocketRunConfig(), clientSocket);
             }

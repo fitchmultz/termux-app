@@ -392,6 +392,11 @@ public class LocalSocketManager {
         return mState == State.RUNNING;
     }
 
+    /** Whether the server was stopped and closed. Errors after this point are shutdown noise. */
+    public boolean isClosed() {
+        return mState == State.CLOSED;
+    }
+
 
 
     /** Get an error log {@link String} for the {@link LocalSocketManager}. */
