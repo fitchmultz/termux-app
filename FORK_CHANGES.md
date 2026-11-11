@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives the keyboard controls explicit states. A special button is `UNCREATED`, `INACTIVE`, `ACTIVE` or `LOCKED` instead of three booleans, with tap, long-hold and read-and-release as named transitions. The extra-key press is one object that cancels its repeat or pending lock and remembers whether it already acted, instead of a count and two nullable jobs. The soft-keyboard policy owns its one shared show request plus the four reasons a show is withheld (returning, programmatic focus, startup-hidden, delayed enable). The two virtual volume-key modifiers remain two independent latches, which is their real shape.
+
 - Gives five small view machines one owner each: kitty key presses that await their release, the cursor blinker (off, or posting toggles at a valid rate), the mouse-scroll gesture anchor (one record instead of two coordinates plus a time sentinel), the waiting dead-key accent (named "no accent" instead of a bare `0`), and the one in-flight AutoFill request. Session attachment keeps its deliberate two-phase form (session first, emulator once sized) and now says so where it is implemented. Removes the unused `mCursorInvisibleIgnoreOnce` field.
 
 - Gives the IME connection one owner with two states, `ABSENT` and `BOUND`. Invalidating, adopting a new connection and queueing a restart are now `ImeConnection` transitions, and the generation it bumps is the single answer to "is this deferred work still current?". Behaviour of the composing editor, the Honeyboard virtual editor, deferred rebinding after focus loss and legacy draft cancellation is unchanged.
