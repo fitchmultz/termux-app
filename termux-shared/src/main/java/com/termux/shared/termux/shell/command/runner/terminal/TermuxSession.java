@@ -255,7 +255,7 @@ public class TermuxSession {
 
         if (executionCommand == null) return;
 
-        if (executionCommand.shouldNotProcessResults()) {
+        if (!executionCommand.claimResultDelivery()) {
             Logger.logDebug(LOG_TAG, "Ignoring duplicate call to process \"" + executionCommand.getCommandIdAndLabelLogString() + "\" TermuxSession result");
             return;
         }

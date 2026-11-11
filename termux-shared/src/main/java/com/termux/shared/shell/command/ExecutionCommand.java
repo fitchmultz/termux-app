@@ -147,10 +147,22 @@ public class ExecutionCommand {
     /** The process id of command. */
     public int mPid = -1;
 
-    /** The current state of the {@link ExecutionCommand}. */
+    /**
+     * Lifecycle state of the command. Legal moves are forward only, and {@link ExecutionState#SUCCESS}
+     * is terminal. {@link ExecutionState#FAILED} is reached only through {@link #setStateFailed},
+     * which records the error and the state together, so the two can never disagree.
+     */
     private ExecutionState currentState = ExecutionState.PRE_EXECUTION;
-    /** The previous state of the {@link ExecutionCommand}. */
+    /** The last state reached before the current one. Repeated failures keep the last valid state. */
     private ExecutionState previousState = ExecutionState.PRE_EXECUTION;
+
+    /**
+     * Whether the single result delivery has been claimed. Guarded by {@code this}.
+     */
+    private ResultDelivery resultDelivery = ResultDelivery.PENDING;
+
+    /** Ownership of the one result delivery allowed for a command. */
+    private enum ResultDelivery { PENDING, CLAIMED }
 
 
     /** The executable for the {@link ExecutionCommand}. */
@@ -232,9 +244,6 @@ public class ExecutionCommand {
     public final ResultData resultData = new ResultData();
 
 
-    /** Defines if processing results already called for this {@link ExecutionCommand}. */
-    public boolean processingResultsAlreadyCalled;
-
     private static final String LOG_TAG = "ExecutionCommand";
 
 
@@ -263,7 +272,7 @@ public class ExecutionCommand {
 
     public synchronized boolean setState(ExecutionState newState) {
         // The state transition cannot go back or change if already at {@link ExecutionState#SUCCESS}
-        if (newState.getValue() < currentState.getValue() || currentState == ExecutionState.SUCCESS) {
+        if (!canTransitionTo(newState)) {
             Logger.logError(LOG_TAG, "Invalid "+ getCommandIdAndLabelLogString() + " state transition from \"" + currentState.getName() + "\" to " +  "\"" + newState.getName() + "\"");
             return false;
         }
@@ -278,11 +287,21 @@ public class ExecutionCommand {
         return  true;
     }
 
+    /** Whether {@link #currentState} may still move to {@code newState}. */
+    private boolean canTransitionTo(ExecutionState newState) {
+        return newState.getValue() >= currentState.getValue() && currentState != ExecutionState.SUCCESS;
+    }
+
     public synchronized boolean hasExecuted() {
         return currentState.getValue() >= ExecutionState.EXECUTED.getValue();
     }
 
     public synchronized boolean isExecuting() {
+        return currentState == ExecutionState.EXECUTING;
+    }
+
+    /** Whether this command still owns a process that a kill request can reach. */
+    public synchronized boolean canBeKilled() {
         return currentState == ExecutionState.EXECUTING;
     }
 
@@ -314,6 +333,13 @@ public class ExecutionCommand {
         return setStateFailed(null, code, message, throwablesList);
     }
     public synchronized boolean setStateFailed(String type, int code, String message, List<Throwable> throwablesList) {
+        // Checked first so the error and the state are recorded together: FAILED would otherwise be
+        // rejected by setState() after the error was already stored.
+        if (!canTransitionTo(ExecutionState.FAILED)) {
+            Logger.logError(LOG_TAG, "Invalid "+ getCommandIdAndLabelLogString() + " state transition from \"" + currentState.getName() + "\" to \"" + ExecutionState.FAILED.getName() + "\"");
+            return false;
+        }
+
         if (!this.resultData.setStateFailed(type, code, message, throwablesList)) {
             Logger.logWarn(LOG_TAG, "setStateFailed for "  + getCommandIdAndLabelLogString() + " resultData encountered an error.");
         }
@@ -321,13 +347,15 @@ public class ExecutionCommand {
         return setState(ExecutionState.FAILED);
     }
 
-    public synchronized boolean shouldNotProcessResults() {
-        if (processingResultsAlreadyCalled) {
-            return true;
-        } else {
-            processingResultsAlreadyCalled = true;
-            return false;
-        }
+    /**
+     * Claim the one result delivery allowed for this command.
+     *
+     * @return {@code true} for the first caller only; later callers must not deliver results again.
+     */
+    public synchronized boolean claimResultDelivery() {
+        if (resultDelivery == ResultDelivery.CLAIMED) return false;
+        resultDelivery = ResultDelivery.CLAIMED;
+        return true;
     }
 
     public synchronized boolean isStateFailed() {
