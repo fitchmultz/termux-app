@@ -96,62 +96,96 @@ public final class TerminalView extends View {
     /** If non-zero, this is the last unicode code point received if that was a combining character. */
     int mCombiningAccent;
 
-    /** Identity of the served terminal connection; deferred IME metadata must not outlive it. */
-    private BaseInputConnection mInputConnection;
-    private long mInputConnectionGeneration;
-    private long mQueuedInputRestartGeneration = -1;
-    /** Legacy editors older than an admitted ON rebind must not flush drafts when closed. */
-    private long mLegacyInputCancellationGeneration = -1;
-    private boolean mImeComposingEnabled;
-    /** Carry feature-connection restart intent through temporary null and rapid session changes. */
-    private boolean mRestartInputAfterSessionChange;
-    /** Defer feature rebinding after a known window-focus loss until the matching gain callback. */
-    private boolean mInputConnectionWindowFocusLost;
-    private String mComposingText;
-    private int mComposingCursor = -1;
+    /**
+     * The IME connection this view serves.
+     *
+     * <p>{@code ABSENT}: no connection; {@code BOUND}: one {@link BaseInputConnection} is served,
+     * either the opt-in composing editor or the legacy OFF/Honeyboard editor.
+     *
+     * <p>Invalidating returns to {@code ABSENT} and bumps {@link #generation}. Every deferred
+     * runnable, queued restart and per-connection callback compares that generation (and its own
+     * close flag), so work belonging to a replaced connection is dropped instead of replayed.
+     * Rebound editors are requested without asking the keyboard to appear; a window-focus loss
+     * defers the request until the matching gain.
+     */
+    private final ImeConnection mIme = new ImeConnection();
+
+    private final class ImeConnection {
+        private BaseInputConnection connection;
+        private long generation;
+        private long queuedRestartGeneration = -1;
+        /** Legacy editors older than an admitted ON rebind must not flush drafts when closed. */
+        private long legacyCancellationGeneration = -1;
+        private boolean composingEnabled;
+        /** Carry feature-connection restart intent through temporary null and rapid session changes. */
+        private boolean restartAfterSessionChange;
+        /** Defer feature rebinding after a known window-focus loss until the matching gain callback. */
+        private boolean windowFocusLost;
+        private String previewText;
+        private int previewCursor = -1;
+
+        /** Return to ABSENT and make every deferred runnable of the old connection stale. */
+        void invalidate() {
+            // An uncommitted preview belongs to its original editor/session, never a new pane.
+            if (composingEnabled && connection != null) connection.getEditable().clear();
+            connection = null;
+            generation++;
+            composingEnabled = false;
+            setComposingTextPreview(null, -1);
+        }
+
+        /** Make the connection just created by {@link #onCreateInputConnection(EditorInfo)} current. */
+        void adopt(BaseInputConnection served, boolean composing, boolean honeyboard, long servedGeneration) {
+            connection = served;
+            composingEnabled = composing;
+            restartAfterSessionChange = composing || honeyboard;
+            if (composing) legacyCancellationGeneration = servedGeneration;
+        }
+
+        /** Queue at most one restart per generation. @return whether a restart was queued. */
+        boolean queueRestart(long currentGeneration) {
+            if (queuedRestartGeneration == currentGeneration) return false;
+            queuedRestartGeneration = currentGeneration;
+            return true;
+        }
+    }
 
     private void invalidateInputConnection() {
-        // An uncommitted preview belongs to its original editor/session, never a new pane.
-        if (mImeComposingEnabled && mInputConnection != null) mInputConnection.getEditable().clear();
-        mInputConnection = null;
-        mInputConnectionGeneration++;
-        mImeComposingEnabled = false;
-        setComposingTextPreview(null, -1);
+        mIme.invalidate();
     }
 
     private void restartInvalidatedFeatureInputConnection() {
-        if ((mInputConnectionWindowFocusLost && !hasWindowFocus()) || mInputConnection != null ||
+        if ((mIme.windowFocusLost && !hasWindowFocus()) || mIme.connection != null ||
             mTermSession == null || !hasFocus() || !isAttachedToWindow() ||
-            (!mRestartInputAfterSessionChange && !mClient.shouldEnableImeComposing())) return;
-        long generation = mInputConnectionGeneration;
-        if (mQueuedInputRestartGeneration == generation) return;
-        mQueuedInputRestartGeneration = generation;
+            (!mIme.restartAfterSessionChange && !mClient.shouldEnableImeComposing())) return;
+        long generation = mIme.generation;
+        if (!mIme.queueRestart(generation)) return;
         TerminalSession session = mTermSession;
         post(() -> {
             // An obsolete runnable must not release a newer generation's queued restart.
-            if (mQueuedInputRestartGeneration == generation) mQueuedInputRestartGeneration = -1;
+            if (mIme.queuedRestartGeneration == generation) mIme.queuedRestartGeneration = -1;
             boolean enableComposing = mClient.shouldEnableImeComposing();
-            if (generation != mInputConnectionGeneration || mInputConnection != null || mTermSession != session ||
-                (mInputConnectionWindowFocusLost && !hasWindowFocus()) || !hasFocus() || !isAttachedToWindow() ||
-                !mClient.isTerminalViewSelected() || (!mRestartInputAfterSessionChange && !enableComposing)) return;
+            if (generation != mIme.generation || mIme.connection != null || mTermSession != session ||
+                (mIme.windowFocusLost && !hasWindowFocus()) || !hasFocus() || !isAttachedToWindow() ||
+                !mClient.isTerminalViewSelected() || (!mIme.restartAfterSessionChange && !enableComposing)) return;
             InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
             if (imm != null) {
                 // Base closure can run synchronously inside restartInput, before the replacement callback.
-                if (enableComposing) mLegacyInputCancellationGeneration = generation;
+                if (enableComposing) mIme.legacyCancellationGeneration = generation;
                 imm.restartInput(TerminalView.this);
             }
         });
     }
 
     private void setComposingTextPreview(String text, int cursor) {
-        if (TextUtils.equals(text, mComposingText) && cursor == mComposingCursor) return;
-        mComposingText = text;
-        mComposingCursor = cursor;
+        if (TextUtils.equals(text, mIme.previewText) && cursor == mIme.previewCursor) return;
+        mIme.previewText = text;
+        mIme.previewCursor = cursor;
         invalidate();
     }
 
     private void updateComposingTextPreview(BaseInputConnection connection) {
-        if (!mImeComposingEnabled || connection != mInputConnection) return;
+        if (!mIme.composingEnabled || connection != mIme.connection) return;
         Editable editable = connection.getEditable();
         int start = BaseInputConnection.getComposingSpanStart(editable);
         int end = BaseInputConnection.getComposingSpanEnd(editable);
@@ -165,13 +199,13 @@ public final class TerminalView extends View {
     }
 
     private void finalizeComposingIfActive() {
-        BaseInputConnection connection = mInputConnection;
-        if (!mImeComposingEnabled || mComposingText == null || connection == null || !hasFocus()) return;
-        long generation = mInputConnectionGeneration;
+        BaseInputConnection connection = mIme.connection;
+        if (!mIme.composingEnabled || mIme.previewText == null || connection == null || !hasFocus()) return;
+        long generation = mIme.generation;
         connection.finishComposingText();
         post(() -> {
-            if (mInputConnection != connection || generation != mInputConnectionGeneration ||
-                !mImeComposingEnabled || mComposingText != null || !hasFocus() || !isAttachedToWindow() || !mClient.isTerminalViewSelected()) return;
+            if (mIme.connection != connection || generation != mIme.generation ||
+                !mIme.composingEnabled || mIme.previewText != null || !hasFocus() || !isAttachedToWindow() || !mClient.isTerminalViewSelected()) return;
             InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
             if (imm != null) imm.restartInput(TerminalView.this);
         });
@@ -180,9 +214,9 @@ public final class TerminalView extends View {
     /** Apply a changed opt-in setting on return without stealing focus from a native editor. */
     public void refreshImeComposingPreference() {
         if (!hasFocus() || !isAttachedToWindow() || !mClient.isTerminalViewSelected() || mTermSession == null ||
-            (mInputConnectionWindowFocusLost && !hasWindowFocus())) return;
-        if (mInputConnection != null) {
-            if (mImeComposingEnabled == mClient.shouldEnableImeComposing()) return;
+            (mIme.windowFocusLost && !hasWindowFocus())) return;
+        if (mIme.connection != null) {
+            if (mIme.composingEnabled == mClient.shouldEnableImeComposing()) return;
             invalidateInputConnection();
         }
         // A lost OFF connection still needs rebinding when the preference has since become ON.
@@ -590,7 +624,7 @@ public final class TerminalView extends View {
             outAttrs.initialSelStart = outAttrs.initialSelEnd = 1;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) outAttrs.setInitialSurroundingText("xx");
         }
-        final long generation = ++mInputConnectionGeneration;
+        final long generation = ++mIme.generation;
         final TerminalSession boundSession = mTermSession;
         BaseInputConnection connection = new BaseInputConnection(this, true) {
             private boolean mClosed;
@@ -598,7 +632,7 @@ public final class TerminalView extends View {
             private boolean mExtractedTextMonitor;
 
             private boolean isCurrentConnection() {
-                return !mClosed && mInputConnection == this && generation == mInputConnectionGeneration &&
+                return !mClosed && mIme.connection == this && generation == mIme.generation &&
                     boundSession == mTermSession;
             }
 
@@ -739,10 +773,10 @@ public final class TerminalView extends View {
                 mClosed = true;
                 mExtractedTextMonitor = false;
                 // A restart after retargeting must not flush a stale virtual editor into the new session.
-                if (composing || (!wasCurrent && (honeyboard || generation < mLegacyInputCancellationGeneration)))
+                if (composing || (!wasCurrent && (honeyboard || generation < mIme.legacyCancellationGeneration)))
                     getEditable().clear();
                 super.closeConnection();
-                if (mInputConnection == this) invalidateInputConnection();
+                if (mIme.connection == this) invalidateInputConnection();
             }
 
             @Override
@@ -882,10 +916,7 @@ public final class TerminalView extends View {
             }
 
         };
-        mInputConnection = connection;
-        mImeComposingEnabled = composing;
-        mRestartInputAfterSessionChange = composing || honeyboard;
-        if (composing) mLegacyInputCancellationGeneration = generation;
+        mIme.adopt(connection, composing, honeyboard, generation);
         return connection;
     }
 
@@ -1536,12 +1567,12 @@ public final class TerminalView extends View {
     public void onWindowFocusChanged(boolean hasWindowFocus) {
         super.onWindowFocusChanged(hasWindowFocus);
         if (!hasWindowFocus) {
-            mInputConnectionWindowFocusLost = true;
+            mIme.windowFocusLost = true;
             clearKittyKeyPresses();
             invalidateInputConnection();
         } else {
-            boolean restoreInvalidatedInput = mInputConnectionWindowFocusLost;
-            mInputConnectionWindowFocusLost = false;
+            boolean restoreInvalidatedInput = mIme.windowFocusLost;
+            mIme.windowFocusLost = false;
             // Non-IME windows can leave Android serving the invalidated connection on return.
             // Rebind the selected feature editor without asking the keyboard to become visible.
             if (restoreInvalidatedInput && hasWindowFocus()) refreshImeComposingPreference();
@@ -1600,10 +1631,10 @@ public final class TerminalView extends View {
 
             // render the text selection handles
             renderTextSelection();
-            if (mImeComposingEnabled && mComposingText != null && hasFocus()) {
-                char[] chars = mComposingText.toCharArray();
+            if (mIme.composingEnabled && mIme.previewText != null && hasFocus()) {
+                char[] chars = mIme.previewText.toCharArray();
                 mRenderer.renderComposingText(mEmulator.getRendererState(), canvas, mTopRow,
-                    chars, 0, chars.length, mComposingCursor);
+                    chars, 0, chars.length, mIme.previewCursor);
             }
         }
     }

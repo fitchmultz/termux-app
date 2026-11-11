@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives the IME connection one owner with two states, `ABSENT` and `BOUND`. Invalidating, adopting a new connection and queueing a restart are now `ImeConnection` transitions, and the generation it bumps is the single answer to "is this deferred work still current?". Behaviour of the composing editor, the Honeyboard virtual editor, deferred rebinding after focus loss and legacy draft cancellation is unchanged.
+
 - Gives synchronized output one frame object instead of a mode bit plus two deferred-callback flags. The frame owns the frozen renderer snapshot, the deferred cursor callback and the pending palette delivery, so "active" cannot disagree with what the renderer sees. The session keeps only its watchdog.
 
 - Gives UTF-8 decoding and OSC recognition one explicit state each. `Utf8Decoder` holds either no bytes or one incomplete sequence, so partial input can no longer be mistaken for a decoded character. The OSC string is `AWAITING_TYPE`, `UNKNOWN`, `TYPED` or `ITERM_IMAGE`, with the image phase replacing the two fast-path flags.
