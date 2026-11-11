@@ -439,15 +439,13 @@ public final class TerminalEmulator implements TerminalRendererState {
     private boolean mAboutToAutoWrap;
 
     /**
-     * If the cursor blinking is enabled. It requires cursor itself to be enabled, which is controlled
-     * byt whether {@link #DECSET_BIT_CURSOR_ENABLED} bit is set or not.
+     * Whether the view's blinker drives the cursor. Orthogonal to {@link #mCursorBlinkState}: the
+     * phase is preserved while blinking is off, so re-enabling resumes the same phase. Cursor
+     * enablement itself is the separate {@link #DECSET_BIT_CURSOR_ENABLED} mode.
      */
     private boolean mCursorBlinkingEnabled;
 
-    /**
-     * If currently cursor should be in a visible state or not if {@link #mCursorBlinkingEnabled}
-     * is {@code true}.
-     */
+    /** The current phase of the blinker, meaningful only while {@link #mCursorBlinkingEnabled}. */
     private boolean mCursorBlinkState;
 
     /**

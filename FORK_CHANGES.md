@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives five small view machines one owner each: kitty key presses that await their release, the cursor blinker (off, or posting toggles at a valid rate), the mouse-scroll gesture anchor (one record instead of two coordinates plus a time sentinel), the waiting dead-key accent (named "no accent" instead of a bare `0`), and the one in-flight AutoFill request. Session attachment keeps its deliberate two-phase form (session first, emulator once sized) and now says so where it is implemented. Removes the unused `mCursorInvisibleIgnoreOnce` field.
+
 - Gives the IME connection one owner with two states, `ABSENT` and `BOUND`. Invalidating, adopting a new connection and queueing a restart are now `ImeConnection` transitions, and the generation it bumps is the single answer to "is this deferred work still current?". Behaviour of the composing editor, the Honeyboard virtual editor, deferred rebinding after focus loss and legacy draft cancellation is unchanged.
 
 - Gives synchronized output one frame object instead of a mode bit plus two deferred-callback flags. The frame owns the frozen renderer snapshot, the deferred cursor callback and the pending palette delivery, so "active" cannot disagree with what the renderer sees. The session keeps only its watchdog.
