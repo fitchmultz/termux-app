@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives the DCS parser one explicit phase (`DETECTING`, `SIXEL`, `OTHER`) instead of two booleans that always moved together. A separate flag names the pending `ESC` that may complete the string terminator.
+
 - Gives the APC parser and image draining one explicit state each. An APC string is now in `TYPE`, `IGNORED`, `HEADER` or `PAYLOAD`, instead of three booleans. A rejected control string records `NONE`, `OSC`, `DCS` or `APC` plus whether an ESC is pending, so draining can no longer be confused with a real escape state.
 
 - Gives a terminal session one explicit shell lifecycle (`CREATED`, `STARTING`, `RUNNING`, `EXITED`, `FAILED`, `CANCELLED`) instead of a pid that also encoded progress plus two flags. Input admission, the waiter handshake, failure handling and `isRunning()` now read that state. A session that never started no longer sends `SIGKILL` to pid `0`, which targets the app's own process group, and finishing it records `CANCELLED`, closes its queues, records exit status 137, and delivers the finished callback once. Later sizing cannot start the cancelled shell, and a missing transcript is not returned as the text "null". The input-rejection episode carries one named state instead of a nullable reason.

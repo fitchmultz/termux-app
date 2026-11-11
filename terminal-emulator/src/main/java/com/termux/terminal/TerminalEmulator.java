@@ -141,14 +141,14 @@ public final class TerminalEmulator implements TerminalRendererState {
      * If an `DCS` escape sequence is received, then {@link #mEscapeState} is set to {@link #ESC_DCS}
      * and {@link #doDcs(int)} is called by {@link #processCodePoint(int)}.
      * - By default it will add bytes received after `DCS` escape sequence to {@link #mTerminalControlArgs}.
-     * - If an `ESC` is received by {@link #processCodePoint(int)}, then {@link #ESC_DCS__ESC} set
-     *   to `true`.
+     * - If an `ESC` is received by {@link #processCodePoint(int)}, then {@link #mDcsEscapePending}
+     *   is set to `true`.
      * - If the next code point is a `\` for `ST`, then {@link #doDcs(int)} processes the DCS command.
-     * - If the next code point is not a `\`, then {@link #ESC_DCS__ESC} is set back to `false` as
-     *   `ESC` may be part of command data as so it is added to {@link #mTerminalControlArgs}.
+     * - If the next code point is not a `\`, then {@link #mDcsEscapePending} is set back to `false`
+     *   as `ESC` may be part of command data as so it is added to {@link #mTerminalControlArgs}.
      *  - For certain commands like sixel commands, {@link #doDcs(int)} alters the default behaviour.
      * <p>
-     * See also {@link #mIsFastPathDcs} for enabling fast path for specific `DCS` commands if required.
+     * See also {@link #mDcsPhase} for the sixel fast path.
      * <p>
      * <p>
      * - https://vt100.net/docs/vt220-rm/chapter2.html#S2.5.3
@@ -342,23 +342,18 @@ public final class TerminalEmulator implements TerminalRendererState {
     private boolean mIgnoreCrLfForOsc = false;
 
 
+    /** Whether an `ESC` inside a DCS is waiting for the `\` that completes the string terminator. */
+    private boolean mDcsEscapePending = false;
+
+
     /**
-     * If `true`, then `processCodePoint()` will directly call `doDcs()` as a fast path
-     * without additional checks.
-     *
-     * Can be enabled for DCS commands via {@link #doDcs(int)}.
+     * Interpretation of the current DCS string: still deciding whether it is a sixel, streaming a
+     * sixel payload, or another DCS command. The sixel phase is the fast path.
      */
-    private boolean mIsFastPathDcs = false;
+    private enum DcsPhase { DETECTING, SIXEL, OTHER }
+    private DcsPhase mDcsPhase = DcsPhase.DETECTING;
 
-    /** Whether processing an `ESC` for a DCS command. */
-    private boolean ESC_DCS__ESC = false;
-
-
-    /** Whether processing a sixel `DCS q s..s ST` or `DCS P1; P2; P3; q s..s ST` command to create a {@link TerminalSixel}. */
-    private boolean ESC_DCS__SIXEL = false;
-
-    /** Whether to check if sixel command is being received when processing a DCS command. */
-    private boolean ESC_DCS__CHECK_IF_SIXEL = true;
+    private boolean isSixelDcs() { return mDcsPhase == DcsPhase.SIXEL; }
 
     /** The command part number in case a long sixel command was broken into parts for processing. */
     private int mSixelCommandPartNum;
@@ -701,8 +696,8 @@ public final class TerminalEmulator implements TerminalRendererState {
             // or font change. An in-progress synchronized snapshot keeps its completed pixels.
             mMainBuffer.discardTerminalBitmapPlacements();
             mAltBuffer.discardTerminalBitmapPlacements();
-            if (ESC_DCS__SIXEL) {
-                beginDiscardControlString(DiscardControlString.DCS, ESC_DCS__ESC);
+            if (isSixelDcs()) {
+                beginDiscardControlString(DiscardControlString.DCS, mDcsEscapePending);
                 finishSequence();
             }
             clearDcsTypeVariables();
@@ -969,9 +964,9 @@ public final class TerminalEmulator implements TerminalRendererState {
             return;
         }
 
-        if (mEscapeState == ESC_DCS && mIsFastPathDcs) {
+        if (mEscapeState == ESC_DCS && isSixelDcs()) {
             if (b == 27) { // ESC
-                ESC_DCS__ESC = true;
+                mDcsEscapePending = true;
                 return;
             }
             mContinueSequence = false;
@@ -1058,7 +1053,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 // Starts an escape sequence unless we're parsing a string
                 if (mEscapeState == ESC_DCS) {
                     // XXX: Ignore escape when reading device control sequence, since it may be part of string terminator.
-                    ESC_DCS__ESC = true;
+                    mDcsEscapePending = true;
                     return;
                 } else if (mEscapeState != ESC_OSC) {
                     startEscapeSequence();
@@ -1365,7 +1360,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     private void doDcs(final int b) {
         if (
             // End of DCS if string terminator ST `ESC \` received.
-            (ESC_DCS__ESC && b == '\\') ||
+            (mDcsEscapePending && b == '\\') ||
             // If sixel continuation after sixel start and a
             // Color Introducer `#`, Graphics Repeat Introducer `!` or Raster Attributes `"`
             // command is received, then process any previous commands, or if end of input
@@ -1384,7 +1379,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             // and also resize the bitmap, so that memory allocations are avoided if possible.
             // `mTerminalControlArgs.length() > 1` is done so that loop does not engage on first
             // character after `q` and only after first command has been fully received.
-            (ESC_DCS__SIXEL && ((b == '#' || b == '!' || b == '"') &&
+            (isSixelDcs() && ((b == '#' || b == '!' || b == '"') &&
                 ((mTerminalControlArgs.length() >= (mTerminalControlArgsMaxLength / 2)) || (mTerminalControlArgs.length() > 1 && mSixelCommandPartNum == 1))))
         ) {
                 String dcs = mTerminalControlArgs.toString();
@@ -1393,7 +1388,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 // buffer was flushed and its next chunk happens to start with a request prefix.
                 // Request Selection or Setting (DECRQSS) `DCS $ q P t ST`.
                 // - https://vt100.net/docs/vt510-rm/DECRQSS.html
-                if (!ESC_DCS__SIXEL && dcs.startsWith("$q")) {
+                if (!isSixelDcs() && dcs.startsWith("$q")) {
                     if (dcs.equals("$q\"p")) {
                         // DECSCL, conformance level, http://www.vt100.net/docs/vt510-rm/DECSCL:
                         String csiString = "64;1\"p";
@@ -1401,7 +1396,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                     } else {
                         finishSequenceAndLogError("Unrecognized DECRQSS string: '" + dcs + "'");
                     }
-                } else if (!ESC_DCS__SIXEL && dcs.startsWith("+q")) {
+                } else if (!isSixelDcs() && dcs.startsWith("+q")) {
                     // Request Termcap/Terminfo String. The string following the "q" is a list of names encoded in
                     // hexadecimal (2 digits per character) separated by ; which correspond to termcap or terminfo key
                     // names.
@@ -1492,7 +1487,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                     }
                 }
                 // If `s..s` or `ST` received from Sixel Device Control String `DCS q s..s ST` or `DCS P1; P2; P3; q s..s ST` command.
-                else if (ESC_DCS__SIXEL) {
+                else if (isSixelDcs()) {
                     mSixelCommandPartNum++;
 
                     boolean isValidDcs = processSixelDcs(dcs);
@@ -1500,7 +1495,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                     if (!isValidDcs) {
                         clearTerminalControlArgs();
                         mScreen.sixelIgnore();
-                        if (!(ESC_DCS__ESC && b == '\\')) {
+                        if (!(mDcsEscapePending && b == '\\')) {
                             beginDiscardControlString(DiscardControlString.DCS, b == 27);
                         }
                         clearDcsTypeVariables();
@@ -1508,7 +1503,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                         return;
                     }
 
-                    if (ESC_DCS__ESC && b == '\\') {
+                    if (mDcsEscapePending && b == '\\') {
                         TerminalBuffer target = beginImagePlacement();
                         boolean imageCanScroll = target.canScrollImage();
                         int n;
@@ -1521,7 +1516,7 @@ public final class TerminalEmulator implements TerminalRendererState {
 
                         // Clear DCS args buffer and variables and finish sequence.
                     } else {
-                        ESC_DCS__ESC = false;
+                        mDcsEscapePending = false;
 
                         // Clear DCS args buffer to receive further new input in empty buffer.
                         clearTerminalControlArgs();
@@ -1554,13 +1549,13 @@ public final class TerminalEmulator implements TerminalRendererState {
                 clearDcsTypeVariables();
                 finishSequence();
         } else {
-                ESC_DCS__ESC = false;
+                mDcsEscapePending = false;
 
                 if (!collectTerminalControlArgs(b)) return;
 
                 // A data character completes any preceding color/repeat/raster arguments. Flush
                 // here too, so a wide uncompressed image needs no artificial subcommand breaks.
-                if (ESC_DCS__SIXEL && mTerminalControlArgs.length() >= mTerminalControlArgsMaxLength / 2
+                if (isSixelDcs() && mTerminalControlArgs.length() >= mTerminalControlArgsMaxLength / 2
                     && ((b >= '?' && b <= '~') || b == '$' || b == '-')) {
                     if (!processSixelDcs(mTerminalControlArgs.toString())) {
                         mScreen.sixelIgnore();
@@ -1571,7 +1566,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                     clearTerminalControlArgs();
                 }
 
-                if (ESC_DCS__CHECK_IF_SIXEL && !ESC_DCS__SIXEL) {
+                if (mDcsPhase == DcsPhase.DETECTING) {
                     // Check if `DCS q` or `DCS P1; P2; P3; q` received from Sixel
                     // Device Control String `DCS q s..s ST` or `DCS P1; P2; P3; q s..s ST` command.
                     // If received, then wait for more input after `q`.
@@ -1580,18 +1575,15 @@ public final class TerminalEmulator implements TerminalRendererState {
                     } else if (b == ';' || (b >= '0' && b <= '9')) {
                         // Ignore.
                     } else {
-                        ESC_DCS__CHECK_IF_SIXEL = false;
+                        mDcsPhase = DcsPhase.OTHER;
                     }
                 }
         }
     }
 
     public void clearDcsTypeVariables() {
-        ESC_DCS__ESC = false;
-        mIsFastPathDcs = false;
-
-        ESC_DCS__SIXEL = false;
-        ESC_DCS__CHECK_IF_SIXEL = true;
+        mDcsEscapePending = false;
+        mDcsPhase = DcsPhase.DETECTING;
         mSixelCommandPartNum = 0;
         mSixelArgsCapacity = null;
         mScreen.sixelClear();
@@ -1602,9 +1594,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     private void startIfSixelDcs() {
         int[] sixelDcsSetupArgs = getSixelDcsSetupArgs(mTerminalControlArgs.toString(), 0);
         if (sixelDcsSetupArgs != null) {
-            mIsFastPathDcs = true;
-            ESC_DCS__SIXEL = true;
-            ESC_DCS__CHECK_IF_SIXEL = false;
+            mDcsPhase = DcsPhase.SIXEL;
             mSixelCommandPartNum = 1;
 
             // Do not actually increase capacity yet, as it will be increased by `doDcs()` after
@@ -1645,7 +1635,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                             return args;
                         } else {
                             // Must be some other command, so no need to check again.
-                            ESC_DCS__CHECK_IF_SIXEL = false;
+                            mDcsPhase = DcsPhase.OTHER;
                         }
                     }
                     break;
@@ -3677,8 +3667,8 @@ public final class TerminalEmulator implements TerminalRendererState {
     }
 
     private void abortControlString(int b) {
-        if (ESC_DCS__SIXEL || (mOscType == 1337 && (mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC))) {
-            beginDiscardControlString(ESC_DCS__SIXEL ? DiscardControlString.DCS : DiscardControlString.OSC, b == 27);
+        if (isSixelDcs() || (mOscType == 1337 && (mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC))) {
+            beginDiscardControlString(isSixelDcs() ? DiscardControlString.DCS : DiscardControlString.OSC, b == 27);
         }
         clearTerminalControlArgs();
         clearOscTypeVariables();
