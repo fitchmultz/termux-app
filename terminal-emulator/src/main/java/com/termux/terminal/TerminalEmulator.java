@@ -395,11 +395,25 @@ public final class TerminalEmulator implements TerminalRendererState {
      */
     private int mCurrentDecSetFlags, mSavedDecSetFlags;
 
-    /** A cursor visibility callback received inside a synchronized frame and deferred until its end. */
-    private boolean mSynchronizedOutputCursorStateChanged;
+    /**
+     * The open synchronized-output frame, or {@code null} when presentation is live. While a frame
+     * is open the renderer sees its frozen snapshot, and cursor and palette callbacks are deferred
+     * until {@link #finishSynchronizedOutput()}.
+     */
+    private SynchronizedOutputFrame mSynchronizedFrame;
 
-    /** Last completed visible state retained while synchronized output mutates the live emulator. */
-    private CompletedScreenSnapshot mSynchronizedOutputRendererState;
+    /** One deferral state per open frame. */
+    private static final class SynchronizedOutputFrame {
+        final CompletedScreenSnapshot rendererState;
+        boolean cursorStateChanged;
+
+        SynchronizedOutputFrame(TerminalEmulator emulator) {
+            rendererState = new CompletedScreenSnapshot(emulator);
+        }
+    }
+
+    /** A palette change received inside a frame and deferred until presentation. */
+    private boolean mDeferredPaletteChange;
 
     /**
      * If insert mode (as opposed to replace mode) is active. In insert mode new characters are inserted, pushing
@@ -483,7 +497,7 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     /** Resolve a hyperlink from the same completed cells the terminal presents. */
     public String getHyperlinkAt(int column, int row) {
-        CompletedScreenSnapshot snapshot = isSynchronizedOutputActive() ? mSynchronizedOutputRendererState : null;
+        CompletedScreenSnapshot snapshot = mSynchronizedFrame == null ? null : mSynchronizedFrame.rendererState;
         TerminalBuffer screen = snapshot == null ? mScreen : snapshot.mScreen;
         if (column < 0 || column >= screen.mColumns || row < -screen.getActiveTranscriptRows() || row >= screen.mScreenRows)
             return null;
@@ -646,18 +660,19 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     /** State a renderer must use; immutable while a synchronized frame is in progress. */
     public TerminalRendererState getRendererState() {
-        return isSynchronizedOutputActive()
-            ? Objects.requireNonNull(mSynchronizedOutputRendererState, "active synchronized output requires a completed-screen snapshot")
-            : this;
-    }
-
-    private void captureSynchronizedOutputRendererState() {
-        mSynchronizedOutputRendererState = new CompletedScreenSnapshot(this);
+        return mSynchronizedFrame == null ? this : mSynchronizedFrame.rendererState;
     }
 
     /** Whether DEC private mode 2026 is currently deferring screen presentation. */
     public boolean isSynchronizedOutputActive() {
-        return isDecsetInternalBitSet(DECSET_BIT_SYNCHRONIZED_OUTPUT);
+        return mSynchronizedFrame != null;
+    }
+
+    /** Open a frame; the DECSET bit mirrors the frame for mode reporting. */
+    private void beginSynchronizedOutput() {
+        if (mSynchronizedFrame != null) return;
+        mSynchronizedFrame = new SynchronizedOutputFrame(this);
+        setDecsetinternalBit(DECSET_BIT_SYNCHRONIZED_OUTPUT, true);
     }
 
     /**
@@ -665,17 +680,29 @@ public final class TerminalEmulator implements TerminalRendererState {
      * Package-private so {@link TerminalSession} can guarantee that rendering never remains frozen.
      */
     void finishSynchronizedOutput() {
-        if (!isSynchronizedOutputActive()) return;
+        if (mSynchronizedFrame == null) return;
+        final boolean cursorStateChanged = mSynchronizedFrame.cursorStateChanged;
+        mSynchronizedFrame = null;
         setDecsetinternalBit(DECSET_BIT_SYNCHRONIZED_OUTPUT, false);
-        mSynchronizedOutputRendererState = null;
-        dispatchDeferredCursorStateChange();
+        if (cursorStateChanged && mClient != null) mClient.onTerminalCursorStateChange(isCursorEnabled());
     }
 
-    private void dispatchDeferredCursorStateChange() {
-        if (!mSynchronizedOutputCursorStateChanged) return;
-        mSynchronizedOutputCursorStateChanged = false;
-        if (mClient != null)
-            mClient.onTerminalCursorStateChange(isCursorEnabled());
+    /**
+     * Defer a palette change while a frame is open.
+     *
+     * @return {@code true} when the change was deferred and must not be delivered yet.
+     */
+    boolean deferPaletteChange() {
+        if (mSynchronizedFrame == null) return false;
+        mDeferredPaletteChange = true;
+        return true;
+    }
+
+    /** @return whether a deferred palette change must now be delivered. */
+    boolean takeDeferredPaletteChange() {
+        if (!mDeferredPaletteChange) return false;
+        mDeferredPaletteChange = false;
+        return true;
     }
 
     public int getCellWidthPixels() { return mCellWidthPixels; }
@@ -2029,8 +2056,6 @@ public final class TerminalEmulator implements TerminalRendererState {
     }
 
     public void doDecSetOrReset(boolean setting, int externalBit) {
-        if (externalBit == 2026 && setting && !isSynchronizedOutputActive())
-            captureSynchronizedOutputRendererState();
         int internalBit = mapDecSetBitToInternalBit(externalBit);
         if (internalBit != -1) {
             setDecsetinternalBit(internalBit, setting);
@@ -2064,8 +2089,8 @@ public final class TerminalEmulator implements TerminalRendererState {
             case 9: // X10 mouse reporting - outdated. Do not implement.
             case 12: // Control cursor blinking - ignore.
             case 25: // Hide/show cursor - no action needed, renderer will check with shouldCursorBeVisible().
-                if (isSynchronizedOutputActive()) {
-                    mSynchronizedOutputCursorStateChanged = true;
+                if (mSynchronizedFrame != null) {
+                    mSynchronizedFrame.cursorStateChanged = true;
                 } else if (mClient != null) {
                     mClient.onTerminalCursorStateChange(setting);
                 }
@@ -2091,10 +2116,8 @@ public final class TerminalEmulator implements TerminalRendererState {
             case 1034: // Interpret "meta" key, sets eighth bit.
                 break;
             case 2026: // Synchronized output. Present the completed frame when reset.
-                if (!setting) {
-                    mSynchronizedOutputRendererState = null;
-                    dispatchDeferredCursorStateChange();
-                }
+                if (setting) beginSynchronizedOutput();
+                else finishSynchronizedOutput();
                 break;
             case 1048: // Set: Save cursor as in DECSC. Reset: Restore cursor as in DECRC.
                 if (setting)
@@ -4023,8 +4046,8 @@ public final class TerminalEmulator implements TerminalRendererState {
 
         mSavedStateMain.mSavedCursorRow = mSavedStateMain.mSavedCursorCol = mSavedStateMain.mSavedEffect = mSavedStateMain.mSavedDecFlags = 0;
         mSavedStateAlt.mSavedCursorRow = mSavedStateAlt.mSavedCursorCol = mSavedStateAlt.mSavedEffect = mSavedStateAlt.mSavedDecFlags = 0;
-        mSynchronizedOutputCursorStateChanged = false;
-        mSynchronizedOutputRendererState = null;
+        mSynchronizedFrame = null;
+        mDeferredPaletteChange = false;
         mCurrentDecSetFlags = 0;
         // Initial wrap-around is not accurate but makes terminal more useful, especially on a small screen:
         setDecsetinternalBit(DECSET_BIT_AUTOWRAP, true);

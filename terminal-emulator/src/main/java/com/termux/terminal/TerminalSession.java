@@ -125,9 +125,6 @@ public final class TerminalSession extends TerminalOutput {
     /** Callback which gets notified when a session finishes or changes title. */
     TerminalSessionClient mClient;
 
-    /** A palette update received inside a synchronized frame and deferred until presentation. */
-    private boolean mSynchronizedOutputColorsChanged;
-
     /** The pid of the shell process. 0 if not started and -1 if finished running. */
     int mShellPid;
 
@@ -529,14 +526,9 @@ public final class TerminalSession extends TerminalOutput {
         }
 
         mMainThreadHandler.removeMessages(MSG_SYNCHRONIZED_OUTPUT_TIMEOUT);
-        dispatchDeferredColorsChanged();
+        // A palette update deferred by the frame that just closed is delivered with the frame.
+        if (mEmulator != null && mEmulator.takeDeferredPaletteChange()) mClient.onColorsChanged(this);
         mClient.onTextChanged(this);
-    }
-
-    private void dispatchDeferredColorsChanged() {
-        if (!mSynchronizedOutputColorsChanged) return;
-        mSynchronizedOutputColorsChanged = false;
-        mClient.onColorsChanged(this);
     }
 
     /** Force presentation after the synchronized-output watchdog expires. Package-private for tests. */
@@ -555,7 +547,6 @@ public final class TerminalSession extends TerminalOutput {
     /** Reset state for terminal emulator state. */
     public void reset() {
         mMainThreadHandler.removeMessages(MSG_SYNCHRONIZED_OUTPUT_TIMEOUT);
-        mSynchronizedOutputColorsChanged = false;
         mEmulator.reset();
         notifyScreenUpdate();
     }
@@ -640,11 +631,8 @@ public final class TerminalSession extends TerminalOutput {
 
     @Override
     public void onColorsChanged() {
-        if (mEmulator != null && mEmulator.isSynchronizedOutputActive()) {
-            mSynchronizedOutputColorsChanged = true;
-        } else {
-            mClient.onColorsChanged(this);
-        }
+        if (mEmulator != null && mEmulator.deferPaletteChange()) return;
+        mClient.onColorsChanged(this);
     }
 
     public int getPid() {
