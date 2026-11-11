@@ -22,8 +22,15 @@ public class TextSelectionCursorController implements CursorController {
 
     private final TerminalView terminalView;
     private final TextSelectionHandleView mStartHandle, mEndHandle;
+    /** Text kept for "MORE" after the selection it came from was stopped. */
     private String mStoredSelectedText;
-    private boolean mIsSelectingText = false;
+    /**
+     * Selection lifecycle. {@link #JUST_SHOWN} exists only to ignore hide calls that arrive
+     * immediately after a show (a long-pressed key, for example); otherwise the controller is
+     * {@link #ACTIVE} until it hides, and the action mode it owns lives exactly as long.
+     */
+    private enum SelectionState { HIDDEN, JUST_SHOWN, ACTIVE }
+    private SelectionState mSelectionState = SelectionState.HIDDEN;
     private long mShowStartTime = System.currentTimeMillis();
 
     private final int mHandleHeight;
@@ -50,7 +57,7 @@ public class TextSelectionCursorController implements CursorController {
 
         setActionModeCallBacks();
         mShowStartTime = System.currentTimeMillis();
-        mIsSelectingText = true;
+        mSelectionState = SelectionState.JUST_SHOWN;
     }
 
     @Override
@@ -60,7 +67,8 @@ public class TextSelectionCursorController implements CursorController {
         // prevent hide calls right after a show call, like long pressing the down key
         // 300ms seems long enough that it wouldn't cause hide problems if action button
         // is quickly clicked after the show, otherwise decrease it
-        if (System.currentTimeMillis() - mShowStartTime < 300) {
+        if (mSelectionState == SelectionState.JUST_SHOWN &&
+            System.currentTimeMillis() - mShowStartTime < 300) {
             return false;
         }
 
@@ -73,7 +81,7 @@ public class TextSelectionCursorController implements CursorController {
         }
 
         mSelX1 = mSelY1 = mSelX2 = mSelY2 = -1;
-        mIsSelectingText = false;
+        mSelectionState = SelectionState.HIDDEN;
 
         return true;
     }
@@ -81,6 +89,8 @@ public class TextSelectionCursorController implements CursorController {
     @Override
     public void render() {
         if (!isActive()) return;
+        if (mSelectionState == SelectionState.JUST_SHOWN &&
+            System.currentTimeMillis() - mShowStartTime >= 300) mSelectionState = SelectionState.ACTIVE;
 
         mStartHandle.positionAtCursor(mSelX1, mSelY1, false);
         mEndHandle.positionAtCursor(mSelX2 + 1, mSelY2, false);
@@ -356,7 +366,7 @@ public class TextSelectionCursorController implements CursorController {
 
     @Override
     public boolean isActive() {
-        return mIsSelectingText;
+        return mSelectionState != SelectionState.HIDDEN;
     }
 
     public void getSelectors(int[] sel) {

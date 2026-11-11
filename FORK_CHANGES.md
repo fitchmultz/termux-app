@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives text selection a named lifecycle (`HIDDEN`, `JUST_SHOWN`, `ACTIVE`). The 300 ms guard against a hide that follows a show is part of the state instead of an age check on a bare boolean, and the action mode is documented as owned for exactly the active interval.
+
 - Gives the split layout one intent value (`SINGLE`, `DUAL`, `DUAL_COMPACT_FORCED`) and a three-value measured width class instead of two booleans plus a nullable `Boolean` that also meant "not measured yet". The file picker in flight is one record, the editor's draft-suppression guard and the consumed creation intent have names that say what they mean, and the evidence store's import has an explicit `IDLE`/`RUNNING` state alongside the preference that survives process death.
 
 - Gives the activity and service one explicit lifecycle each. The activity is `INVALID`, `CREATED` or `STARTED` instead of two booleans, so "must not run" and "in the foreground" cannot disagree. The service records why it is stopping (`USER` or `NOTHING_LEFT`), holds its two wake locks as one value, and gets one owner for command placement: `TermuxShellManager.trackPending/trackSession/trackTask` move a command out of the pending list in the same step that starts it. A session's removal request is consumed once by its finished callback. `wantsToStop()` now reports the empty-service stop as well, which previously left the activity to clean up sessions the service had already killed.
