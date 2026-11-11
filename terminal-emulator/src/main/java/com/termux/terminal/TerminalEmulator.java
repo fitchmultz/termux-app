@@ -380,10 +380,19 @@ public final class TerminalEmulator implements TerminalRendererState {
     /** The {@link ITermImage} if an iTerm image command is being processed. */
     private ITermImage mITermImage;
     private KittyImage mKittyImage, mKittyPending;
-    private boolean mApcHasType, mApcGraphics, mApcPayload;
-    /** Drain a rejected image string through its terminator, never print its remaining bytes. */
-    private int mDiscardImageControl = ESC_NONE;
-    private boolean mDiscardImageEscape;
+    /**
+     * Phase of the APC string being received: reading its type, ignoring it, reading a Kitty
+     * graphics header into {@link #mTerminalControlArgs}, or streaming its payload.
+     */
+    private enum ApcPhase { TYPE, IGNORED, HEADER, PAYLOAD }
+    private ApcPhase mApcPhase = ApcPhase.TYPE;
+    /**
+     * A rejected control string whose remaining bytes are drained through its terminator and never
+     * printed. The escaped flag remembers an ESC, so the following {@code '\\'} completes the ST.
+     */
+    private enum DiscardControlString { NONE, OSC, DCS, APC }
+    private DiscardControlString mDiscardControlString = DiscardControlString.NONE;
+    private boolean mDiscardControlStringEscape;
 
 
 
@@ -693,15 +702,13 @@ public final class TerminalEmulator implements TerminalRendererState {
             mMainBuffer.discardTerminalBitmapPlacements();
             mAltBuffer.discardTerminalBitmapPlacements();
             if (ESC_DCS__SIXEL) {
-                mDiscardImageControl = ESC_DCS;
-                mDiscardImageEscape = ESC_DCS__ESC;
+                beginDiscardControlString(DiscardControlString.DCS, ESC_DCS__ESC);
                 finishSequence();
             }
             clearDcsTypeVariables();
             mITermImage = null;
             if (mEscapeState == ESC_APC || mEscapeState == ESC_APC__ESC) {
-                mDiscardImageControl = ESC_APC;
-                mDiscardImageEscape = mEscapeState == ESC_APC__ESC;
+                beginDiscardControlString(DiscardControlString.APC, mEscapeState == ESC_APC__ESC);
                 finishSequence();
                 // The args buffer also belongs to OSC/DCS; abort only the active APC here.
                 clearApcTypeVariables();
@@ -828,7 +835,7 @@ public final class TerminalEmulator implements TerminalRendererState {
      */
     public void append(byte[] buffer, int length) {
         for (int i = 0; i < length; ) {
-            if (buffer[i] >= 32 && buffer[i] < 127 && mEscapeState == ESC_NONE && mDiscardImageControl == ESC_NONE && mUtf8ToFollow == 0
+            if (buffer[i] >= 32 && buffer[i] < 127 && mEscapeState == ESC_NONE && mDiscardControlString == DiscardControlString.NONE && mUtf8ToFollow == 0
                 && !mAboutToAutoWrap && !mInsertMode && mCursorCol >= 0 && mCursorCol < mRightMargin
                 && !(mUseLineDrawingUsesG0 ? mUseLineDrawingG0 : mUseLineDrawingG1)) {
                 int end = i + 1;
@@ -914,17 +921,35 @@ public final class TerminalEmulator implements TerminalRendererState {
         }
     }
 
-    public void processCodePoint(int b) {
-        if (mDiscardImageControl != ESC_NONE) {
-            if (b == 24 || b == 26 || (mDiscardImageControl == ESC_OSC && b == 7)
-                || (mDiscardImageEscape && b == '\\')) {
-                mDiscardImageControl = ESC_NONE;
-                mDiscardImageEscape = false;
-            } else {
-                mDiscardImageEscape = b == 27;
-            }
-            return;
+    /** Start draining a rejected control string after its remaining bytes are unusable. */
+    private void beginDiscardControlString(DiscardControlString kind, boolean afterEscape) {
+        mDiscardControlString = kind;
+        mDiscardControlStringEscape = afterEscape;
+    }
+
+    private void clearDiscardControlString() {
+        mDiscardControlString = DiscardControlString.NONE;
+        mDiscardControlStringEscape = false;
+    }
+
+    /**
+     * Consume a code point while a rejected control string is being drained.
+     *
+     * @return {@code true} when the code point belonged to the drain and must not be interpreted.
+     */
+    private boolean drainDiscardedControlString(int b) {
+        if (mDiscardControlString == DiscardControlString.NONE) return false;
+        if (b == 24 || b == 26 || (mDiscardControlString == DiscardControlString.OSC && b == 7)
+            || (mDiscardControlStringEscape && b == '\\')) {
+            clearDiscardControlString();
+        } else {
+            mDiscardControlStringEscape = b == 27;
         }
+        return true;
+    }
+
+    public void processCodePoint(int b) {
+        if (drainDiscardedControlString(b)) return;
         // Cancellation must take precedence over image fast paths and release partial payloads.
         if ((b == 24 || b == 26) && (mEscapeState == ESC_DCS || mEscapeState == ESC_OSC
             || mEscapeState == ESC_OSC__ESC || mEscapeState == ESC_APC || mEscapeState == ESC_APC__ESC)) {
@@ -1476,8 +1501,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                         clearTerminalControlArgs();
                         mScreen.sixelIgnore();
                         if (!(ESC_DCS__ESC && b == '\\')) {
-                            mDiscardImageControl = ESC_DCS;
-                            mDiscardImageEscape = b == 27;
+                            beginDiscardControlString(DiscardControlString.DCS, b == 27);
                         }
                         clearDcsTypeVariables();
                         finishSequence();
@@ -1540,8 +1564,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                     && ((b >= '?' && b <= '~') || b == '$' || b == '-')) {
                     if (!processSixelDcs(mTerminalControlArgs.toString())) {
                         mScreen.sixelIgnore();
-                        mDiscardImageControl = ESC_DCS;
-                        mDiscardImageEscape = false;
+                        beginDiscardControlString(DiscardControlString.DCS, false);
                         clearDcsTypeVariables();
                         finishSequence();
                     }
@@ -2855,40 +2878,48 @@ public final class TerminalEmulator implements TerminalRendererState {
             continueSequence(ESC_APC__ESC);
             return;
         }
-        if (!mApcHasType) {
-            mApcHasType = true;
-            mApcGraphics = b == 'G';
-        } else if (mApcGraphics) {
-            if (mApcPayload) {
+        switch (mApcPhase) {
+            case TYPE:
+                mApcPhase = b == 'G' ? ApcPhase.HEADER : ApcPhase.IGNORED;
+                break;
+            case HEADER:
+                if (b == ';') startKittyCommand();
+                else if (mTerminalControlArgs.length() < TERMINAL_CONTROL_ARGS__DEFAULT_MAX_LENGTH) mTerminalControlArgs.appendCodePoint(b);
+                else {
+                    startKittyCommand();
+                    mKittyImage.fail("EINVAL");
+                }
+                break;
+            case PAYLOAD:
                 mKittyImage.read(b);
-            } else if (b == ';') {
-                startKittyCommand();
-            } else if (mTerminalControlArgs.length() < TERMINAL_CONTROL_ARGS__DEFAULT_MAX_LENGTH) {
-                mTerminalControlArgs.appendCodePoint(b);
-            } else {
-                startKittyCommand();
-                mKittyImage.fail("EINVAL");
-            }
+                break;
+            case IGNORED:
+                break;
         }
         continueSequence(ESC_APC);
     }
 
     private void receiveApcEsc(final int b) {
         if (b == '\\') {
-            if (mApcGraphics) doApc();
+            if (isApcGraphics()) doApc();
             clearApcTypeVariables();
             finishSequence();
         } else {
-            if (mApcGraphics) {
-                if (!mApcPayload) startKittyCommand();
+            if (isApcGraphics()) {
+                if (mApcPhase != ApcPhase.PAYLOAD) startKittyCommand();
                 mKittyImage.fail("EINVAL");
             }
             continueSequence(b == 27 ? ESC_APC__ESC : ESC_APC);
         }
     }
 
+    /** Whether the current APC string is Kitty graphics rather than an ignored type. */
+    private boolean isApcGraphics() {
+        return mApcPhase == ApcPhase.HEADER || mApcPhase == ApcPhase.PAYLOAD;
+    }
+
     public void clearApcTypeVariables() {
-        mApcHasType = mApcGraphics = mApcPayload = false;
+        mApcPhase = ApcPhase.TYPE;
         mKittyImage = null;
         clearTerminalControlArgs();
     }
@@ -2902,12 +2933,12 @@ public final class TerminalEmulator implements TerminalRendererState {
         }
         mKittyPending = null; // A new action, notably delete, aborts a pending upload.
         mKittyImage = command;
-        mApcPayload = true;
+        mApcPhase = ApcPhase.PAYLOAD;
         command.start();
     }
 
     private void doApc() {
-        if (!mApcPayload) startKittyCommand(); // Pi's placement/delete commands have no ';'.
+        if (mApcPhase != ApcPhase.PAYLOAD) startKittyCommand(); // Pi's placement/delete commands have no ';'.
         KittyImage command = mKittyImage;
         if (command.error == null && command.more) {
             mKittyPending = command;
@@ -3647,8 +3678,7 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     private void abortControlString(int b) {
         if (ESC_DCS__SIXEL || (mOscType == 1337 && (mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC))) {
-            mDiscardImageControl = ESC_DCS__SIXEL ? ESC_DCS : ESC_OSC;
-            mDiscardImageEscape = b == 27;
+            beginDiscardControlString(ESC_DCS__SIXEL ? DiscardControlString.DCS : DiscardControlString.OSC, b == 27);
         }
         clearTerminalControlArgs();
         clearOscTypeVariables();
@@ -4031,8 +4061,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         mKittyPending = null;
         mMainBuffer.resetKittyGraphics();
         mAltBuffer.resetKittyGraphics();
-        mDiscardImageControl = ESC_NONE;
-        mDiscardImageEscape = false;
+        clearDiscardControlString();
         clearDcsTypeVariables();
     }
 

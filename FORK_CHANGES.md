@@ -13,6 +13,10 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives the APC parser and image draining one explicit state each. An APC string is now in `TYPE`, `IGNORED`, `HEADER` or `PAYLOAD`, instead of three booleans. A rejected control string records `NONE`, `OSC`, `DCS` or `APC` plus whether an ESC is pending, so draining can no longer be confused with a real escape state.
+
+- Gives a terminal session one explicit shell lifecycle (`CREATED`, `STARTING`, `RUNNING`, `EXITED`, `FAILED`) instead of a pid that also encoded progress plus two flags. Input admission, the waiter handshake, failure handling and `isRunning()` now read that state. A session that never started no longer sends `SIGKILL` to pid `0`, which targets the app's own process group. The input-rejection episode carries one named state instead of a nullable reason.
+
 - Gives a queue capacity reservation one explicit state (`AVAILABLE`, `HELD`, `SPENT`, `CANCELLED`) instead of two flags. Only a held promise owns reserved bytes, so spending or cancelling twice still cannot return capacity twice.
 
 - Gives each execution command one explicit lifecycle: a single result-delivery claim replaces the public `processingResultsAlreadyCalled` flag, failure records its error and state together, and `canBeKilled()` states whether a kill request can still reach the command's process.
