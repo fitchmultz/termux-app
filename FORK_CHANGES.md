@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives a queue capacity reservation one explicit state (`AVAILABLE`, `HELD`, `SPENT`, `CANCELLED`) instead of two flags. Only a held promise owns reserved bytes, so spending or cancelling twice still cannot return capacity twice.
+
 - Gives each execution command one explicit lifecycle: a single result-delivery claim replaces the public `processingResultsAlreadyCalled` flag, failure records its error and state together, and `canBeKilled()` states whether a kill request can still reach the command's process.
 
 - Kills a background task's process when the service stops. Recording the kill failure previously moved the command past its executing state, so the task was reported failed while its process kept running; terminal sessions were already killed unconditionally.
