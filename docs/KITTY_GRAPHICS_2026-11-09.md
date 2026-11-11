@@ -96,14 +96,14 @@ are synthetic test content rendered by production Android code, not Fold device
 screenshots. Source fixture hashes and actual run/artifact links belong in the PR.
 ## Native qualification checkpoint
 
-- [Baseline M1 run42628156467](https://github.com/fitchmultz/termux-app/actions/runs/42628156467)
+- [Baseline Actions run42628156467](https://github.com/fitchmultz/termux-app/actions/runs/42628156467)
   at `4ecee689de7cb94f1e4dc090877d25e594240c05`: the identical native capture
   fixture passed both API28/37 cases and produced both PNGs in
   [reports artifact13680811883](https://github.com/fitchmultz/termux-app/actions/runs/42628156467/artifacts/13680811883).
   The overall run **failed** on the existing
   `KeyboardNavigationTest.composingConnectionRestartsAfterActualFinishedSessionRemoval`
   assertion; it is not a green baseline suite.
-- [Initial candidate M1 run42629264130](https://github.com/fitchmultz/termux-app/actions/runs/42629264130)
+- [Initial candidate Actions run42629264130](https://github.com/fitchmultz/termux-app/actions/runs/42629264130)
   at `d86c54d9a303af164686ed3fcecaed03c6c46b78`: **failed**, with two failures
   among 424 app cases. Both were the API28/37 executions of
   `pngCropUsesSourcePixelsNotDeclaredSizeAndChecksScaleBeforeAllocation`.
@@ -121,7 +121,7 @@ screenshots. Source fixture hashes and actual run/artifact links belong in the P
   run or a completed release-APK verification. The baseline keyboard failure did
   not recur in this candidate run; no cause or input fix is inferred.
 
-- [Crop-fix M1 run42634570654](https://github.com/fitchmultz/termux-app/actions/runs/42634570654)
+- [Crop-fix Actions run42634570654](https://github.com/fitchmultz/termux-app/actions/runs/42634570654)
   at `eb15cd6010f800c4fe4d02c6ee45051aa5f790e9`: **all 24 Kitty graphics cases
   and both capture cases passed**, including strict PNG/RGB/RGBA crop/padding and
   original-cache reuse. The overall run **failed** the same existing keyboard
@@ -150,7 +150,7 @@ verifies its stronger preconditions and original session assertions. No unrecord
 preference readback or causal explanation of the earlier failure is inferred.
 ## Qualified feature head
 
-[M1 run42639240850](https://github.com/fitchmultz/termux-app/actions/runs/42639240850)
+[Actions run42639240850](https://github.com/fitchmultz/termux-app/actions/runs/42639240850)
 at `ef36c7e83a0f6949c67d504473243b92d7bb149e` passed all 637 tests across
 56 XML reports, with no failures, errors or skips. The 26 native Kitty graphics
 cases and both capture cases passed. This includes strict crop/padding assertions,

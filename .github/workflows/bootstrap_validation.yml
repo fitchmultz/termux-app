@@ -30,32 +30,18 @@ concurrency:
 jobs:
   bootstrap-validation:
     name: Offline bootstrap validation
-    runs-on: [self-hosted, Linux, home-linux]
+    runs-on: ubuntu-24.04
     container:
       image: ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
-      options: --platform linux/amd64
     timeout-minutes: 15
     steps:
-      - name: Prepare home Linux job container
+      - name: Prepare job container
         run: |
           set -euo pipefail
-          test "$RUNNER_OS" = Linux
-          [[ "$RUNNER_ARCH" = X64 || "$RUNNER_ARCH" = ARM64 ]]
-          test "$(uname -m)" = x86_64
           work="$(mktemp -d "$RUNNER_TEMP/fold-ci.XXXXXXXX")"
           printf 'FOLD_CI_WORK=%s\n' "$work" >> "$GITHUB_ENV"
-          runner_node_libs=()
-          if [ "$RUNNER_ARCH" = ARM64 ]; then
-            # JavaScript actions run this ARM64 runner's own Node inside the amd64 container.
-            dpkg --add-architecture arm64
-            sed -i '/^Types:/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
-            printf '%s\n' 'Types: deb' 'URIs: http://ports.ubuntu.com/ubuntu-ports/' 'Suites: noble noble-updates noble-security' \
-              'Components: main' 'Architectures: arm64' 'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
-              > /etc/apt/sources.list.d/ubuntu-ports.sources
-            runner_node_libs=(libc6:arm64 libstdc++6:arm64 libgcc-s1:arm64)
-          fi
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git curl unzip binutils dpkg gpgv gzip xz-utils zip jq python3 make file libstdc++6 "${runner_node_libs[@]}"
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git curl unzip binutils dpkg gpgv gzip xz-utils zip jq python3 make file libstdc++6
       - name: Clone repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

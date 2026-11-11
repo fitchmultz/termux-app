@@ -77,7 +77,7 @@ acceptance or tmux forwarding. Physical installation remains owner-controlled.
 
 ## Executed image evidence and inline-fixture correction
 
-Both M1 Android runs at `a8370ce39c55bafb57043d29128f8f947930984e`
+Both Android Actions runs at `a8370ce39c55bafb57043d29128f8f947930984e`
 ([push](https://github.com/fitchmultz/termux-app/actions/runs/42586900421),
 [PR](https://github.com/fitchmultz/termux-app/actions/runs/42586907322)) actually
 executed 379 tests each: 376 passed, three failed, zero errors/skips. All three

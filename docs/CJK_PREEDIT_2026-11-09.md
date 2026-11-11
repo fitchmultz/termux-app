@@ -54,7 +54,7 @@ SDK28/37; API24 is explicitly legacy, not a native-graphics claim.
 Synthetic candidate OFF/ON native captures can document the visible difference;
 they are not physical Fold screenshots or an unchanged-Fold16 build comparison.
 Authoring/static review is not execution. The qualified feature-head run below
-records M1 execution and both configured reviews. Actual Samsung/CJK/physical
+records Actions execution and both configured reviews. Actual Samsung/CJK/physical
 behavior remains unverified until owner acceptance, separate from release checks.
 No Node/runtime, package, shared Pi/dotfile, SDK/profile, certificate or prefix
 change is introduced here; the ongoing phone source build remains untouched.
@@ -111,7 +111,7 @@ stale callbacks and editor/pane/legacy negatives. The recording IMM establishes
 **restart requests**, not complete served-view rebinding, notification-shade
 behavior or physical keyboard-visibility acceptance.
 
-At prior head `4c5c77499a36d1070de723f209f2795182ac0d22`, M1
+At prior head `4c5c77499a36d1070de723f209f2795182ac0d22`, Actions
 [run42589920309](https://github.com/fitchmultz/termux-app/actions/runs/42589920309)
 executed243 app cases:239 passed,4 failed,zero errors/skips. Failures were the
 inherited drawer assertion and three API24 cases (one Honeyboard, two CJK)
@@ -193,7 +193,7 @@ enabled preference before exercising rebinding. Its restart, stale-commit reject
 and replacement-session input assertions remain unchanged.
 
 The finished-session fixture passes in
-[M1 run42639240850](https://github.com/fitchmultz/termux-app/actions/runs/42639240850)
+[Actions run42639240850](https://github.com/fitchmultz/termux-app/actions/runs/42639240850)
 at `ef36c7e83a0f6949c67d504473243b92d7bb149e`, including backend identity,
 immediate enabled readback, the real Activity's enabled preference, restart and
 stale-input rejection. All 637 tests and both configured reviews passed on that

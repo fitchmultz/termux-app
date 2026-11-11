@@ -45,7 +45,7 @@ combinations. The pin is not proof of the installed phone revision.
 Retains 37 upstream Android key-input methods and ten parser methods, adding a
 DEC2026 interaction case, actual InputConnection flags1/7 controls/composition/
 paste matrices, and Fold shortcut/pane-release/drawer coverage. These source
-counts are not executed-test counts. Exact-head M1 Android CI and independent Pi
+counts are not executed-test counts. Exact-head Android Actions CI and independent Pi
 Durable/Cursor reviews are required before merge. Physical Samsung/IME/Bluetooth
 acceptance remains unverified and owner-controlled, not an invented release gate.
 
@@ -77,7 +77,7 @@ CI execution and both independent review gates remain mandatory.
 
 ## Executed 7609 input coverage and drawer fixture repair
 
-Both M1 Android runs at `7609fab25b4b458d47ac35c61ab0a66b7389b324`
+Both Android Actions runs at `7609fab25b4b458d47ac35c61ab0a66b7389b324`
 ([push](https://github.com/fitchmultz/termux-app/actions/runs/42587758569),
 [PR](https://github.com/fitchmultz/termux-app/actions/runs/42587750827)) reached
 `app:testDebugUnitTest`: 191 executions, one failure each. All 78
