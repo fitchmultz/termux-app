@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives the stream gobbler a `RUNNING`/`SUSPENDED` state and one claim on its close notification, the local socket server a `STOPPED`/`RUNNING`/`CLOSED` lifecycle, and the AM socket server a `SETUP_NOT_RUN`/`ENABLED`/`DISABLED` value instead of a nullable `Boolean`. A local socket manager now reports running only after its server starts, and starting a closed server returns an explicit error instead of leaving a server that reports running with no listener.
+
 - Gives text selection a named lifecycle (`HIDDEN`, `JUST_SHOWN`, `ACTIVE`). The 300 ms guard against a hide that follows a show is part of the state instead of an age check on a bare boolean, and the action mode is documented as owned for exactly the active interval.
 
 - Gives the split layout one intent value (`SINGLE`, `DUAL`, `DUAL_COMPACT_FORCED`) and a three-value measured width class instead of two booleans plus a nullable `Boolean` that also meant "not measured yet". The file picker in flight is one record, the editor's draft-suppression guard and the consumed creation intent have names that say what they mean, and the evidence store's import has an explicit `IDLE`/`RUNNING` state alongside the preference that survives process death.

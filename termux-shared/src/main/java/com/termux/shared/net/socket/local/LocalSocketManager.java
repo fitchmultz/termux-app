@@ -46,7 +46,12 @@ public class LocalSocketManager {
     @NonNull protected final Thread.UncaughtExceptionHandler mLocalSocketManagerClientThreadUEH;
 
     /** Whether the {@link LocalServerSocket} managed by {@link LocalSocketManager} in running or not. */
-    protected boolean mIsRunning;
+    /**
+     * Server lifecycle. A manager starts once and then either runs or is closed; its listener
+     * thread cannot be started twice, so a closed server reports that instead of appearing to run.
+     */
+    protected enum State { STOPPED, RUNNING, CLOSED }
+    protected State mState = State.STOPPED;
 
 
     /**
@@ -61,7 +66,6 @@ public class LocalSocketManager {
         mServerSocket = new LocalServerSocket(this);
         mLocalSocketManagerClient = mLocalSocketRunConfig.getLocalSocketManagerClient();
         mLocalSocketManagerClientThreadUEH = getLocalSocketManagerClientThreadUEHOrDefault();
-        mIsRunning = false;
     }
 
     /**
@@ -69,6 +73,9 @@ public class LocalSocketManager {
      */
     public synchronized Error start() {
         Logger.logDebugExtended(LOG_TAG, "start\n" + mLocalSocketRunConfig);
+
+        if (mState == State.CLOSED)
+            return LocalSocketErrno.ERRNO_SERVER_SOCKET_ALREADY_CLOSED.getError(mLocalSocketRunConfig.getTitle());
 
         if (!localSocketLibraryLoaded) {
             try {
@@ -82,17 +89,18 @@ public class LocalSocketManager {
             }
         }
 
-        mIsRunning = true;
-        return mServerSocket.start();
+        Error error = mServerSocket.start();
+        if (error == null) mState = State.RUNNING;
+        return error;
     }
 
     /**
      * Stop the {@link LocalServerSocket} and stop listening for new {@link LocalClientSocket}.
      */
     public synchronized Error stop() {
-        if (mIsRunning) {
+        if (mState == State.RUNNING) {
             Logger.logDebugExtended(LOG_TAG, "stop\n" + mLocalSocketRunConfig);
-            mIsRunning = false;
+            mState = State.CLOSED;
             return mServerSocket.stop();
         }
         return null;
@@ -381,7 +389,7 @@ public class LocalSocketManager {
 
     /** Get {@link #mIsRunning}. */
     public boolean isRunning() {
-        return mIsRunning;
+        return mState == State.RUNNING;
     }
 
 

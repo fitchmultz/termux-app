@@ -89,8 +89,11 @@ public class StreamGobbler extends Thread {
     private final OnStreamClosedListener streamClosedListener;
     @Nullable
     private final Integer mLogLevel;
-    private volatile boolean active = true;
-    private volatile boolean calledOnClose = false;
+    /** Whether the gobbler is consuming its stream or parked for another reader. */
+    private enum Gobbling { RUNNING, SUSPENDED }
+    private volatile Gobbling gobbling = Gobbling.RUNNING;
+    /** The close notification is claimable once, whichever of the two paths reaches it first. */
+    private volatile boolean closeNotified;
 
     private static final String LOG_TAG = "StreamGobbler";
 
@@ -206,7 +209,7 @@ public class StreamGobbler extends Thread {
                 if (stringWriter != null) stringWriter.append(line).append("\n");
                 if (listWriter != null) listWriter.add(line);
                 if (lineListener != null) lineListener.onLine(line);
-                while (!active) {
+                while (gobbling == Gobbling.SUSPENDED) {
                     synchronized (this) {
                         try {
                             this.wait(128);
@@ -218,10 +221,7 @@ public class StreamGobbler extends Thread {
             }
         } catch (IOException e) {
             // reader probably closed, expected exit condition
-            if (streamClosedListener != null) {
-                calledOnClose = true;
-                streamClosedListener.onStreamClosed();
-            }
+            notifyStreamClosed();
         }
 
         // make sure our stream is closed and resources will be freed
@@ -231,12 +231,7 @@ public class StreamGobbler extends Thread {
             // read already closed
         }
 
-        if (!calledOnClose) {
-            if (streamClosedListener != null) {
-                calledOnClose = true;
-                streamClosedListener.onStreamClosed();
-            }
-        }
+        notifyStreamClosed();
     }
 
     /**
@@ -244,11 +239,9 @@ public class StreamGobbler extends Thread {
      */
     @AnyThread
     public void resumeGobbling() {
-        if (!active) {
-            synchronized (this) {
-                active = true;
-                this.notifyAll();
-            }
+        synchronized (this) {
+            gobbling = Gobbling.RUNNING;
+            this.notifyAll();
         }
     }
 
@@ -260,7 +253,7 @@ public class StreamGobbler extends Thread {
     @AnyThread
     public void suspendGobbling() {
         synchronized (this) {
-            active = false;
+            gobbling = Gobbling.SUSPENDED;
             this.notifyAll();
         }
     }
@@ -273,7 +266,7 @@ public class StreamGobbler extends Thread {
     @WorkerThread
     public void waitForSuspend() {
         synchronized (this) {
-            while (active) {
+            while (gobbling == Gobbling.RUNNING) {
                 try {
                     this.wait(32);
                 } catch (InterruptedException e) {
@@ -291,8 +284,17 @@ public class StreamGobbler extends Thread {
     @AnyThread
     public boolean isSuspended() {
         synchronized (this) {
-            return !active;
+            return gobbling == Gobbling.SUSPENDED;
         }
+    }
+
+    /** Tell the listener that the stream ended, exactly once, outside the lock. */
+    private void notifyStreamClosed() {
+        synchronized (this) {
+            if (closeNotified || streamClosedListener == null) return;
+            closeNotified = true;
+        }
+        streamClosedListener.onStreamClosed();
     }
 
     /**
@@ -318,7 +320,7 @@ public class StreamGobbler extends Thread {
     }
 
     void conditionalJoin() throws InterruptedException {
-        if (calledOnClose) return; // deadlock from callback, we're inside exit procedure
+        if (closeNotified) return; // deadlock from callback, we're inside exit procedure
         if (Thread.currentThread() == this) return; // can't join self
         join();
     }
