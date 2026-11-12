@@ -322,11 +322,23 @@ Java_com_termux_shared_net_socket_local_LocalSocketManager_closeSocketNative(JNI
         return getJniResult(env, logTitle, -1, "closeSocketNative(): Invalid fd \"" + to_string(fd) + "\" passed");
     }
 
+    // close() alone does not wake another Linux thread blocked in accept/read on this socket.
+    shutdown(fd, SHUT_RDWR);
     if (close(fd) == -1) {
         return getJniResult(env, logTitle, -1, errno, "closeSocketNative(): Failed to close socket fd " + to_string(fd));
     }
 
     // Return success
+    return getJniResult(env, logTitle);
+}
+
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_com_termux_shared_net_socket_local_LocalSocketManager_shutdownSocketNative(JNIEnv *env, jclass clazz,
+                                                                                jstring logTitle, jint fd) {
+    if (shutdown(fd, SHUT_RDWR) == -1) {
+        return getJniResult(env, logTitle, -1, errno, "shutdownSocketNative(): Failed to shut down socket fd " + to_string(fd));
+    }
     return getJniResult(env, logTitle);
 }
 
@@ -387,7 +399,7 @@ Java_com_termux_shared_net_socket_local_LocalSocketManager_readNative(JNIEnv *en
         }
 
         // Read data from socket
-        int ret = read(fd, current, bytes);
+        int ret = read(fd, current, bytes - bytesRead);
         if (ret == -1) {
             int errnoBackup = errno;
             env->ReleaseByteArrayElements(dataArray, data, 0);

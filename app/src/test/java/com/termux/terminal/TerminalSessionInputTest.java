@@ -14,8 +14,12 @@ import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 import org.robolectric.util.ReflectionHelpers;
+import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.*;
 
@@ -28,6 +32,8 @@ public class TerminalSessionInputTest {
     private int updates;
     private Runnable firstUpdate;
     private int newInputMessage;
+    private int finished;
+    private String finishedText;
 
     @Before public void setUp() {
         TermuxTerminalSessionClientBase client = new TermuxTerminalSessionClientBase() {
@@ -35,6 +41,10 @@ public class TerminalSessionInputTest {
                 assertSame(session, changedSession);
                 updates++;
                 if (updates == 1 && firstUpdate != null) firstUpdate.run();
+            }
+            @Override public void onSessionFinished(TerminalSession changedSession) {
+                finished++;
+                finishedText = text();
             }
         };
         session = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
@@ -104,5 +114,56 @@ public class TerminalSessionInputTest {
         assertEquals("PQ", text());
         assertEquals(2, updates);
         assertFalse(session.mMainThreadHandler.hasMessages(newInputMessage));
+    }
+
+    @Test public void nativeExitWaitsOffMainForReaderPublicationBeforeFinishedCallback() throws Exception {
+        CountDownLatch releaseTail = new CountDownLatch(1);
+        CountDownLatch readerReady = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread reader = new Thread(() -> {
+            try {
+                enqueue("first ");
+                readerReady.countDown();
+                assertTrue(releaseTail.await(5, TimeUnit.SECONDS));
+                enqueue("last output");
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        });
+        ReflectionHelpers.setField(session, "mInputReader", reader);
+        ReflectionHelpers.setField(session, "mShellState", TerminalSession.ShellState.RUNNING);
+        session.mShellPid = 1234;
+        reader.start();
+        assertTrue(readerReady.await(5, TimeUnit.SECONDS));
+        Thread waiter = new Thread(() -> {
+            try {
+                // Deliver the real native-waiter's result at its Java ownership boundary.
+                ReflectionHelpers.callInstanceMethod(session, "onProcessExit", ClassParameter.from(int.class, 7));
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        });
+        waiter.start();
+        try {
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            assertEquals("first", text());
+            assertEquals(0, finished);
+            assertTrue("Main may drain output while the waiter is still waiting", waiter.isAlive());
+        } finally {
+            releaseTail.countDown();
+            reader.join(5000);
+            waiter.join(5000);
+        }
+        assertNull(failure.get());
+        assertFalse(reader.isAlive());
+        assertFalse(waiter.isAlive());
+        assertEquals(-1, session.getPid());
+        assertFalse(session.tryWrite("input after waitpid"));
+        assertTrue("Session completion still awaits its main-thread final drain", session.isRunning());
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertEquals(1, finished);
+        assertTrue(finishedText, finishedText.contains("first last output"));
+        assertEquals(7, session.getExitStatus());
+        assertFalse(session.isRunning());
     }
 }

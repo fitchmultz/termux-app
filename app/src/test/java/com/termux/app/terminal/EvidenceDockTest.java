@@ -8,7 +8,11 @@ import android.widget.EditText;
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.app.TermuxApplication;
+import com.termux.app.TermuxService;
+import com.termux.shared.shell.command.ExecutionCommand;
 import com.termux.shared.termux.TermuxConstants;
+import com.termux.shared.termux.shell.TermuxShellManager;
+import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.shared.termux.settings.preferences.TermuxPreferenceConstants;
 import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
 import com.termux.shared.termux.terminal.TermuxTerminalViewClientBase;
@@ -132,8 +136,9 @@ public class EvidenceDockTest {
         restored.saveState(restoredState);
         android.content.Intent pending = restoredState.getParcelable("evidence_pending_share");
         assertEquals("shared note", pending.getStringExtra(android.content.Intent.EXTRA_TEXT));
-        ReflectionHelpers.callInstanceMethod(restored, "finishSharedIntent");
-        restored.saveState(restoredState);
+        // Keep the restored pending share for the stop/start checks below.
+        ReflectionHelpers.callInstanceMethod(dock, "finishSharedIntent");
+        dock.saveState(restoredState);
         EvidenceDock completed = new EvidenceDock(activity);
         completed.restoreState(restoredState);
         completed.handleSharedIntent(share);
@@ -141,6 +146,46 @@ public class EvidenceDockTest {
         completed.saveState(completedState);
         assertTrue(completedState.getBoolean("evidence_share_handled"));
         assertNull(completedState.getParcelable("evidence_pending_share"));
+
+        TermuxService service = Robolectric.buildService(TermuxService.class).get();
+        TermuxShellManager manager = new TermuxShellManager(activity);
+        ReflectionHelpers.setField(service, "mShellManager", manager);
+        ReflectionHelpers.setField(activity, "mTermuxService", service);
+        for (String name : new String[]{"Short-lived", "Still running"}) {
+            TerminalSession terminal = session(name);
+            ExecutionCommand command = new ExecutionCommand();
+            TermuxSession wrapper =
+                ReflectionHelpers.callConstructor(TermuxSession.class,
+                    ClassParameter.from(TerminalSession.class, terminal),
+                    ClassParameter.from(ExecutionCommand.class, command),
+                    ClassParameter.from(TermuxSession.TermuxSessionClient.class, null),
+                    ClassParameter.from(boolean.class, false));
+            manager.trackSession(wrapper);
+        }
+        restored.onStart();
+        android.app.AlertDialog beforeStop = ShadowAlertDialog.getLatestAlertDialog();
+        assertTrue(beforeStop.isShowing());
+        restored.onStop();
+        assertFalse(beforeStop.isShowing());
+        restored.onStart();
+        android.app.AlertDialog resumed = ShadowAlertDialog.getLatestAlertDialog();
+        assertNotSame(beforeStop, resumed);
+        assertTrue(resumed.isShowing());
+        manager.untrackSession(manager.mTermuxSessions.get(0));
+        resumed.getListView().performItemClick(null, 0, 0);
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        assertNull(activity.getCurrentSession());
+        assertFalse(((TermuxApplication) activity.getApplication()).getEvidenceStore().isImporting());
+        android.app.AlertDialog refreshed = ShadowAlertDialog.getLatestAlertDialog();
+        assertNotSame(resumed, refreshed);
+        assertEquals(1, refreshed.getListView().getAdapter().getCount());
+        TestSessions.markShell(manager.mTermuxSessions.get(0).getTerminalSession(), -1);
+        refreshed.getListView().performItemClick(null, 0, 0);
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        assertNull(activity.getCurrentSession());
+        assertFalse(((TermuxApplication) activity.getApplication()).getEvidenceStore().isImporting());
+        restored.saveState(restoredState);
+        assertNotNull(restoredState.getParcelable("evidence_pending_share"));
         dock.dispose();
         restored.dispose();
         completed.dispose();

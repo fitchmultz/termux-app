@@ -51,7 +51,7 @@ public class LocalSocketManager {
      * thread cannot be started twice, so a closed server reports that instead of appearing to run.
      */
     protected enum State { STOPPED, RUNNING, CLOSED }
-    protected State mState = State.STOPPED;
+    protected volatile State mState = State.STOPPED;
 
 
     /**
@@ -76,6 +76,7 @@ public class LocalSocketManager {
 
         if (mState == State.CLOSED)
             return LocalSocketErrno.ERRNO_SERVER_SOCKET_ALREADY_CLOSED.getError(mLocalSocketRunConfig.getTitle());
+        if (mState == State.RUNNING) return null;
 
         if (!localSocketLibraryLoaded) {
             try {
@@ -154,6 +155,18 @@ public class LocalSocketManager {
             return closeSocketNative(serverTitle, fd);
         } catch (Throwable t) {
             String message = "Exception in closeSocketNative()";
+            Logger.logStackTraceWithMessage(LOG_TAG, message, t);
+            return new JniResult(message, t);
+        }
+    }
+
+    /** Wake socket I/O without releasing a descriptor still owned by its listener thread. */
+    @Nullable
+    public static JniResult shutdownSocket(@NonNull String serverTitle, int fd) {
+        try {
+            return shutdownSocketNative(serverTitle, fd);
+        } catch (Throwable t) {
+            String message = "Exception in shutdownSocketNative()";
             Logger.logStackTraceWithMessage(LOG_TAG, message, t);
             return new JniResult(message, t);
         }
@@ -445,6 +458,7 @@ public class LocalSocketManager {
     @Nullable private static native JniResult createServerSocketNative(@NonNull String serverTitle, @NonNull byte[] path, int backlog);
 
     @Nullable private static native JniResult closeSocketNative(@NonNull String serverTitle, int fd);
+    @Nullable private static native JniResult shutdownSocketNative(@NonNull String serverTitle, int fd);
 
     @Nullable private static native JniResult acceptNative(@NonNull String serverTitle, int fd);
 

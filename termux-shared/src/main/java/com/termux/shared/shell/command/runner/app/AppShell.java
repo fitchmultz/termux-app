@@ -39,6 +39,8 @@ public final class AppShell {
     private final Process mProcess;
     private final ExecutionCommand mExecutionCommand;
     private final AppShellClient mAppShellClient;
+    /** A failed command may suppress delivery, but its worker still owns cleanup and output. */
+    private boolean mProcessResultOnExit = true;
 
     private static final String LOG_TAG = "AppShell";
 
@@ -47,6 +49,7 @@ public final class AppShell {
         this.mProcess = process;
         this.mExecutionCommand = executionCommand;
         this.mAppShellClient = appShellClient;
+        executionCommand.resultData.exitCode = null;
     }
 
     /**
@@ -172,8 +175,6 @@ public final class AppShell {
 
         Logger.logDebug(LOG_TAG, "Running \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" AppShell with pid " + mExecutionCommand.mPid);
 
-        mExecutionCommand.resultData.exitCode = null;
-
         // setup stdin, and stdout and stderr gobblers
         DataOutputStream STDIN = new DataOutputStream(mProcess.getOutputStream());
         StreamGobbler STDOUT = new StreamGobbler(mExecutionCommand.mPid + "-stdout", mProcess.getInputStream(), mExecutionCommand.resultData.stdout, mExecutionCommand.backgroundCustomLogLevel);
@@ -183,28 +184,26 @@ public final class AppShell {
         STDOUT.start();
         STDERR.start();
 
-        if (!DataUtils.isNullOrEmpty(mExecutionCommand.stdin)) {
-            try {
+        try {
+            if (!DataUtils.isNullOrEmpty(mExecutionCommand.stdin)) {
                 STDIN.write((mExecutionCommand.stdin + "\n").getBytes(StandardCharsets.UTF_8));
                 STDIN.flush();
-                STDIN.close();
-                //STDIN.write("exit\n".getBytes(StandardCharsets.UTF_8));
-                //STDIN.flush();
-            } catch(IOException e) {
-                if (e.getMessage() != null && (e.getMessage().contains("EPIPE") || e.getMessage().contains("Stream closed"))) {
-                    // Method most horrid to catch broken pipe, in which case we
-                    // do nothing. The command is not a shell, the shell closed
-                    // STDIN, the script already contained the exit command, etc.
-                    // these cases we want the output instead of returning null.
-                } else {
-                    // other issues we don't know how to handle, leads to
-                    // returning null
-                    mExecutionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), context.getString(R.string.error_exception_received_while_executing_app_shell_command, mExecutionCommand.getCommandIdAndLabelLogString(), e.getMessage()), e);
-                    mExecutionCommand.resultData.exitCode = 1;
-                    AppShell.processAppShellResult(this, null);
-                    kill();
-                    return;
+            }
+            STDIN.close();
+        } catch(IOException e) {
+            if (e.getMessage() != null && (e.getMessage().contains("EPIPE") || e.getMessage().contains("Stream closed"))) {
+                // Method most horrid to catch broken pipe, in which case we
+                // do nothing. The command is not a shell, the shell closed
+                // STDIN, the script already contained the exit command, etc.
+                // these cases we want the output instead of returning null.
+            } else {
+                synchronized (this) {
+                    if (!mExecutionCommand.isStateFailed()) {
+                        mExecutionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), context.getString(R.string.error_exception_received_while_executing_app_shell_command, mExecutionCommand.getCommandIdAndLabelLogString(), e.getMessage()), e);
+                        mExecutionCommand.resultData.exitCode = 1;
+                    }
                 }
+                kill();
             }
         }
 
@@ -221,6 +220,9 @@ public final class AppShell {
         } catch (IOException e) {
             // might be closed already
         }
+        synchronized (this) {
+            if (mExecutionCommand.isStateFailed()) closeProcessOutputStreams();
+        }
         STDOUT.join();
         STDERR.join();
         mProcess.destroy();
@@ -231,16 +233,14 @@ public final class AppShell {
         else
             Logger.logDebug(LOG_TAG, "The \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" AppShell with pid " + mExecutionCommand.mPid + " exited with code: " + exitCode);
 
-        // If the execution command has already failed, like SIGKILL was sent, then don't continue
-        if (mExecutionCommand.isStateFailed()) {
-            Logger.logDebug(LOG_TAG, "Ignoring setting \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" AppShell state to ExecutionState.EXECUTED and processing results since it has already failed");
-            return;
+        synchronized (this) {
+            if (mExecutionCommand.isStateFailed()) {
+                if (!mProcessResultOnExit) return;
+            } else {
+                mExecutionCommand.resultData.exitCode = exitCode;
+                if (!mExecutionCommand.setState(ExecutionState.EXECUTED)) return;
+            }
         }
-
-        mExecutionCommand.resultData.exitCode = exitCode;
-
-        if (!mExecutionCommand.setState(ExecutionState.EXECUTED))
-            return;
 
         AppShell.processAppShellResult(this, null);
     }
@@ -253,28 +253,47 @@ public final class AppShell {
      * @param processResult If set to {@code true}, then the {@link #processAppShellResult(AppShell, ExecutionCommand)}
      *                      will be called to process the failure.
      */
-    public void killIfExecuting(@NonNull final Context context, boolean processResult) {
+    public synchronized void killIfExecuting(@NonNull final Context context, boolean processResult) {
         // If execution command has already finished executing, then no need to process results or send SIGKILL
         if (mExecutionCommand.hasExecuted()) {
             Logger.logDebug(LOG_TAG, "Ignoring sending SIGKILL to \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" AppShell since it has already finished executing");
             return;
         }
 
-        // Decided before recording the failure: FAILED sorts after EXECUTED, so once the failure is
-        // recorded no state query can tell that this shell still owns a running process.
+        // The worker releases output only after reaping the child and joining both readers.
         final boolean ownsRunningProcess = mExecutionCommand.canBeKilled();
 
         Logger.logDebug(LOG_TAG, "Send SIGKILL to \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" AppShell");
 
         if (mExecutionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), context.getString(R.string.error_sending_sigkill_to_process))) {
-            if (processResult) {
-                mExecutionCommand.resultData.exitCode = 137; // SIGKILL
-                AppShell.processAppShellResult(this, null);
-            }
+            mExecutionCommand.resultData.exitCode = 137; // SIGKILL
+            mProcessResultOnExit = processResult;
         }
 
         if (ownsRunningProcess) {
             kill();
+        }
+        // Cancellation can also arrive after waitFor(), while the worker is joining readers.
+        closeProcessOutputStreams();
+    }
+
+    /**
+     * End failed-command output ownership without waiting for inherited writers to reach EOF.
+     * Android's ProcessPipeInputStream owns its FileInputStream; unsynchronized close signals
+     * blocked reads through IoBridge.closeAndSignalBlockedThreads.
+     * https://android.googlesource.com/platform/libcore/+/android-7.0.0_r1/ojluni/src/main/java/java/lang/UNIXProcess.java#271
+     * https://android.googlesource.com/platform/libcore/+/android-7.0.0_r1/luni/src/main/java/libcore/io/IoBridge.java#196
+     */
+    private void closeProcessOutputStreams() {
+        try {
+            mProcess.getInputStream().close();
+        } catch (IOException ignored) {
+            // Already closed by a reader or the process reaper.
+        }
+        try {
+            mProcess.getErrorStream().close();
+        } catch (IOException ignored) {
+            // Still attempt both owned streams if the first close failed.
         }
     }
 

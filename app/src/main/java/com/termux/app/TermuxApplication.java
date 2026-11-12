@@ -21,6 +21,12 @@ public class TermuxApplication extends Application {
 
     private static final String LOG_TAG = "TermuxApplication";
     private com.termux.app.terminal.EvidenceStore mEvidenceStore;
+    private TermuxInstaller mBootstrapInstaller;
+
+    TermuxInstaller getBootstrapInstaller() {
+        if (mBootstrapInstaller == null) mBootstrapInstaller = new TermuxInstaller(this);
+        return mBootstrapInstaller;
+    }
 
     public com.termux.app.terminal.EvidenceStore getEvidenceStore() {
         if (mEvidenceStore == null) mEvidenceStore = new com.termux.app.terminal.EvidenceStore(this);

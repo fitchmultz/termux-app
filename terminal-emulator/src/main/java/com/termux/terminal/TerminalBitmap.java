@@ -419,6 +419,11 @@ public class TerminalBitmap {
         return mBitmapNum;
     }
 
+    /**
+     * Borrows the placement's pixels, which may also be retained by completed screen snapshots.
+     * Callers must not mutate or recycle the bitmap, including after live-buffer eviction.
+     * A retained reference keeps the pixels alive; a caller needing writable pixels must copy them.
+     */
     public Bitmap getBitmap() {
         return mBitmap;
     }

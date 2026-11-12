@@ -13,9 +13,7 @@ import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.ArrayList;
@@ -108,16 +106,17 @@ public final class TerminalSession extends TerminalOutput {
      *
      * <p>{@link #CREATED}: no emulator and no process. {@link #STARTING}: setup is in progress, so
      * input is rejected and callbacks wait. {@link #RUNNING}: the process exists and input is
-     * accepted. {@link #EXITED}: the process was reaped and its exit status is valid. {@link #FAILED}:
+     * accepted. {@link #DRAINING}: the process was reaped, input is closed and the reader is
+     * publishing its final output. {@link #EXITED}: output is complete and exit status is valid. {@link #FAILED}:
      * setup threw; the same cleanup ran, and the waiter must not publish a second UI exit.
      *
      * <p>{@link #CANCELLED} is a session finished before its shell ever started: nothing was
      * signalled, and it must stop reporting itself as running.
      *
-     * <p>Only {@code STARTING → RUNNING/FAILED}, {@code RUNNING → EXITED} and
+     * <p>Only {@code STARTING → RUNNING/FAILED}, {@code RUNNING → DRAINING → EXITED} and
      * {@code CREATED → CANCELLED} happen.
      */
-    public enum ShellState { CREATED, STARTING, RUNNING, EXITED, FAILED, CANCELLED }
+    public enum ShellState { CREATED, STARTING, RUNNING, DRAINING, EXITED, FAILED, CANCELLED }
     private volatile ShellState mShellState = ShellState.CREATED;
     /** UTF-8 scratch for one code point; guarded by this until copied into the input ring. */
     private final byte[] mUtf8InputBuffer = new byte[5];
@@ -126,9 +125,9 @@ public final class TerminalSession extends TerminalOutput {
     TerminalSessionClient mClient;
 
     /** The pid of the shell process. 0 if not started and -1 if finished running. */
-    int mShellPid;
+    volatile int mShellPid;
 
-    /** The exit status of the shell process. Only valid if ${@link #mShellPid} is -1. */
+    /** The exit status of the shell process. Only valid once {@link #isRunning()} is false. */
     int mShellExitStatus;
 
     /**
@@ -136,6 +135,8 @@ public final class TerminalSession extends TerminalOutput {
      * {@link JNI#createSubprocess(String, String, String[], String[], int[], int, int, int, int)}.
      */
     private int mTerminalFileDescriptor = -1;
+    private TerminalPty mPty;
+    private Thread mInputReader;
 
     /** Set by the application for user identification of session, not by terminal. */
     public String mSessionName;
@@ -220,11 +221,9 @@ public final class TerminalSession extends TerminalOutput {
                             }
                         }
                     }
-                    if (interrupted) Thread.currentThread().interrupt();
                     final int pid = processId[0];
-                    if (pid <= 0) return;
-                    int processExitCode = JNI.waitFor(pid);
-                    mMainThreadHandler.sendMessage(mMainThreadHandler.obtainMessage(MSG_PROCESS_EXITED, processExitCode));
+                    if (pid > 0) onProcessExit(JNI.waitFor(pid));
+                    if (interrupted) Thread.currentThread().interrupt();
                 }
             };
             waiter.start();
@@ -238,17 +237,17 @@ public final class TerminalSession extends TerminalOutput {
             final int pid = startedPid;
             waiter.setName("TermSessionWaiter[pid=" + pid + "]");
             mClient.setTerminalShellPid(this, pid);
-            final FileDescriptor terminalFileDescriptorWrapped = wrapFileDescriptor(mTerminalFileDescriptor, mClient);
-            if (terminalFileDescriptorWrapped == null)
-                throw new IllegalStateException("Cannot access terminal file descriptor");
+            final TerminalPty pty = mPty = new TerminalPty(mTerminalFileDescriptor);
+            pty.prepareReader();
+            final FileDescriptor terminalFileDescriptorWrapped = pty.getFileDescriptor();
 
-            new Thread("TermSessionInputReader[pid=" + pid + "]") {
+            mInputReader = new Thread("TermSessionInputReader[pid=" + pid + "]") {
                 @Override
                 public void run() {
-                    try (InputStream termIn = new FileInputStream(terminalFileDescriptorWrapped)) {
+                    try (FileInputStream termIn = new FileInputStream(terminalFileDescriptorWrapped)) {
                         final byte[] buffer = new byte[4096];
                         while (true) {
-                            int read = termIn.read(buffer);
+                            int read = pty.read(termIn, buffer);
                             if (read == -1) return;
                             if (!mProcessToTerminalIOQueue.write(buffer, 0, read)) return;
                             scheduleInputProcessing();
@@ -257,7 +256,8 @@ public final class TerminalSession extends TerminalOutput {
                         // Ignore, just shutting down.
                     }
                 }
-            }.start();
+            };
+            mInputReader.start();
 
             new Thread("TermSessionOutputWriter[pid=" + pid + "]") {
                 @Override
@@ -289,13 +289,51 @@ public final class TerminalSession extends TerminalOutput {
             } catch (Throwable secondary) {
                 suppressCleanupFailure(failure, secondary);
             }
-            throw failure;
+            if (failure instanceof RuntimeException) throw (RuntimeException) failure;
+            if (failure instanceof Error) throw (Error) failure;
+            throw new IllegalStateException("Cannot prepare terminal PTY reader", failure);
         } finally {
             synchronized (this) {
                 if (mShellState == ShellState.STARTING) mShellState = ShellState.RUNNING;
                 notifyAll();
             }
         }
+    }
+
+    /** The native waiter owns exit status; completion also waits for the reader's final bytes. */
+    private void onProcessExit(int exitCode) {
+        final TerminalPty pty;
+        final Thread inputReader;
+        synchronized (this) {
+            if (mShellState != ShellState.FAILED) {
+                mShellState = ShellState.DRAINING;
+                // waitpid released this PID: neither input nor a later stop may target it again.
+                mShellPid = -1;
+            }
+            pty = mPty;
+            inputReader = mInputReader;
+        }
+        if (pty != null) {
+            try {
+                pty.processExited();
+            } catch (IOException e) {
+                Logger.logStackTraceWithMessage(mClient, LOG_TAG, "Error signalling PTY reader", e);
+            }
+        }
+        boolean interrupted = false;
+        if (inputReader != null) {
+            // Main keeps draining the bounded queue while the existing waiter waits off-main.
+            while (inputReader.isAlive()) {
+                try {
+                    inputReader.join();
+                } catch (InterruptedException ignored) {
+                    interrupted = true;
+                }
+            }
+        }
+        mInputReader = null;
+        mMainThreadHandler.sendMessage(mMainThreadHandler.obtainMessage(MSG_PROCESS_EXITED, exitCode));
+        if (interrupted) Thread.currentThread().interrupt();
     }
 
     private static void suppressCleanupFailure(Throwable original, Throwable secondary) {
@@ -579,6 +617,7 @@ public final class TerminalSession extends TerminalOutput {
     /** Cleanup resources when the process exits. */
     void cleanupResources(int exitStatus) {
         final int descriptor;
+        final TerminalPty pty;
         synchronized (this) {
             for (InputReservation reservation : mInputReservations)
                 mTerminalToProcessIOQueue.cancel(reservation.reservation);
@@ -590,12 +629,23 @@ public final class TerminalSession extends TerminalOutput {
                 mShellState = ShellState.EXITED;
             descriptor = mTerminalFileDescriptor;
             mTerminalFileDescriptor = -1;
+            pty = mPty;
+            mPty = null;
         }
 
         // Stop the reader and writer threads, and close the I/O streams.
         mTerminalToProcessIOQueue.close();
         mProcessToTerminalIOQueue.close();
-        if (descriptor >= 0) JNI.close(descriptor);
+        if (pty != null) {
+            try {
+                pty.close();
+            } catch (IOException e) {
+                Logger.logStackTraceWithMessage(mClient, LOG_TAG, "Error closing terminal PTY", e);
+            }
+        } else if (descriptor >= 0) {
+            // Setup has not transferred the raw native descriptor to its Android owner yet.
+            JNI.close(descriptor);
+        }
     }
 
     @Override
@@ -604,7 +654,7 @@ public final class TerminalSession extends TerminalOutput {
     }
 
     public synchronized boolean isRunning() {
-        // Preserved meaning: false only once the process is unreachable (finished or failed setup).
+        // Completion includes final output delivery, even after waitpid has reaped the shell.
         return mShellState != ShellState.EXITED && mShellState != ShellState.FAILED &&
             mShellState != ShellState.CANCELLED;
     }
@@ -658,25 +708,6 @@ public final class TerminalSession extends TerminalOutput {
             Logger.logStackTraceWithMessage(mClient, LOG_TAG, "Error getting current directory", e);
         }
         return null;
-    }
-
-    private static FileDescriptor wrapFileDescriptor(int fileDescriptor, TerminalSessionClient client) {
-        FileDescriptor result = new FileDescriptor();
-        try {
-            Field descriptorField;
-            try {
-                descriptorField = FileDescriptor.class.getDeclaredField("descriptor");
-            } catch (NoSuchFieldException e) {
-                // For desktop java:
-                descriptorField = FileDescriptor.class.getDeclaredField("fd");
-            }
-            descriptorField.setAccessible(true);
-            descriptorField.set(result, fileDescriptor);
-        } catch (NoSuchFieldException | IllegalAccessException | IllegalArgumentException e) {
-            Logger.logStackTraceWithMessage(client, LOG_TAG, "Error accessing FileDescriptor#descriptor private field", e);
-            System.exit(1);
-        }
-        return result;
     }
 
     /** Schedule a queue drain after the PTY reader has enqueued input. Package-private for tests. */

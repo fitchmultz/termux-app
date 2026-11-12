@@ -6,7 +6,6 @@ import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
-import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.media.AudioAttributes;
 import android.media.SoundPool;
@@ -37,9 +36,7 @@ import com.termux.view.TerminalView;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
-import java.util.HashSet;
 import java.util.Properties;
-import java.util.Set;
 
 /** The {@link TerminalSessionClient} implementation that may require an {@link Activity} for its interface methods. */
 public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionClientBase {
@@ -47,13 +44,6 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     private final TermuxActivity mActivity;
 
     private static final int MAX_SESSIONS = 8;
-
-    /**
-     * Sessions whose removal the user requested while the process was still running. The finished
-     * callback consumes the request exactly once, like a claim: an exit that was not requested is
-     * judged only by its exit status, the visible session count and the platform.
-     */
-    private final Set<TerminalSession> mRemoveOnExit = new HashSet<>();
 
     private SoundPool mBellSoundPool;
 
@@ -153,27 +143,16 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     @Override
     public void onSessionFinished(@NonNull TerminalSession finishedSession) {
-        boolean sessionExitRequested = mRemoveOnExit.remove(finishedSession);
         TermuxService service = mActivity.getTermuxService();
 
         if (service == null || service.wantsToStop()) {
             // The service wants to stop as soon as possible.
+            if (service != null) service.onTerminalSessionFinished(finishedSession);
             mActivity.finishActivityIfNotFinishing();
             return;
         }
 
         int index = service.getIndexOfSession(finishedSession);
-
-        // For plugin commands that expect the result back, we should immediately close the session
-        // and send the result back instead of waiting fo the user to press enter.
-        // The plugin can handle/show errors itself.
-        boolean isPluginExecutionCommandWithPendingResult = false;
-        TermuxSession termuxSession = service.getTermuxSession(index);
-        if (termuxSession != null) {
-            isPluginExecutionCommandWithPendingResult = termuxSession.getExecutionCommand().isPluginExecutionCommandWithPendingResult();
-            if (isPluginExecutionCommandWithPendingResult)
-                Logger.logVerbose(LOG_TAG, "The \"" + finishedSession.mSessionName + "\" session will be force finished automatically since result in pending.");
-        }
 
         if (mActivity.isVisible() && !mActivity.isSessionVisible(finishedSession)) {
             // Show toast for non-current sessions that exit.
@@ -182,17 +161,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
                 mActivity.showToast(toToastTitle(finishedSession) + " - exited", true);
         }
 
-        if (shouldRemoveFinishedSession(sessionExitRequested,
-            mActivity.getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK),
-            service.getTermuxSessionsSize(), finishedSession.getExitStatus(), isPluginExecutionCommandWithPendingResult))
-            removeFinishedSession(finishedSession);
-    }
-
-    static boolean shouldRemoveFinishedSession(boolean sessionExitRequested, boolean isLeanback,
-                                               int sessionCount, int exitStatus, boolean pluginResultPending) {
-        if (sessionExitRequested || pluginResultPending) return true;
-        if (isLeanback) return sessionCount > 1;
-        return exitStatus == 0 || exitStatus == 130;
+        service.onTerminalSessionFinished(finishedSession);
     }
 
     @Override
@@ -406,12 +375,8 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
     }
 
     private void exitSession(TerminalSession session) {
-        if (session.isRunning()) {
-            mRemoveOnExit.add(session);
-            session.finishIfRunning();
-        } else {
-            removeFinishedSession(session);
-        }
+        TermuxService service = mActivity.getTermuxService();
+        if (service != null) service.requestSessionRemoval(session);
     }
 
     @SuppressLint("InflateParams")
@@ -509,7 +474,13 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         TermuxService service = mActivity.getTermuxService();
         if (service == null) return;
 
-        int index = service.removeTermuxSession(finishedSession);
+        service.removeTermuxSession(finishedSession);
+    }
+
+    /** Update pane selection after the service has removed a session. */
+    public void onSessionRemoved(TerminalSession finishedSession, int index) {
+        TermuxService service = mActivity.getTermuxService();
+        if (service == null) return;
         mActivity.getTerminalPanes().removeSession(finishedSession);
 
         int size = service.getTermuxSessionsSize();

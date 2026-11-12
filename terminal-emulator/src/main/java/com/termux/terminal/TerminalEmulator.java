@@ -283,7 +283,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     /** The terminal session this emulator is bound to. */
     private final TerminalOutput mSession;
 
-    TerminalSessionClient mClient;
+    private final TerminalSessionClientHandle mClient;
 
     /** Keeps track of the current argument of the current escape sequence. Ranges from 0 to MAX_ESCAPE_PARAMETERS-1. */
     private int mArgIndex;
@@ -626,9 +626,9 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     public TerminalEmulator(TerminalOutput session, int columns, int rows, int cellWidthPixels, int cellHeightPixels, Integer transcriptRows, TerminalSessionClient client) {
         mSession = session;
-        mScreen = mMainBuffer = new TerminalBuffer(client, columns, getTerminalTranscriptRows(transcriptRows), rows);
-        mAltBuffer = new TerminalBuffer(client, columns, rows, rows);
-        mClient = client;
+        mClient = new TerminalSessionClientHandle(client);
+        mScreen = mMainBuffer = new TerminalBuffer(mClient, columns, getTerminalTranscriptRows(transcriptRows), rows);
+        mAltBuffer = new TerminalBuffer(mClient, columns, rows, rows);
         mRows = rows;
         mColumns = columns;
         mCellWidthPixels = Math.max(1, cellWidthPixels);
@@ -638,7 +638,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     }
 
     public void updateTerminalSessionClient(TerminalSessionClient client) {
-        mClient = client;
+        mClient.setClient(client);
         setCursorStyle();
         setCursorBlinkState(true);
     }

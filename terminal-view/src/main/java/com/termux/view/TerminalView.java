@@ -445,7 +445,7 @@ public final class TerminalView extends View {
                 if (mEmulator == null) return true;
 
                 if (isSelectingText()) {
-                    stopTextSelectionMode();
+                    dismissTextSelectionMode();
                     return true;
                 }
                 requestFocus();
@@ -1311,7 +1311,7 @@ public final class TerminalView extends View {
             mClient.logInfo(LOG_TAG, "onKeyDown(keyCode=" + keyCode + ", isSystem()=" + event.isSystem() + ", event=" + event + ")");
         if (mEmulator == null) return true;
         if (isSelectingText()) {
-            stopTextSelectionMode();
+            dismissTextSelectionMode();
         }
 
         // Forget stale or intercepted presses before dispatching this event to application shortcuts.
@@ -2081,7 +2081,16 @@ public final class TerminalView extends View {
     }
 
     public void stopTextSelectionMode() {
+        removeCallbacks(mShowFloatingToolbar);
+        if (mTextSelectionCursorController != null && mTextSelectionCursorController.finish()) {
+            mClient.copyModeChanged(isSelectingText());
+            invalidate();
+        }
+    }
+
+    private void dismissTextSelectionMode() {
         if (hideTextSelectionCursors()) {
+            removeCallbacks(mShowFloatingToolbar);
             mClient.copyModeChanged(isSelectingText());
             invalidate();
         }

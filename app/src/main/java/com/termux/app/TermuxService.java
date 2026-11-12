@@ -106,6 +106,9 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
      */
     private TermuxShellManager mShellManager;
 
+    // Owned by the service so an Activity replacement cannot lose a requested exit.
+    private final java.util.Set<TerminalSession> mRemoveOnExit = new java.util.HashSet<>();
+
     /**
      * The service's wake locks. They are always acquired and released together, so they are held as
      * one value instead of two nullable fields that callers must keep in step.
@@ -251,7 +254,9 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
      * For TermuxSessions, all sessions will be killed, whether user manually exited Termux or if
      * onDestroy() was directly called because of unintended shutdown. The processing of results
      * will only be done if user manually exited termux or if the session was started by a plugin
-     * which **expects** the result back via a pending intent.
+     * which **expects** the result back via a pending intent. These result-owning sessions stay
+     * tracked until native exit and the readable PTY tail drain; signalling alone does not complete
+     * their output. Sessions without a required result may be untracked immediately.
      *
      * For TermuxTasks, only tasks that were started by a plugin which **expects** the result
      * back via a pending intent will be killed, whether user manually exited Termux or if
@@ -290,12 +295,13 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
         List<TermuxSession> termuxSessions = new ArrayList<>(mShellManager.mTermuxSessions);
         List<AppShell> termuxTasks = new ArrayList<>(mShellManager.mTermuxTasks);
-        List<ExecutionCommand> pendingPluginExecutionCommands = new ArrayList<>(mShellManager.mPendingPluginExecutionCommands);
+        List<ExecutionCommand> pendingPluginExecutionCommands = mShellManager.takePendingCommands();
 
         for (int i = 0; i < termuxSessions.size(); i++) {
             ExecutionCommand executionCommand = termuxSessions.get(i).getExecutionCommand();
             processResult = mStopRequest == StopRequest.USER || executionCommand.isPluginExecutionCommandWithPendingResult();
             termuxSessions.get(i).killIfExecuting(this, processResult);
+            // No result is owed in this shutdown path; do not retain the session for delivery.
             if (!processResult)
                 mShellManager.untrackSession(termuxSessions.get(i));
         }
@@ -431,14 +437,21 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         // Track the command as pending until it starts a session or task.
         mShellManager.trackPending(executionCommand);
 
-        if (Runner.APP_SHELL.equalsRunner(executionCommand.runner))
-            executeTermuxTaskCommand(executionCommand);
-        else if (Runner.TERMINAL_SESSION.equalsRunner(executionCommand.runner))
-            executeTermuxSessionCommand(executionCommand);
-        else {
-            String errmsg = getString(R.string.error_termux_service_unsupported_execution_command_runner, executionCommand.runner);
-            executionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), errmsg);
-            TermuxPluginUtils.processPluginExecutionCommandError(this, LOG_TAG, executionCommand, false);
+        try {
+            if (Runner.APP_SHELL.equalsRunner(executionCommand.runner))
+                executeTermuxTaskCommand(executionCommand);
+            else if (Runner.TERMINAL_SESSION.equalsRunner(executionCommand.runner))
+                executeTermuxSessionCommand(executionCommand);
+            else {
+                mShellManager.retirePending(executionCommand);
+                String errmsg = getString(R.string.error_termux_service_unsupported_execution_command_runner, executionCommand.runner);
+                executionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), errmsg);
+                TermuxPluginUtils.processPluginExecutionCommandError(this, LOG_TAG, executionCommand, false);
+            }
+        } finally {
+            // A started shell already took ownership. Rejected and reused requests have no shell
+            // to retire them later and must not be cancelled again during service shutdown.
+            mShellManager.retirePending(executionCommand);
         }
     }
 
@@ -461,6 +474,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         if (shellCreateMode == null) return;
         if (ShellCreateMode.NO_SHELL_WITH_NAME.equals(shellCreateMode)) {
             newTermuxTask = getTermuxTaskForShellName(executionCommand.shellName);
+            if (newTermuxTask != null) mShellManager.retirePending(executionCommand);
             if (newTermuxTask != null)
                 Logger.logVerbose(LOG_TAG, "Existing TermuxTask with \"" + executionCommand.shellName + "\" shell name found for shell create mode \"" + shellCreateMode.getMode() + "\"");
             else
@@ -498,6 +512,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         AppShell newTermuxTask = AppShell.execute(this, executionCommand, this,
             new TermuxShellEnvironment(), null,false);
         if (newTermuxTask == null) {
+            mShellManager.retirePending(executionCommand);
             Logger.logError(LOG_TAG, "Failed to execute new TermuxTask command for:\n" + executionCommand.getCommandIdAndLabelLogString());
             // If the execution command was started for a plugin, then process the error
             if (executionCommand.isPluginExecutionCommand)
@@ -556,6 +571,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         if (shellCreateMode == null) return;
         if (ShellCreateMode.NO_SHELL_WITH_NAME.equals(shellCreateMode)) {
             newTermuxSession = getTermuxSessionForShellName(executionCommand.shellName);
+            if (newTermuxSession != null) mShellManager.retirePending(executionCommand);
             if (newTermuxSession != null)
                 Logger.logVerbose(LOG_TAG, "Existing TermuxSession with \"" + executionCommand.shellName + "\" shell name found for shell create mode \"" + shellCreateMode.getMode() + "\"");
             else
@@ -608,6 +624,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         TermuxSession newTermuxSession = TermuxSession.execute(this, executionCommand, getTermuxTerminalSessionClient(),
             this, new TermuxShellEnvironment(), null, executionCommand.isPluginExecutionCommand);
         if (newTermuxSession == null) {
+            mShellManager.retirePending(executionCommand);
             Logger.logError(LOG_TAG, "Failed to execute new TermuxSession command for:\n" + executionCommand.getCommandIdAndLabelLogString());
             // If the execution command was started for a plugin, then process the error
             if (executionCommand.isPluginExecutionCommand)
@@ -635,6 +652,39 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         return newTermuxSession;
     }
 
+    public synchronized void requestSessionRemoval(TerminalSession session) {
+        if (getIndexOfSession(session) < 0) return;
+        if (session.isRunning()) {
+            // finishIfRunning can synchronously deliver completion for an unstarted session.
+            mRemoveOnExit.add(session);
+            session.finishIfRunning();
+        } else {
+            removeTermuxSession(session);
+        }
+    }
+
+    /** Completion policy is independent of the currently attached Activity. */
+    public synchronized void onTerminalSessionFinished(TerminalSession session) {
+        boolean requested = mRemoveOnExit.remove(session);
+        TermuxSession termuxSession = getTermuxSessionForTerminalSession(session);
+        if (termuxSession == null) return;
+        // Cancellation records FAILED before signalling the process. Its wrapper must finish
+        // after native exit/tail drain even when the exit status would normally stay for inspection.
+        // An ordinary nonzero shell exit does not mark the execution command FAILED.
+        if (termuxSession.getExecutionCommand().isStateFailed() || shouldRemoveFinishedSession(requested,
+            getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK),
+            getTermuxSessionsSize(), session.getExitStatus(),
+            termuxSession.getExecutionCommand().isPluginExecutionCommandWithPendingResult()))
+            removeTermuxSession(session);
+    }
+
+    static boolean shouldRemoveFinishedSession(boolean requested, boolean leanback,
+                                                       int count, int exitStatus, boolean pluginResultPending) {
+        if (requested || pluginResultPending) return true;
+        if (leanback) return count > 1;
+        return exitStatus == 0 || exitStatus == 130;
+    }
+
     /** Remove a TermuxSession. */
     public synchronized int removeTermuxSession(TerminalSession sessionToRemove) {
         int index = getIndexOfSession(sessionToRemove);
@@ -648,7 +698,10 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     /** Callback received when a {@link TermuxSession} finishes. */
     @Override
     public void onTermuxSessionExited(final TermuxSession termuxSession) {
-        if (termuxSession != null) {
+        if (termuxSession != null && mShellManager.mTermuxSessions.contains(termuxSession)) {
+            int index = getIndexOfSession(termuxSession.getTerminalSession());
+            mRemoveOnExit.remove(termuxSession.getTerminalSession());
+            mShellManager.untrackSession(termuxSession);
             ExecutionCommand executionCommand = termuxSession.getExecutionCommand();
 
             Logger.logVerbose(LOG_TAG, "The onTermuxSessionExited() callback called for \"" + executionCommand.getCommandIdAndLabelLogString() + "\" TermuxSession command");
@@ -657,7 +710,8 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             if (executionCommand != null && executionCommand.isPluginExecutionCommand)
                 TermuxPluginUtils.processPluginExecutionCommandResult(this, LOG_TAG, executionCommand);
 
-            mShellManager.untrackSession(termuxSession);
+            if (mTermuxTerminalSessionActivityClient != null)
+                mTermuxTerminalSessionActivityClient.onSessionRemoved(termuxSession.getTerminalSession(), index);
 
             // Notify {@link TermuxSessionsListViewController} that sessions list has been updated if
             // activity in is foreground
@@ -677,6 +731,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             return ShellCreateMode.ALWAYS; // Default
         else if (ShellCreateMode.NO_SHELL_WITH_NAME.equalsMode(executionCommand.shellCreateMode))
             if (DataUtils.isNullOrEmpty(executionCommand.shellName)) {
+                mShellManager.retirePending(executionCommand);
                 TermuxPluginUtils.setAndProcessPluginExecutionCommandError(this, LOG_TAG, executionCommand, false,
                     getString(R.string.error_termux_service_execution_command_shell_name_unset, executionCommand.shellCreateMode));
                 return null;
@@ -684,6 +739,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
                return ShellCreateMode.NO_SHELL_WITH_NAME;
             }
         else {
+            mShellManager.retirePending(executionCommand);
             TermuxPluginUtils.setAndProcessPluginExecutionCommandError(this, LOG_TAG, executionCommand, false,
                 getString(R.string.error_termux_service_unsupported_execution_command_shell_create_mode, executionCommand.shellCreateMode));
             return null;
@@ -889,6 +945,13 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         return mShellManager.mTermuxSessions.size();
     }
 
+    /**
+     * Borrows the manager's live session list, also observed by the activity's list adapter.
+     * This is not a snapshot and callers do not own membership or session cleanup.
+     * UI observation and membership changes belong on the main thread through the service.
+     * The method's lock protects only this call, not later iteration. Copy the list on its owning
+     * thread if stable membership is needed; copied entries remain live service-owned sessions.
+     */
     public synchronized List<TermuxSession> getTermuxSessions() {
         return mShellManager.mTermuxSessions;
     }

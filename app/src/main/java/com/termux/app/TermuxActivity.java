@@ -176,6 +176,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      * was killed by android.
      */
     private boolean mIsActivityRecreated = false;
+    /** This activity's bootstrap completion; the application owns the installation itself. */
+    private Runnable mBootstrapCompletion;
 
 
     private int mNavBarHeight;
@@ -315,6 +317,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         mLifecycle = Lifecycle.STARTED;
         if (mEvidenceDock != null) mEvidenceDock.onStart();
+        if (mBootstrapCompletion != null)
+            TermuxInstaller.setupBootstrapIfNeeded(this, mBootstrapCompletion);
 
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.onStart();
@@ -374,6 +378,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (isInvalid()) return;
 
         mLifecycle = Lifecycle.CREATED;
+        TermuxInstaller.detachBootstrapObserver(this);
         if (mTermuxService != null) mTermuxService.mWorkbenchState = saveWorkbench();
         if (mEvidenceDock != null) mEvidenceDock.onStop();
 
@@ -396,6 +401,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         Logger.logDebug(LOG_TAG, "onDestroy");
 
         if (isInvalid()) return;
+        TermuxInstaller.detachBootstrapObserver(this);
         if (mEvidenceDock != null) mEvidenceDock.dispose();
 
         if (mTermuxService != null) {
@@ -449,7 +455,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         if (mTermuxService.isTermuxSessionsEmpty()) {
             if (isVisible()) {
-                TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, () -> {
+                mBootstrapCompletion = () -> {
+                    mBootstrapCompletion = null;
                     if (mTermuxService == null) return; // Activity might have been destroyed.
                     try {
                         boolean launchFailsafe = false;
@@ -461,7 +468,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     } catch (WindowManager.BadTokenException e) {
                         // Activity finished - ignore.
                     }
-                });
+                };
+                TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, mBootstrapCompletion);
             } else {
                 // The service connected while not in foreground - just bail out.
                 finishActivityIfNotFinishing();

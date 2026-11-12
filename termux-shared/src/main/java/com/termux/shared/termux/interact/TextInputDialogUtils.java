@@ -21,6 +21,16 @@ public final class TextInputDialogUtils {
                                  int neutralButtonText, final TextSetListener onNeutral,
                                  int negativeButtonText, final TextSetListener onNegative,
                                  final DialogInterface.OnDismissListener onDismiss) {
+        textInputDialog(activity, titleText, initialText, positiveButtonText, onPositive,
+            neutralButtonText, onNeutral, negativeButtonText, onNegative, onDismiss);
+    }
+
+    /** Shows a text prompt and returns its dialog so its owner can dismiss it on replacement or destruction. */
+    public static AlertDialog textInputDialog(Activity activity, int titleText, String initialText,
+                                 int positiveButtonText, final TextSetListener onPositive,
+                                 int neutralButtonText, final TextSetListener onNeutral,
+                                 int negativeButtonText, final TextSetListener onNegative,
+                                 final DialogInterface.OnDismissListener onDismiss) {
         final EditText input = new EditText(activity);
         input.setSingleLine();
         if (initialText != null) {
@@ -67,6 +77,7 @@ public final class TextInputDialogUtils {
         dialogHolder[0] = builder.create();
         dialogHolder[0].setCanceledOnTouchOutside(false);
         dialogHolder[0].show();
+        return dialogHolder[0];
     }
 
 }

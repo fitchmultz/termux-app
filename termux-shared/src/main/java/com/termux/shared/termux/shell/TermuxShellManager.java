@@ -28,22 +28,30 @@ public class TermuxShellManager {
      * Note that this list is observed by an activity, like TermuxActivity.mTermuxSessionListViewController,
      * so any changes must be made on the UI thread and followed by a call to
      * {@link ArrayAdapter#notifyDataSetChanged()}.
+     * Borrowers do not own membership or session cleanup. A list copy freezes membership only;
+     * its entries remain live sessions. Copying and iteration use the same UI-thread discipline.
      */
     public final List<TermuxSession> mTermuxSessions = new ArrayList<>();
 
     /**
      * The background TermuxTasks which this service manages.
+     * This is a live service-owned list, not a snapshot or a caller-owned cleanup registry.
+     * Track and untrack through this manager. A copy freezes membership only, not task state.
      */
     public final List<AppShell> mTermuxTasks = new ArrayList<>();
 
     /**
      * The pending plugin ExecutionCommands that have yet to be processed by this service.
+     * This is a live service-owned list. Callers must not independently change membership or
+     * deliver results for its entries. Synchronization of a manager method does not protect a
+     * caller's later traversal; traversal and updates need the same owner-thread or lock discipline.
      */
     public final List<ExecutionCommand> mPendingPluginExecutionCommands = new ArrayList<>();
 
     /**
      * Where an execution command currently lives. A command moves
      * {@code PENDING → SESSION} or {@code PENDING → TASK}, and leaves either place when it finishes.
+     * Rejected or reused requests leave PENDING without starting a new shell; shutdown drains PENDING.
      * These are the only mutations this class performs on the lists above, so a command cannot be
      * pending and started at the same time.
      */
@@ -54,15 +62,27 @@ public class TermuxShellManager {
         mPendingPluginExecutionCommands.add(command);
     }
 
+    /** Retire a request after dispatch, including rejection or reuse of an existing shell. */
+    public synchronized boolean retirePending(@NonNull ExecutionCommand command) {
+        return mPendingPluginExecutionCommands.remove(command);
+    }
+
+    /** Transfer pending requests to shutdown before delivering any cancellation results. */
+    public synchronized List<ExecutionCommand> takePendingCommands() {
+        List<ExecutionCommand> pending = new ArrayList<>(mPendingPluginExecutionCommands);
+        mPendingPluginExecutionCommands.clear();
+        return pending;
+    }
+
     /** Track a started session, removing its command from the pending list. */
     public synchronized void trackSession(@NonNull TermuxSession session) {
-        mPendingPluginExecutionCommands.remove(session.getExecutionCommand());
+        retirePending(session.getExecutionCommand());
         mTermuxSessions.add(session);
     }
 
     /** Track a started background task, removing its command from the pending list. */
     public synchronized void trackTask(@NonNull AppShell task) {
-        mPendingPluginExecutionCommands.remove(task.getExecutionCommand());
+        retirePending(task.getExecutionCommand());
         mTermuxTasks.add(task);
     }
 

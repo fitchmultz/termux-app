@@ -1,13 +1,22 @@
 package com.termux.app.terminal;
 
 import android.os.Bundle;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.TextView;
 
+import com.google.android.material.button.MaterialButton;
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.shared.termux.extrakeys.ExtraKeysView;
+import com.termux.shared.termux.extrakeys.ExtraKeyButton;
+import com.termux.shared.termux.extrakeys.ExtraKeysInfo;
+import com.termux.shared.termux.extrakeys.ExtraKeysConstants;
 import com.termux.shared.termux.extrakeys.SpecialButton;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
@@ -19,10 +28,16 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
+import org.robolectric.annotation.LooperMode;
 import org.robolectric.util.ReflectionHelpers;
 import org.robolectric.util.ReflectionHelpers.ClassParameter;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.Assert.*;
 
@@ -155,6 +170,7 @@ public class FoldControlsTest {
     }
 
     @Test
+    @LooperMode(LooperMode.Mode.PAUSED)
     public void customMatricesKeepTheirRowsLabelsAndFullWidth() throws Exception {
         TermuxActivity activity = activity();
         View root = activity.findViewById(R.id.activity_termux_root_view);
@@ -171,5 +187,149 @@ public class FoldControlsTest {
             assertEquals("↹", ((TextView) keys.getChildAt(1)).getText().toString());
             assertTrue(keys.getChildAt(0).getWidth() >= (keys.getWidth() - 1) / 2);
         }
+
+        ExtraKeysInfo modifiers = new ExtraKeysInfo("[[CTRL, LEFT]]", "default",
+            ExtraKeysConstants.CONTROL_CHARS_ALIASES);
+        keys.reload(modifiers, 96);
+        View ctrl = keys.getChildAt(0);
+        touch(ctrl, MotionEvent.ACTION_DOWN, 1);
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(keys.getLongPressTimeout()));
+        touch(ctrl, MotionEvent.ACTION_UP, 1);
+        assertTrue(keys.readSpecialButton(SpecialButton.CTRL, true));
+        keys.reload(modifiers, 96);
+        assertTrue("A modifier still in the layout keeps its lock", keys.readSpecialButton(SpecialButton.CTRL, true));
+        keys.reload(new ExtraKeysInfo("[[{key: LEFT, popup: CTRL}]]", "default",
+            ExtraKeysConstants.CONTROL_CHARS_ALIASES), 96);
+        assertTrue("A modifier available through a popup keeps its lock", keys.readSpecialButton(SpecialButton.CTRL, true));
+        keys.reload(new ExtraKeysInfo("[[LEFT, RIGHT]]", "default",
+            ExtraKeysConstants.CONTROL_CHARS_ALIASES), 96);
+        assertFalse("A removed modifier cannot affect terminal input", keys.readSpecialButton(SpecialButton.CTRL, true));
+        keys.reload(modifiers, 96);
+        assertFalse("Re-adding a modifier cannot revive its old lock", keys.readSpecialButton(SpecialButton.CTRL, true));
+    }
+
+    private static void touch(View view, int action, float y) {
+        long now = SystemClock.uptimeMillis();
+        MotionEvent event = MotionEvent.obtain(now, now, action, 1, y, 0);
+        try {
+            assertTrue(view.dispatchTouchEvent(event));
+        } finally {
+            event.recycle();
+        }
+    }
+
+    @Test
+    @LooperMode(LooperMode.Mode.PAUSED)
+    public void heldKeysRepeatOnMainAndStopOnReleaseReloadOrDetach() throws Exception {
+        TermuxActivity activity = activity();
+        TerminalPaneLayout panes = activity.getTerminalPanes();
+        panes.setOnActiveChanged(null);
+        panes.showSession(session("Keys"));
+        View root = activity.findViewById(R.id.activity_termux_root_view);
+        ExtraKeysView keys = activity.getExtraKeysView();
+        ExtraKeysInfo layout = new ExtraKeysInfo("[[CTRL, LEFT]]", "default",
+            ExtraKeysConstants.CONTROL_CHARS_ALIASES);
+        keys.reload(layout, 96);
+        TerminalPaneLayoutTest.size(root, 900, 650);
+        ExtraKeysView.IExtraKeysView client = keys.getExtraKeysViewClient();
+        List<String> delivered = new ArrayList<>();
+        keys.setExtraKeysViewClient(new ExtraKeysView.IExtraKeysView() {
+            @Override
+            public void onExtraKeyButtonClick(View view, ExtraKeyButton info, MaterialButton button) {
+                assertSame(Looper.getMainLooper(), Looper.myLooper());
+                delivered.add(info.getKey());
+                client.onExtraKeyButtonClick(view, info, button);
+            }
+
+            @Override
+            public boolean performExtraKeyButtonHapticFeedback(View view, ExtraKeyButton info, MaterialButton button) {
+                return true;
+            }
+        });
+        keys.getChildAt(0).performClick();
+        View left = keys.getChildAt(1);
+        touch(left, MotionEvent.ACTION_DOWN, 1);
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(keys.getLongPressTimeout()));
+        assertEquals(1, delivered.size());
+        assertFalse("Repeated input consumes the one-shot modifier", keys.readSpecialButton(SpecialButton.CTRL, false));
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(keys.getLongPressRepeatDelay()));
+        assertEquals(2, delivered.size());
+        touch(left, MotionEvent.ACTION_UP, 1);
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(keys.getLongPressRepeatDelay()));
+        assertEquals("Release neither repeats nor clicks again", 2, delivered.size());
+
+        touch(left, MotionEvent.ACTION_DOWN, 1);
+        touch(left, MotionEvent.ACTION_CANCEL, 1);
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(keys.getLongPressTimeout()));
+        assertEquals(2, delivered.size());
+        touch(left, MotionEvent.ACTION_DOWN, 1);
+        keys.reload(layout, 96);
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(keys.getLongPressTimeout()));
+        assertEquals(2, delivered.size());
+        touch(keys.getChildAt(1), MotionEvent.ACTION_DOWN, 1);
+        ((ViewGroup) keys.getParent()).removeView(keys);
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(keys.getLongPressTimeout()));
+        assertEquals(2, delivered.size());
+    }
+
+    @Test
+    @LooperMode(LooperMode.Mode.PAUSED)
+    public void popupOwnershipEndsOnCancelDismissReloadOrDetach() throws Exception {
+        TermuxActivity activity = activity();
+        ExtraKeysView keys = activity.getExtraKeysView();
+        ExtraKeysInfo layout = new ExtraKeysInfo("[[{key: LEFT, popup: HOME}]]", "default",
+            ExtraKeysConstants.CONTROL_CHARS_ALIASES);
+        keys.reload(layout, 96);
+        List<String> delivered = new ArrayList<>();
+        keys.setExtraKeysViewClient(new ExtraKeysView.IExtraKeysView() {
+            @Override
+            public void onExtraKeyButtonClick(View view, ExtraKeyButton info, MaterialButton button) {
+                delivered.add(info.getKey());
+            }
+
+            @Override
+            public boolean performExtraKeyButtonHapticFeedback(View view, ExtraKeyButton info, MaterialButton button) {
+                return true;
+            }
+        });
+        View root = activity.findViewById(R.id.activity_termux_root_view);
+        TerminalPaneLayoutTest.size(root, 900, 650);
+        View left = keys.getChildAt(0);
+        touch(left, MotionEvent.ACTION_DOWN, 1);
+        touch(left, MotionEvent.ACTION_MOVE, -1);
+        PopupWindow popup = ReflectionHelpers.getField(keys, "mPopupWindow");
+        assertTrue(popup.isShowing());
+        touch(left, MotionEvent.ACTION_CANCEL, -1);
+        assertFalse(popup.isShowing());
+        assertNull(ReflectionHelpers.getField(keys, "mPopupWindow"));
+
+        touch(left, MotionEvent.ACTION_DOWN, 1);
+        touch(left, MotionEvent.ACTION_MOVE, -1);
+        popup = ReflectionHelpers.getField(keys, "mPopupWindow");
+        popup.dismiss();
+        assertNull("Framework dismissal releases the reference", ReflectionHelpers.getField(keys, "mPopupWindow"));
+        touch(left, MotionEvent.ACTION_CANCEL, -1);
+
+        touch(left, MotionEvent.ACTION_DOWN, 1);
+        touch(left, MotionEvent.ACTION_MOVE, -1);
+        popup = ReflectionHelpers.getField(keys, "mPopupWindow");
+        keys.reload(layout, 96);
+        assertFalse(popup.isShowing());
+        assertNull(ReflectionHelpers.getField(keys, "mPopupWindow"));
+        assertTrue("Cancelled or dismissed popups never send a key", delivered.isEmpty());
+        TerminalPaneLayoutTest.size(root, 900, 650);
+        left = keys.getChildAt(0);
+        touch(left, MotionEvent.ACTION_DOWN, 1);
+        touch(left, MotionEvent.ACTION_MOVE, -1);
+        touch(left, MotionEvent.ACTION_UP, -1);
+        assertEquals(java.util.Collections.singletonList("HOME"), delivered);
+        assertNull(ReflectionHelpers.getField(keys, "mPopupWindow"));
+        touch(left, MotionEvent.ACTION_DOWN, 1);
+        touch(left, MotionEvent.ACTION_MOVE, -1);
+        popup = ReflectionHelpers.getField(keys, "mPopupWindow");
+        ((ViewGroup) keys.getParent()).removeView(keys);
+        assertFalse(popup.isShowing());
+        assertNull(ReflectionHelpers.getField(keys, "mPopupWindow"));
+        assertEquals("Detach cannot deliver an alternate key", java.util.Collections.singletonList("HOME"), delivered);
     }
 }

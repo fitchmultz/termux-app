@@ -47,6 +47,13 @@ public final class EvidenceStore {
         }
     }
 
+    /**
+     * Borrows the store's live mutable draft for {@code handle}, loading it on first access.
+     * Access and edits belong on the main thread, as do import-result publication and listeners.
+     * Repeated calls share the same object for this store's lifetime, including activity replacement.
+     * Edits require {@link #save(String)} to persist. A caller needing independent work must copy
+     * the fields and file list; a borrowed draft is not a saved snapshot or a transfer of file ownership.
+     */
     public EvidenceDraft get(String handle) {
         EvidenceDraft draft = drafts.get(handle);
         if (draft == null) {

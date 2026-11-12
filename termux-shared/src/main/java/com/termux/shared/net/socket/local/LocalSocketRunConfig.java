@@ -52,7 +52,7 @@ public class LocalSocketRunConfig implements Serializable {
      * The {@link LocalServerSocket} file descriptor.
      * Value will be `>= 0` if socket has been created successfully and `-1` if not created or closed.
      */
-    protected int mFD = -1;
+    protected volatile int mFD = -1;
 
     /**
      * The {@link LocalClientSocket} receiving (SO_RCVTIMEO) timeout in milliseconds.

@@ -41,6 +41,7 @@ public final class HelpActivity extends AppCompatActivity {
         mWebView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (view != mWebView) return true;
                 if (url.equals(TermuxConstants.TERMUX_WIKI_URL) || url.startsWith(TermuxConstants.TERMUX_WIKI_URL + "/")) {
                     // Inline help.
                     setContentView(progressLayout);
@@ -59,10 +60,25 @@ public final class HelpActivity extends AppCompatActivity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                setContentView(mWebView);
+                if (view == mWebView) setContentView(view);
             }
         });
         mWebView.loadUrl(TermuxConstants.TERMUX_WIKI_URL);
+    }
+
+    @Override
+    protected void onDestroy() {
+        WebView webView = mWebView;
+        mWebView = null;
+        if (webView != null) {
+            // WebView.destroy() requires removal from the view system first.
+            if (webView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) webView.getParent()).removeView(webView);
+            }
+            webView.setWebViewClient(null);
+            webView.destroy();
+        }
+        super.onDestroy();
     }
 
     @Override

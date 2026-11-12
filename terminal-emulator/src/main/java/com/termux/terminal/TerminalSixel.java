@@ -83,6 +83,11 @@ public class TerminalSixel {
         return mClient;
     }
 
+    /**
+     * Borrows this decoder's working bitmap without transferring ownership.
+     * The decoder may mutate or replace it while parsing; callers must not mutate or recycle it.
+     * Reading belongs on the parser's owning thread. This is not a completed-screen snapshot.
+     */
     public Bitmap getBitmap() {
         return mBitmap;
     }

@@ -647,6 +647,11 @@ public final class TerminalBuffer {
 
 
 
+    /**
+     * Borrows the image placement for {@code style}, or returns {@code null}.
+     * The lookup lock does not transfer ownership or freeze the buffer. Published image pixels
+     * may be shared with completed frames and must not be mutated or recycled by callers.
+     */
     public synchronized TerminalBitmap getTerminalBitmap(long style) {
         int bitmapNum = TextStyle.getTerminalBitmapNum(style);
         return bitmapNum >= TERMINAL_BITMAP__NUM_START ? mTerminalBitmaps.get(bitmapNum): null;
@@ -670,6 +675,11 @@ public final class TerminalBuffer {
         mTerminalSixel = null;
     }
 
+    /**
+     * Borrows published pixels for {@code style}, or returns {@code null}.
+     * Callers must not mutate or recycle them, even after the live placement is removed.
+     * Copy only when writable pixels are needed; ordinary drawing uses the shared bitmap.
+     */
     public synchronized Bitmap getSixelBitmap(long style) {
         TerminalBitmap terminalBitmap = getTerminalBitmap(style);
         return terminalBitmap != null ? terminalBitmap.mBitmap : null;
@@ -796,6 +806,10 @@ public final class TerminalBuffer {
     }
 
 
+    /**
+     * Borrows stored Kitty pixels, or returns {@code null}. Placements and completed frames may
+     * retain the same bitmap. Callers must not mutate or recycle it when replacing or deleting an image.
+     */
     synchronized Bitmap getKittyImage(long imageId) { return mKittyImages.get(imageId); }
 
     synchronized void storeKittyImage(long imageId, Bitmap source) {

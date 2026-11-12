@@ -10,6 +10,8 @@ The [offline default-tools profile](tools/bootstrap/README.md) adds Git, OpenSSH
 
 For background work, see [Android process restrictions, boot scripts, and temporary-file cleanup](docs/ANDROID_BACKGROUND.md).
 
+For app development, see [resource ownership, lifetimes, and borrowed APIs](docs/OWNERSHIP.md).
+
 ## Upstream documentation (reference)
 
 The installation/signing and library-publication instructions below describe upstream Termux, not this fork.

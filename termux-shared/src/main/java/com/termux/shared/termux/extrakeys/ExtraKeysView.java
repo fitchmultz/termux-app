@@ -8,15 +8,12 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.util.AttributeSet;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ScheduledExecutorService;
 
 import java.util.Map;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.stream.Collectors;
 
 import android.view.HapticFeedbackConstants;
@@ -203,26 +200,21 @@ public final class ExtraKeysView extends GridLayout {
      * and a swipe up action is done on an extra key. */
     protected PopupWindow mPopupWindow;
 
-    /**
-     * The one press currently repeating or waiting to lock a special button. Its popup is tracked
-     * separately by {@link #mPopupWindow} because it outlives the press that opened it.
-     */
+    /** The one press currently repeating or waiting to lock a special button. */
     private final ExtraKeyPress mActivePress = new ExtraKeyPress();
 
     private final class ExtraKeyPress {
-        private ScheduledExecutorService repetitions;
-        private Handler handler;
+        private final Handler handler = new Handler(Looper.getMainLooper());
+        private Runnable repeat;
         private SpecialButtonsLongHoldRunnable hold;
         /** Whether repetition or a long hold already acted, so the release must not click again. */
         private boolean handled;
 
         /** Return to idle, cancelling any repeat or pending lock. */
         void cancel() {
-            if (repetitions != null) {
-                repetitions.shutdownNow();
-                repetitions = null;
-            }
-            if (hold != null && handler != null) handler.removeCallbacks(hold);
+            if (repeat != null) handler.removeCallbacks(repeat);
+            repeat = null;
+            if (hold != null) handler.removeCallbacks(hold);
             hold = null;
         }
     }
@@ -258,31 +250,46 @@ public final class ExtraKeysView extends GridLayout {
     }
 
 
-    /** Get {@link #mRepetitiveKeys}. */
+    /** Returns a detached list of repetitive key names, or {@code null}. Access is on the UI thread. */
     public List<String> getRepetitiveKeys() {
         if (mRepetitiveKeys == null) return null;
         return mRepetitiveKeys.stream().map(String::new).collect(Collectors.toList());
     }
 
-    /** Set {@link #mRepetitiveKeys}. Must not be {@code null}. */
+    /**
+     * Retains {@code repetitiveKeys} without copying. Must not be {@code null}.
+     * Set on the UI thread. The list remains shared until replaced or this view is released.
+     * Callers needing to edit their list independently must pass a copy.
+     */
     public void setRepetitiveKeys(@NonNull List<String> repetitiveKeys) {
         mRepetitiveKeys = repetitiveKeys;
     }
 
 
-    /** Get {@link #mSpecialButtons}. */
+    /**
+     * Returns a new map, or {@code null}, on the UI thread.
+     * Its {@link SpecialButtonState} values are still the view's live objects, not snapshots.
+     * Mutating the returned map does not configure the view; state changes remain shared.
+     */
     public Map<SpecialButton, SpecialButtonState> getSpecialButtons() {
         if (mSpecialButtons == null) return null;
         return mSpecialButtons.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
-    /** Get {@link #mSpecialButtonsKeys}. */
+    /** Returns a detached set of special key names, or {@code null}. Access is on the UI thread. */
     public Set<String> getSpecialButtonsKeys() {
         if (mSpecialButtonsKeys == null) return null;
         return mSpecialButtonsKeys.stream().map(String::new).collect(Collectors.toSet());
     }
 
-    /** Set {@link #mSpecialButtonsKeys}. Must not be {@code null}. */
+    /**
+     * Retains {@code specialButtons} and its live state values without copying, and derives the
+     * special-key name set at this call. Must not be {@code null}. Set on the UI thread.
+     * The view updates state and button references during use and layout reloads. Callers must not
+     * independently change the retained map's membership; a replacement goes through this setter.
+     * A caller needing separate modifier state must supply separate {@link SpecialButtonState}
+     * values, not just a shallow map copy.
+     */
     public void setSpecialButtons(@NonNull Map<SpecialButton, SpecialButtonState> specialButtons) {
         mSpecialButtons = specialButtons;
         mSpecialButtonsKeys = this.mSpecialButtons.keySet().stream().map(SpecialButton::getKey).collect(Collectors.toSet());
@@ -409,10 +416,10 @@ public final class ExtraKeysView extends GridLayout {
             return;
 
         stopScheduledExecutors();
-        if (mPopupWindow != null) dismissPopup();
+        dismissPopup();
 
         for(SpecialButtonState state : mSpecialButtons.values())
-            state.buttons = new ArrayList<>();
+            state.buttons.clear();
 
         removeAllViews();
 
@@ -423,9 +430,13 @@ public final class ExtraKeysView extends GridLayout {
         setRowCount(buttons.length);
         setColumnCount(maximumLength(buttons));
 
+        Set<String> availableModifiers = new HashSet<>();
         for (int row = 0; row < buttons.length; row++) {
             for (int col = 0; col < buttons[row].length; col++) {
                 final ExtraKeyButton buttonInfo = buttons[row][col];
+                if (isSpecialButton(buttonInfo)) availableModifiers.add(buttonInfo.getKey());
+                ExtraKeyButton popup = buttonInfo.getPopup();
+                if (popup != null && isSpecialButton(popup)) availableModifiers.add(popup.getKey());
 
                 MaterialButton button;
                 if (isSpecialButton(buttonInfo)) {
@@ -477,7 +488,7 @@ public final class ExtraKeysView extends GridLayout {
                     switch (event.getAction()) {
                         case MotionEvent.ACTION_DOWN:
                             view.setBackgroundColor(mButtonActiveBackgroundColor);
-                            // Start long press scheduled executors which will be stopped in next MotionEvent
+                            // Release or cancellation ends this press's pending work.
                             startScheduledExecutors(view, buttonInfo, button);
                             return true;
 
@@ -499,6 +510,7 @@ public final class ExtraKeysView extends GridLayout {
                         case MotionEvent.ACTION_CANCEL:
                             view.setBackgroundColor(mButtonBackgroundColor);
                             stopScheduledExecutors();
+                            dismissPopup();
                             return true;
 
                         case MotionEvent.ACTION_UP:
@@ -538,8 +550,17 @@ public final class ExtraKeysView extends GridLayout {
                 addView(button);
             }
         }
+        for (Map.Entry<SpecialButton, SpecialButtonState> entry : mSpecialButtons.entrySet()) {
+            if (!availableModifiers.contains(entry.getKey().getKey())) entry.getValue().markUncreated();
+        }
     }
 
+    @Override
+    protected void onDetachedFromWindow() {
+        stopScheduledExecutors();
+        dismissPopup();
+        super.onDetachedFromWindow();
+    }
 
 
     public void setAdaptiveRows(boolean adaptive) {
@@ -615,11 +636,17 @@ public final class ExtraKeysView extends GridLayout {
         if (mRepetitiveKeys.contains(buttonInfo.getKey())) {
             // Auto repeat key if long pressed until ACTION_UP stops it by calling stopScheduledExecutors.
             // Currently, only one (last) repeat key can run at a time. Old ones are stopped.
-            mActivePress.repetitions = Executors.newSingleThreadScheduledExecutor();
-            mActivePress.repetitions.scheduleWithFixedDelay(() -> {
-                mActivePress.handled = true;
-                onExtraKeyButtonClick(view, buttonInfo, button);
-            }, mLongPressTimeout, mLongPressRepeatDelay, TimeUnit.MILLISECONDS);
+            mActivePress.repeat = new Runnable() {
+                @Override
+                public void run() {
+                    mActivePress.handled = true;
+                    onExtraKeyButtonClick(view, buttonInfo, button);
+                    // A client callback can reload the keys or end this press.
+                    if (mActivePress.repeat == this)
+                        mActivePress.handler.postDelayed(this, mLongPressRepeatDelay);
+                }
+            };
+            mActivePress.handler.postDelayed(mActivePress.repeat, mLongPressTimeout);
         } else if (isSpecialButton(buttonInfo)) {
             // Lock the key if long pressed by running mSpecialButtonsLongHoldRunnable after
             // waiting for mLongPressTimeout milliseconds. If user does not long press, then the
@@ -627,8 +654,6 @@ public final class ExtraKeysView extends GridLayout {
             // it has a chance to run.
             SpecialButtonState state = mSpecialButtons.get(SpecialButton.valueOf(buttonInfo.getKey()));
             if (state == null) return;
-            if (mActivePress.handler == null)
-                mActivePress.handler = new Handler(Looper.getMainLooper());
             mActivePress.hold = new SpecialButtonsLongHoldRunnable(state);
             mActivePress.handler.postDelayed(mActivePress.hold, mLongPressTimeout);
         }
@@ -680,13 +705,14 @@ public final class ExtraKeysView extends GridLayout {
         mPopupWindow.setContentView(button);
         mPopupWindow.setOutsideTouchable(true);
         mPopupWindow.setFocusable(false);
+        mPopupWindow.setOnDismissListener(() -> mPopupWindow = null);
         mPopupWindow.showAsDropDown(view, 0, -2 * height);
     }
 
     public void dismissPopup() {
-        mPopupWindow.setContentView(null);
-        mPopupWindow.dismiss();
+        PopupWindow popup = mPopupWindow;
         mPopupWindow = null;
+        if (popup != null) popup.dismiss();
     }
 
 
