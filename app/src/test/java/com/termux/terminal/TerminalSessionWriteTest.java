@@ -135,6 +135,22 @@ public class TerminalSessionWriteTest {
         return s;
     }
 
+    @Test public void finishingBeforeStartNotifiesOnceAndCannotStartLater() {
+        TerminalSession cancelled = fresh(client);
+        cancelled.finishIfRunning();
+        assertFalse(cancelled.isRunning());
+        assertEquals(137, cancelled.getExitStatus());
+        assertEquals(1, client.finished);
+        assertTrue(NoSignals.killedPids.isEmpty());
+        assertFalse(cancelled.tryWrite("ignored"));
+        cancelled.finishIfRunning();
+        cancelled.updateSize(80, 24, 8, 16);
+        cancelled.initializeEmulator(80, 24, 8, 16);
+        assertEquals(1, client.finished);
+        assertEquals(0, NoPty.createCalls);
+        assertNull(cancelled.getEmulator());
+    }
+
     @Before public void setUp() {
         NoPty.createFailure = new IllegalStateException("mock native initialization failed");
         NoPty.createCalls = 0;

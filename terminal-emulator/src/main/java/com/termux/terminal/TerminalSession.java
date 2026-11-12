@@ -201,7 +201,10 @@ public final class TerminalSession extends TerminalOutput {
     public void initializeEmulator(int columns, int rows, int cellWidthPixels, int cellHeightPixels) {
         int startedPid = -1;
         final int[] processId = new int[1];
-        synchronized (this) { mShellState = ShellState.STARTING; }
+        synchronized (this) {
+            if (mShellState == ShellState.CANCELLED) return;
+            mShellState = ShellState.STARTING;
+        }
         try {
             // Start the existing waiter before allocating native resources, not in the constructor.
             // Its allocation/start can fail without leaving a child that needs a new cleanup worker.
@@ -560,13 +563,19 @@ public final class TerminalSession extends TerminalOutput {
     /** Finish this terminal session by sending SIGKILL to the shell. */
     public void finishIfRunning() {
         final int pid;
+        final boolean cancelledBeforeStart;
         synchronized (this) {
             pid = mShellPid;
             // Nothing to signal before a shell starts, and pid 0 would target our own process group.
-            if (pid <= 0 && mShellState == ShellState.CREATED) {
+            cancelledBeforeStart = mShellState == ShellState.CREATED;
+            if (cancelledBeforeStart) {
                 mShellState = ShellState.CANCELLED;
-                return;
+                cleanupResources(128 + OsConstants.SIGKILL);
             }
+        }
+        if (cancelledBeforeStart) {
+            mClient.onSessionFinished(this);
+            return;
         }
         if (pid <= 0) return;
         try {

@@ -192,8 +192,10 @@ public class TermuxSession {
 
         mExecutionCommand.resultData.exitCode = exitCode;
 
-        if (this.mSetStdoutOnExit)
-            mExecutionCommand.resultData.stdout.append(ShellUtils.getTerminalSessionTranscriptText(mTerminalSession, true, false));
+        if (this.mSetStdoutOnExit) {
+            String transcript = ShellUtils.getTerminalSessionTranscriptText(mTerminalSession, true, false);
+            if (transcript != null) mExecutionCommand.resultData.stdout.append(transcript);
+        }
 
         if (!mExecutionCommand.setState(ExecutionCommand.ExecutionState.EXECUTED))
             return;
