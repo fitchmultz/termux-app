@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- This source branch retires each run-command forwarding service start after handoff or rejection, including null restarts. Removing its foreground notification no longer leaves an idle started service behind.
+
 - This source branch makes Help own and destroy its WebView, removing it from the view hierarchy first and ignoring page callbacks after destruction. Both the loading and displayed states release the browser's native resources.
 
 - This source branch makes settings preference stores belong to their fragment instead of process-wide singletons. Closing or recreating Settings no longer leaves its first Activity retained by every visited preference page; companion-app error dialogs keep their Activity context.
