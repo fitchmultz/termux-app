@@ -27,6 +27,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Source branch `audit-fix/appshell-review`: failed or cancelled background commands close their owned stdout/stderr streams before reader joins, so an inherited writer cannot hold Android cancellation delivery open; successful commands still drain to EOF before publishing results.
 
+- This source branch delivers terminal-command cancellation results only after the terminal's finished callback, including its final output drain. Failed commands still complete once, suppressed results stay suppressed, and transcript collection happens once with no literal `"null"` for a session cancelled before initialization.
+
 - This source branch lets the socket listener retain its own descriptor until its final native accept returns. Stop detaches and shuts down that socket without recycling its descriptor under an in-flight accept; the listener closes only its captured descriptor. Starting a running manager is idempotent.
 - This source branch runs the production socket boundary harness under ASan/UBSan in hosted Fold checks, using real Linux sockets and Java 21 JNI headers. The minimal job container installs `g++` for that check.
 

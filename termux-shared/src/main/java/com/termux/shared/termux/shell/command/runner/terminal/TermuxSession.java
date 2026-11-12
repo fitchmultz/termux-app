@@ -35,6 +35,7 @@ public class TermuxSession {
     private final ExecutionCommand mExecutionCommand;
     private final TermuxSessionClient mTermuxSessionClient;
     private final boolean mSetStdoutOnExit;
+    private boolean mProcessResultOnExit = true;
 
     private static final String LOG_TAG = "TermuxSession";
 
@@ -144,7 +145,8 @@ public class TermuxSession {
 
         if (!executionCommand.setState(ExecutionCommand.ExecutionState.EXECUTING)) {
             executionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), currentPackageContext.getString(R.string.error_failed_to_execute_termux_session_command, executionCommand.getCommandIdAndLabelLogString()));
-            TermuxSession.processTermuxSessionResult(null, executionCommand);
+            if (executionCommand.claimResultDelivery())
+                TermuxSession.processTermuxSessionResult(null, executionCommand);
             return null;
         }
 
@@ -175,7 +177,7 @@ public class TermuxSession {
      */
     public void finish() {
         // If process is still running, then ignore the call
-        if (mTerminalSession.isRunning()) return;
+        if (mTerminalSession.isRunning() || !mExecutionCommand.claimResultDelivery()) return;
 
         int exitCode = mTerminalSession.getExitStatus();
 
@@ -184,23 +186,17 @@ public class TermuxSession {
         else
             Logger.logDebug(LOG_TAG, "The \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" TermuxSession exited with code: " + exitCode);
 
-        // If the execution command has already failed, like SIGKILL was sent, then don't continue
-        if (mExecutionCommand.isStateFailed()) {
-            Logger.logDebug(LOG_TAG, "Ignoring setting \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" TermuxSession state to ExecutionState.EXECUTED and processing results since it has already failed");
-            return;
+        if (!mExecutionCommand.isStateFailed()) {
+            mExecutionCommand.resultData.exitCode = exitCode;
+            if (!mExecutionCommand.setState(ExecutionCommand.ExecutionState.EXECUTED)) return;
         }
-
-        mExecutionCommand.resultData.exitCode = exitCode;
 
         if (this.mSetStdoutOnExit) {
             String transcript = ShellUtils.getTerminalSessionTranscriptText(mTerminalSession, true, false);
             if (transcript != null) mExecutionCommand.resultData.stdout.append(transcript);
         }
 
-        if (!mExecutionCommand.setState(ExecutionCommand.ExecutionState.EXECUTED))
-            return;
-
-        TermuxSession.processTermuxSessionResult(this, null);
+        if (mProcessResultOnExit) TermuxSession.processTermuxSessionResult(this, null);
     }
 
     /**
@@ -208,8 +204,8 @@ public class TermuxSession {
      * if its still executing.
      *
      * @param context The {@link Context} for operations.
-     * @param processResult If set to {@code true}, then the {@link #processTermuxSessionResult(TermuxSession, ExecutionCommand)}
-     *                      will be called to process the failure.
+     * @param processResult Whether to deliver the failure when the terminal's finished callback
+     *                      calls {@link #finish()}. Output remains owned by the terminal until then.
      */
     public void killIfExecuting(@NonNull final Context context, boolean processResult) {
         // If execution command has already finished executing, then no need to process results or send SIGKILL
@@ -220,15 +216,8 @@ public class TermuxSession {
 
         Logger.logDebug(LOG_TAG, "Send SIGKILL to \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" TermuxSession");
         if (mExecutionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), context.getString(R.string.error_sending_sigkill_to_process))) {
-            if (processResult) {
-                mExecutionCommand.resultData.exitCode = 137; // SIGKILL
-
-                // Get whatever output has been set till now in case its needed
-                if (this.mSetStdoutOnExit)
-                    mExecutionCommand.resultData.stdout.append(ShellUtils.getTerminalSessionTranscriptText(mTerminalSession, true, false));
-
-                TermuxSession.processTermuxSessionResult(this, null);
-            }
+            mExecutionCommand.resultData.exitCode = 137; // SIGKILL
+            mProcessResultOnExit = processResult;
         }
 
         // Send SIGKILL to process
@@ -236,7 +225,7 @@ public class TermuxSession {
     }
 
     /**
-     * Process the results of {@link TermuxSession} or {@link ExecutionCommand}.
+     * Deliver results after the caller has claimed {@link ExecutionCommand#claimResultDelivery()}.
      *
      * Only one of {@code termuxSession} and {@code executionCommand} must be set.
      *
@@ -256,11 +245,6 @@ public class TermuxSession {
             executionCommand = termuxSession.mExecutionCommand;
 
         if (executionCommand == null) return;
-
-        if (!executionCommand.claimResultDelivery()) {
-            Logger.logDebug(LOG_TAG, "Ignoring duplicate call to process \"" + executionCommand.getCommandIdAndLabelLogString() + "\" TermuxSession result");
-            return;
-        }
 
         Logger.logDebug(LOG_TAG, "Processing \"" + executionCommand.getCommandIdAndLabelLogString() + "\" TermuxSession result");
 
