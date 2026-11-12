@@ -190,6 +190,12 @@ public class ExtraKeysInfo {
         return jobject;
     }
 
+    /**
+     * Borrows the parsed matrix, including its row arrays and button objects.
+     * {@link ExtraKeysView} retains these references when loading keys, so callers must not replace
+     * entries or mutate the shared layout during use. Access used by a view belongs on the UI thread.
+     * A caller needing to edit array entries independently must copy the outer array and each row.
+     */
     public ExtraKeyButton[][] getMatrix() {
         return mButtons;
     }

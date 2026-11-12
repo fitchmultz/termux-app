@@ -945,6 +945,13 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         return mShellManager.mTermuxSessions.size();
     }
 
+    /**
+     * Borrows the manager's live session list, also observed by the activity's list adapter.
+     * This is not a snapshot and callers do not own membership or session cleanup.
+     * UI observation and membership changes belong on the main thread through the service.
+     * The method's lock protects only this call, not later iteration. Copy the list on its owning
+     * thread if stable membership is needed; copied entries remain live service-owned sessions.
+     */
     public synchronized List<TermuxSession> getTermuxSessions() {
         return mShellManager.mTermuxSessions;
     }

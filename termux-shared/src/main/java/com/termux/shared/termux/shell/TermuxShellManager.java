@@ -28,16 +28,23 @@ public class TermuxShellManager {
      * Note that this list is observed by an activity, like TermuxActivity.mTermuxSessionListViewController,
      * so any changes must be made on the UI thread and followed by a call to
      * {@link ArrayAdapter#notifyDataSetChanged()}.
+     * Borrowers do not own membership or session cleanup. A list copy freezes membership only;
+     * its entries remain live sessions. Copying and iteration use the same UI-thread discipline.
      */
     public final List<TermuxSession> mTermuxSessions = new ArrayList<>();
 
     /**
      * The background TermuxTasks which this service manages.
+     * This is a live service-owned list, not a snapshot or a caller-owned cleanup registry.
+     * Track and untrack through this manager. A copy freezes membership only, not task state.
      */
     public final List<AppShell> mTermuxTasks = new ArrayList<>();
 
     /**
      * The pending plugin ExecutionCommands that have yet to be processed by this service.
+     * This is a live service-owned list. Callers must not independently change membership or
+     * deliver results for its entries. Synchronization of a manager method does not protect a
+     * caller's later traversal; traversal and updates need the same owner-thread or lock discipline.
      */
     public final List<ExecutionCommand> mPendingPluginExecutionCommands = new ArrayList<>();
 

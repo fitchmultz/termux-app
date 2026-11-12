@@ -328,6 +328,11 @@ public class SharedPreferenceUtils {
     /**
      * Get a {@code Set<String>} from {@link SharedPreferences}.
      *
+     * <p>This preserves Android's borrowing contract and makes no defensive copy. The result must
+     * not be modified. It may be the supplied {@code def} itself. Copy a non-null result before
+     * editing it or retaining an independent snapshot. SharedPreferences thread safety does not
+     * make mutation of a returned set safe.</p>
+     *
      * @param sharedPreferences The {@link SharedPreferences} to get the value from.
      * @param key The key for the value.
      * @param def The default value if failed to read a valid value.
@@ -351,6 +356,11 @@ public class SharedPreferenceUtils {
 
     /**
      * Set a {@code Set<String>} in {@link SharedPreferences}.
+     *
+     * <p>Passes {@code value} directly to {@link SharedPreferences.Editor#putStringSet(String, Set)}.
+     * Android requires that the caller not modify the set after this call. Pass a separate set
+     * if the caller needs to keep editing its original. Neither commit nor apply transfers a
+     * writable set back to the caller.</p>
      *
      * @param sharedPreferences The {@link SharedPreferences} to set the value in.
      * @param key The key for the value.

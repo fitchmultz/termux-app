@@ -250,31 +250,46 @@ public final class ExtraKeysView extends GridLayout {
     }
 
 
-    /** Get {@link #mRepetitiveKeys}. */
+    /** Returns a detached list of repetitive key names, or {@code null}. Access is on the UI thread. */
     public List<String> getRepetitiveKeys() {
         if (mRepetitiveKeys == null) return null;
         return mRepetitiveKeys.stream().map(String::new).collect(Collectors.toList());
     }
 
-    /** Set {@link #mRepetitiveKeys}. Must not be {@code null}. */
+    /**
+     * Retains {@code repetitiveKeys} without copying. Must not be {@code null}.
+     * Set on the UI thread. The list remains shared until replaced or this view is released.
+     * Callers needing to edit their list independently must pass a copy.
+     */
     public void setRepetitiveKeys(@NonNull List<String> repetitiveKeys) {
         mRepetitiveKeys = repetitiveKeys;
     }
 
 
-    /** Get {@link #mSpecialButtons}. */
+    /**
+     * Returns a new map, or {@code null}, on the UI thread.
+     * Its {@link SpecialButtonState} values are still the view's live objects, not snapshots.
+     * Mutating the returned map does not configure the view; state changes remain shared.
+     */
     public Map<SpecialButton, SpecialButtonState> getSpecialButtons() {
         if (mSpecialButtons == null) return null;
         return mSpecialButtons.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
-    /** Get {@link #mSpecialButtonsKeys}. */
+    /** Returns a detached set of special key names, or {@code null}. Access is on the UI thread. */
     public Set<String> getSpecialButtonsKeys() {
         if (mSpecialButtonsKeys == null) return null;
         return mSpecialButtonsKeys.stream().map(String::new).collect(Collectors.toSet());
     }
 
-    /** Set {@link #mSpecialButtonsKeys}. Must not be {@code null}. */
+    /**
+     * Retains {@code specialButtons} and its live state values without copying, and derives the
+     * special-key name set at this call. Must not be {@code null}. Set on the UI thread.
+     * The view updates state and button references during use and layout reloads. Callers must not
+     * independently change the retained map's membership; a replacement goes through this setter.
+     * A caller needing separate modifier state must supply separate {@link SpecialButtonState}
+     * values, not just a shallow map copy.
+     */
     public void setSpecialButtons(@NonNull Map<SpecialButton, SpecialButtonState> specialButtons) {
         mSpecialButtons = specialButtons;
         mSpecialButtonsKeys = this.mSpecialButtons.keySet().stream().map(SpecialButton::getKey).collect(Collectors.toSet());
