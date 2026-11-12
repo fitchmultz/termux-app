@@ -64,8 +64,12 @@ public final class TerminalSession extends TerminalOutput {
     final ByteQueue mTerminalToProcessIOQueue = new ByteQueue(MAX_PENDING_INPUT_BYTES);
 
     public enum InputRejectionReason { FULL, CLOSED }
-    /** Coalesce a rejection episode until input succeeds or the client changes. Guarded by this. */
-    private InputRejectionReason mLastInputRejection;
+    /**
+     * The rejection already reported in the current episode, or {@code null} when no episode is
+     * open. An episode stays open until input is accepted or the client changes, so a rejected key
+     * is reported once. Guarded by this.
+     */
+    private InputRejectionReason mReportedRejection;
     /** Metadata only; positive reservations bound this set by the existing input-ring capacity. */
     private final ArrayList<InputReservation> mInputReservations = new ArrayList<>();
 
@@ -99,18 +103,27 @@ public final class TerminalSession extends TerminalOutput {
         /** Return unused capacity without delivering into an invalidated input context. */
         public void cancel() { session.cancelInputReservation(this); }
     }
-    /** Guard reentrant PID callbacks until all existing I/O threads have started. Guarded by this. */
-    private boolean mInputInitializing;
-    /** Failed setup owns cleanup; the existing waiter must not publish a second UI exit. */
-    private volatile boolean mInitializationFailed;
+    /**
+     * Lifecycle of the shell process and of the input admission that depends on it.
+     *
+     * <p>{@link #CREATED}: no emulator and no process. {@link #STARTING}: setup is in progress, so
+     * input is rejected and callbacks wait. {@link #RUNNING}: the process exists and input is
+     * accepted. {@link #EXITED}: the process was reaped and its exit status is valid. {@link #FAILED}:
+     * setup threw; the same cleanup ran, and the waiter must not publish a second UI exit.
+     *
+     * <p>{@link #CANCELLED} is a session finished before its shell ever started: nothing was
+     * signalled, and it must stop reporting itself as running.
+     *
+     * <p>Only {@code STARTING → RUNNING/FAILED}, {@code RUNNING → EXITED} and
+     * {@code CREATED → CANCELLED} happen.
+     */
+    public enum ShellState { CREATED, STARTING, RUNNING, EXITED, FAILED, CANCELLED }
+    private volatile ShellState mShellState = ShellState.CREATED;
     /** UTF-8 scratch for one code point; guarded by this until copied into the input ring. */
     private final byte[] mUtf8InputBuffer = new byte[5];
 
     /** Callback which gets notified when a session finishes or changes title. */
     TerminalSessionClient mClient;
-
-    /** A palette update received inside a synchronized frame and deferred until presentation. */
-    private boolean mSynchronizedOutputColorsChanged;
 
     /** The pid of the shell process. 0 if not started and -1 if finished running. */
     int mShellPid;
@@ -154,7 +167,7 @@ public final class TerminalSession extends TerminalOutput {
     public void updateTerminalSessionClient(TerminalSessionClient client) {
         synchronized (this) {
             mClient = client;
-            mLastInputRejection = null;
+            mReportedRejection = null;
         }
 
         if (mEmulator != null)
@@ -185,7 +198,10 @@ public final class TerminalSession extends TerminalOutput {
     public void initializeEmulator(int columns, int rows, int cellWidthPixels, int cellHeightPixels) {
         int startedPid = -1;
         final int[] processId = new int[1];
-        synchronized (this) { mInputInitializing = true; }
+        synchronized (this) {
+            if (mShellState == ShellState.CANCELLED) return;
+            mShellState = ShellState.STARTING;
+        }
         try {
             // Start the existing waiter before allocating native resources, not in the constructor.
             // Its allocation/start can fail without leaving a child that needs a new cleanup worker.
@@ -196,7 +212,7 @@ public final class TerminalSession extends TerminalOutput {
                     // failure termination. Otherwise a failing callback could signal a reused PID.
                     boolean interrupted = false;
                     synchronized (TerminalSession.this) {
-                        while (mInputInitializing) {
+                        while (mShellState == ShellState.STARTING) {
                             try {
                                 TerminalSession.this.wait();
                             } catch (InterruptedException ignored) {
@@ -256,7 +272,7 @@ public final class TerminalSession extends TerminalOutput {
                 }
             }.start();
         } catch (Throwable failure) {
-            mInitializationFailed = true;
+            mShellState = ShellState.FAILED;
             // A failed native call may partially fill PID output without transferring child
             // ownership. Do not wait on it; native pre-return cleanup semantics are unchanged.
             if (startedPid <= 0) processId[0] = 0;
@@ -276,7 +292,7 @@ public final class TerminalSession extends TerminalOutput {
             throw failure;
         } finally {
             synchronized (this) {
-                mInputInitializing = false;
+                if (mShellState == ShellState.STARTING) mShellState = ShellState.RUNNING;
                 notifyAll();
             }
         }
@@ -351,7 +367,7 @@ public final class TerminalSession extends TerminalOutput {
     }
 
     private boolean isAcceptingInputLocked() {
-        return mShellPid > 0 && !mInputInitializing && !mInitializationFailed;
+        return mShellState == ShellState.RUNNING;
     }
 
     /** Called with this locked, including while the code-point scratch buffer is in use. */
@@ -409,15 +425,15 @@ public final class TerminalSession extends TerminalOutput {
     /** Claim notification in the same critical section as admission, not after another writer. */
     private InputRejectionReason claimInputAdmissionLocked(ByteQueue.WriteResult result) {
         if (result == ByteQueue.WriteResult.ACCEPTED) {
-            mLastInputRejection = null;
+            mReportedRejection = null;
             return null;
         }
         return claimInputRejectionLocked(result == ByteQueue.WriteResult.FULL ? InputRejectionReason.FULL : InputRejectionReason.CLOSED);
     }
 
     private InputRejectionReason claimInputRejectionLocked(InputRejectionReason reason) {
-        if (mLastInputRejection == reason) return null;
-        mLastInputRejection = reason;
+        if (mReportedRejection == reason) return null;
+        mReportedRejection = reason;
         return reason;
     }
 
@@ -510,14 +526,9 @@ public final class TerminalSession extends TerminalOutput {
         }
 
         mMainThreadHandler.removeMessages(MSG_SYNCHRONIZED_OUTPUT_TIMEOUT);
-        dispatchDeferredColorsChanged();
+        // A palette update deferred by the frame that just closed is delivered with the frame.
+        if (mEmulator != null && mEmulator.takeDeferredPaletteChange()) mClient.onColorsChanged(this);
         mClient.onTextChanged(this);
-    }
-
-    private void dispatchDeferredColorsChanged() {
-        if (!mSynchronizedOutputColorsChanged) return;
-        mSynchronizedOutputColorsChanged = false;
-        mClient.onColorsChanged(this);
     }
 
     /** Force presentation after the synchronized-output watchdog expires. Package-private for tests. */
@@ -536,19 +547,32 @@ public final class TerminalSession extends TerminalOutput {
     /** Reset state for terminal emulator state. */
     public void reset() {
         mMainThreadHandler.removeMessages(MSG_SYNCHRONIZED_OUTPUT_TIMEOUT);
-        mSynchronizedOutputColorsChanged = false;
         mEmulator.reset();
         notifyScreenUpdate();
     }
 
     /** Finish this terminal session by sending SIGKILL to the shell. */
     public void finishIfRunning() {
-        if (isRunning()) {
-            try {
-                Os.kill(mShellPid, OsConstants.SIGKILL);
-            } catch (ErrnoException e) {
-                Logger.logWarn(mClient, LOG_TAG, "Failed sending SIGKILL: " + e.getMessage());
+        final int pid;
+        final boolean cancelledBeforeStart;
+        synchronized (this) {
+            pid = mShellPid;
+            // Nothing to signal before a shell starts, and pid 0 would target our own process group.
+            cancelledBeforeStart = mShellState == ShellState.CREATED;
+            if (cancelledBeforeStart) {
+                mShellState = ShellState.CANCELLED;
+                cleanupResources(128 + OsConstants.SIGKILL);
             }
+        }
+        if (cancelledBeforeStart) {
+            mClient.onSessionFinished(this);
+            return;
+        }
+        if (pid <= 0) return;
+        try {
+            Os.kill(pid, OsConstants.SIGKILL);
+        } catch (ErrnoException e) {
+            Logger.logWarn(mClient, LOG_TAG, "Failed sending SIGKILL: " + e.getMessage());
         }
     }
 
@@ -561,6 +585,9 @@ public final class TerminalSession extends TerminalOutput {
             mInputReservations.clear();
             mShellPid = -1;
             mShellExitStatus = exitStatus;
+            // Failed setup already recorded its own terminal state.
+            if (mShellState != ShellState.FAILED && mShellState != ShellState.CANCELLED)
+                mShellState = ShellState.EXITED;
             descriptor = mTerminalFileDescriptor;
             mTerminalFileDescriptor = -1;
         }
@@ -577,7 +604,9 @@ public final class TerminalSession extends TerminalOutput {
     }
 
     public synchronized boolean isRunning() {
-        return mShellPid != -1;
+        // Preserved meaning: false only once the process is unreachable (finished or failed setup).
+        return mShellState != ShellState.EXITED && mShellState != ShellState.FAILED &&
+            mShellState != ShellState.CANCELLED;
     }
 
     /** Only valid if not {@link #isRunning()}. */
@@ -602,11 +631,8 @@ public final class TerminalSession extends TerminalOutput {
 
     @Override
     public void onColorsChanged() {
-        if (mEmulator != null && mEmulator.isSynchronizedOutputActive()) {
-            mSynchronizedOutputColorsChanged = true;
-        } else {
-            mClient.onColorsChanged(this);
-        }
+        if (mEmulator != null && mEmulator.deferPaletteChange()) return;
+        mClient.onColorsChanged(this);
     }
 
     public int getPid() {
@@ -667,7 +693,7 @@ public final class TerminalSession extends TerminalOutput {
 
         @Override
         public void handleMessage(Message msg) {
-            if (mInitializationFailed) return;
+            if (mShellState == ShellState.FAILED) return;
             if (msg.what == MSG_SYNCHRONIZED_OUTPUT_TIMEOUT) {
                 handleSynchronizedOutputTimeout();
                 return;

@@ -22,8 +22,15 @@ public final class EvidenceStore {
     private final SharedPreferences saved;
     private final File directory;
     private final Map<String, EvidenceDraft> drafts = new LinkedHashMap<>();
+    /**
+     * The import's in-memory state. A process death during {@link #ImportState#RUNNING} leaves the
+     * {@code import_pending} preference behind, which the constructor turns into one notice; the
+     * files it had already copied are never added to a draft.
+     */
+    private enum ImportState { IDLE, RUNNING }
+    private ImportState importState = ImportState.IDLE;
+
     private Runnable listener;
-    private boolean importing;
     private String notice;
 
     public EvidenceStore(Context context) {
@@ -75,13 +82,13 @@ public final class EvidenceStore {
         return result;
     }
 
-    public boolean isImporting() { return importing; }
+    public boolean isImporting() { return importState == ImportState.RUNNING; }
     public void listen(Runnable callback) { listener = callback; }
     public void unlisten(Runnable callback) { if (listener == callback) listener = null; }
     public String takeNotice() { String value = notice; notice = null; return value; }
 
     public void importEvidence(String handle, String label, String text, ArrayList<Uri> files) {
-        if (importing) { notifyResult(R.string.evidence_import_busy); return; }
+        if (isImporting()) { notifyResult(R.string.evidence_import_busy); return; }
         if (text.isEmpty() && files.isEmpty()) { notifyResult(R.string.evidence_empty); return; }
         EvidenceDraft target = get(handle);
         String combined = target.text.isEmpty() ? text : text.isEmpty() ? target.text : target.text + "\n\n" + text;
@@ -93,7 +100,7 @@ public final class EvidenceStore {
             if (uri == null || !"content".equals(uri.getScheme())) { notifyResult(R.string.evidence_import_failed); return; }
         }
         if (!saved.edit().putBoolean("import_pending", true).commit()) { notifyResult(R.string.evidence_save_failed); return; }
-        importing = true;
+        importState = ImportState.RUNNING;
         if (listener != null) listener.run();
         new Thread(() -> {
             ArrayList<File> imported = new ArrayList<>();
@@ -106,7 +113,7 @@ public final class EvidenceStore {
             }
             final boolean complete = success;
             new Handler(Looper.getMainLooper()).post(() -> {
-                importing = false;
+                importState = ImportState.IDLE;
                 if (complete) {
                     target.text = combined;
                     target.label = label;

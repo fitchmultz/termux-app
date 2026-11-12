@@ -74,7 +74,7 @@ public class TerminalPaneLayoutTest {
         TermuxTerminalSessionClientBase client = new TermuxTerminalSessionClientBase();
         TerminalSession session = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
         ReflectionHelpers.setField(session, "mEmulator", new TerminalEmulator(session, 80, 24, 8, 16, 100, client));
-        ReflectionHelpers.setField(session, "mShellPid", 1234);
+        TestSessions.markShell(session, 1234);
         session.mSessionName = name;
         byte[] output = ("\033[1;36m" + name + "\033[0m\r\n\r\nIndependent terminal output\r\n$ npm test\r\nTests: 24 passed\r\n\r\nReady for your next command.\r\n").getBytes(StandardCharsets.UTF_8);
         session.getEmulator().append(output, output.length);
@@ -137,7 +137,7 @@ public class TerminalPaneLayoutTest {
         TerminalPaneLayout panes = layout(activity);
         ReflectionHelpers.setField(activity, "mTerminalPanes", panes);
         ReflectionHelpers.setField(activity, "mTerminalView", panes.getActiveTerminal());
-        ReflectionHelpers.setField(activity, "mIsVisible", true);
+        TestActivities.markStarted(activity);
         ReflectionHelpers.setField(activity, "mProperties", TermuxAppSharedProperties.init(activity));
         TermuxTerminalSessionActivityClient client = new TermuxTerminalSessionActivityClient(activity);
         ReflectionHelpers.setField(activity, "mTermuxTerminalSessionActivityClient", client);
@@ -383,18 +383,18 @@ public class TerminalPaneLayoutTest {
         TerminalView terminal = activity.getTerminalView();
         terminal.setTopRow(-3);
         scrollKey(activity).onTerminalExtraKeyButtonClick(null, "SCROLL", false, false, false, false);
-        ReflectionHelpers.setField(activity, "mIsVisible", false);
+        TestActivities.markCreated(activity);
         output(session, "background\r\n");
         assertEquals(-3, terminal.getTopRow());
-        ReflectionHelpers.setField(activity, "mIsVisible", true);
+        TestActivities.markStarted(activity);
         activity.getTermuxTerminalSessionClient().onStart();
         assertEquals(-4, terminal.getTopRow());
         activity.getTermuxTerminalSessionClient().onStart();
         assertEquals(-4, terminal.getTopRow());
 
-        ReflectionHelpers.setField(activity, "mIsVisible", false);
+        TestActivities.markCreated(activity);
         output(session, "\033[?2026hnext\r\n");
-        ReflectionHelpers.setField(activity, "mIsVisible", true);
+        TestActivities.markStarted(activity);
         activity.getTermuxTerminalSessionClient().onStart();
         assertEquals(-4, terminal.getTopRow());
         output(session, "\033[?2026l");
@@ -433,12 +433,12 @@ public class TerminalPaneLayoutTest {
         // The selection controller uses wall time, not Robolectric's virtual looper clock.
         Thread.sleep(350);
 
-        ReflectionHelpers.setField(activity, "mIsVisible", false);
+        TestActivities.markCreated(activity);
         output(session, "background\r\n");
         assertTrue(terminal.isSelectingText());
         assertEquals(top, terminal.getTopRow());
         assertEquals(history, session.getEmulator().getScreen().getActiveTranscriptRows());
-        ReflectionHelpers.setField(activity, "mIsVisible", true);
+        TestActivities.markStarted(activity);
         activity.getTermuxTerminalSessionClient().onStart();
         if (selectOldest) {
             assertFalse("Evicted selection must be cancelled", terminal.isSelectingText());

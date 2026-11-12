@@ -155,10 +155,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     Toast mLastToast;
 
     /**
-     * If between onResume() and onStop(). Note that only one session is in the foreground of the terminal view at the
-     * time, so if the session causing a change is not in the foreground it should probably be treated as background.
+     * Activity lifecycle as the terminal clients see it. INVALID means setup failed and no further
+     * activity code may run; CREATED covers everything between onStop() and onStart(); STARTED is
+     * between onStart() and onStop(). Only one session is in the foreground of the terminal view at
+     * a time, so a change from a background session must not be presented as foreground.
      */
-    private boolean mIsVisible;
+    private enum Lifecycle { INVALID, CREATED, STARTED }
+    private Lifecycle mLifecycle = Lifecycle.CREATED;
+
+    private boolean isInvalid() { return mLifecycle == Lifecycle.INVALID; }
 
     /**
      * If onResume() was called after onCreate().
@@ -172,10 +177,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      */
     private boolean mIsActivityRecreated = false;
 
-    /**
-     * The {@link TermuxActivity} is in an invalid state and must not be run.
-     */
-    private boolean mIsInvalidState;
 
     private int mNavBarHeight;
 
@@ -229,7 +230,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mPreferences = TermuxAppSharedPreferences.build(this, true);
         if (mPreferences == null) {
             // An AlertDialog should have shown to kill the app, so we don't continue running activity code
-            mIsInvalidState = true;
+            mLifecycle = Lifecycle.INVALID;
             return;
         }
 
@@ -295,7 +296,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 getString(e.getMessage() != null && e.getMessage().contains("app is in background") ?
                     R.string.error_termux_service_start_failed_bg : R.string.error_termux_service_start_failed_general),
                 true);
-            mIsInvalidState = true;
+            mLifecycle = Lifecycle.INVALID;
             return;
         }
 
@@ -310,9 +311,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         Logger.logDebug(LOG_TAG, "onStart");
 
-        if (mIsInvalidState) return;
+        if (isInvalid()) return;
 
-        mIsVisible = true;
+        mLifecycle = Lifecycle.STARTED;
         if (mEvidenceDock != null) mEvidenceDock.onStart();
 
         if (mTermuxTerminalSessionActivityClient != null)
@@ -333,7 +334,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         Logger.logVerbose(LOG_TAG, "onResume");
 
-        if (mIsInvalidState) return;
+        if (isInvalid()) return;
 
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.onResume();
@@ -360,7 +361,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     @Override
     protected void onPause() {
         super.onPause();
-        if (!mIsInvalidState && mTermuxTerminalViewClient != null)
+        if (!isInvalid() && mTermuxTerminalViewClient != null)
             mTermuxTerminalViewClient.onPause();
     }
 
@@ -370,9 +371,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         Logger.logDebug(LOG_TAG, "onStop");
 
-        if (mIsInvalidState) return;
+        if (isInvalid()) return;
 
-        mIsVisible = false;
+        mLifecycle = Lifecycle.CREATED;
         if (mTermuxService != null) mTermuxService.mWorkbenchState = saveWorkbench();
         if (mEvidenceDock != null) mEvidenceDock.onStop();
 
@@ -394,7 +395,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         Logger.logDebug(LOG_TAG, "onDestroy");
 
-        if (mIsInvalidState) return;
+        if (isInvalid()) return;
         if (mEvidenceDock != null) mEvidenceDock.dispose();
 
         if (mTermuxService != null) {
@@ -447,7 +448,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setIntent(null);
 
         if (mTermuxService.isTermuxSessionsEmpty()) {
-            if (mIsVisible) {
+            if (isVisible()) {
                 TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, () -> {
                     if (mTermuxService == null) return; // Activity might have been destroyed.
                     try {
@@ -994,7 +995,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     public boolean isVisible() {
-        return mIsVisible;
+        return mLifecycle == Lifecycle.STARTED;
     }
 
     public boolean isOnResumeAfterOnCreate() {
@@ -1044,7 +1045,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mTermuxTerminalSessionActivityClient.updateBackgroundColor();
             mTermuxTerminalSessionActivityClient.checkAndScrollToSession(terminal.getCurrentSession());
         }
-        if (mTermuxTerminalViewClient != null) mTermuxTerminalViewClient.setTerminalCursorBlinkerState(mIsVisible);
+        if (mTermuxTerminalViewClient != null) mTermuxTerminalViewClient.setTerminalCursorBlinkerState(isVisible());
     }
 
     public void openSessionBeside(TerminalSession session) {
@@ -1144,7 +1145,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         public void onReceive(Context context, Intent intent) {
             if (intent == null) return;
 
-            if (mIsVisible) {
+            if (isVisible()) {
                 fixTermuxActivityBroadcastReceiverIntent(intent);
 
                 switch (intent.getAction()) {

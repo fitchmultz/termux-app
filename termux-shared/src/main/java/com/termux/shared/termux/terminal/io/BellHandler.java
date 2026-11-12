@@ -32,13 +32,20 @@ public class BellHandler {
     private static final long MIN_PAUSE = 3 * DURATION;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private long lastBell = 0;
+    /**
+     * Earliest uptime at which the next bell may sound, and whether a coalesced follow-up is
+     * already posted. Both are needed: after a bell sounds the earliest time is in the future, but
+     * nothing is scheduled until a burst actually asks for one.
+     */
+    private long nextBellAt = 0;
+    private boolean bellPosted;
     private final Runnable bellRunnable;
 
     private BellHandler(final Vibrator vibrator) {
         bellRunnable = new Runnable() {
             @Override
             public void run() {
+                synchronized (BellHandler.this) { bellPosted = false; }
                 if (vibrator != null) {
                     try {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -58,18 +65,18 @@ public class BellHandler {
 
     public synchronized void doBell() {
         long now = now();
-        long timeSinceLastBell = now - lastBell;
 
-        if (timeSinceLastBell < 0) {
-            // there is a next bell pending; don't schedule another one
-        } else if (timeSinceLastBell < MIN_PAUSE) {
-            // there was a bell recently, schedule the next one
-            handler.postDelayed(bellRunnable, MIN_PAUSE - timeSinceLastBell);
-            lastBell = lastBell + MIN_PAUSE;
+        if (bellPosted) {
+            // a follow-up bell is already scheduled; don't schedule another one
+        } else if (nextBellAt > now) {
+            // there was a bell recently, schedule the next one at the earliest allowed time
+            handler.postDelayed(bellRunnable, nextBellAt - now);
+            bellPosted = true;
+            nextBellAt += MIN_PAUSE;
         } else {
             // the last bell was long ago, do it now
             bellRunnable.run();
-            lastBell = now;
+            nextBellAt = now + MIN_PAUSE;
         }
     }
 

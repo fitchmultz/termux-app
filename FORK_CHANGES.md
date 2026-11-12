@@ -13,6 +13,40 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Gives the bell the earliest time the next bell may sound plus whether a follow-up is already posted, instead of one timestamp that had to mean both, the file receiver's name dialog an explicit `FINISH_ACTIVITY`/`KEEP_ACTIVITY` dismissal, and the installer a `BootstrapState` read from the prefix directory instead of nested existence checks. The keyboard-margin workaround's two debounce timestamps are named for the adjustment each guards, with the 40 ms interval as a constant.
+
+- Gives image placement one record instead of an "open" boolean beside its margins and scroll action, so the three cannot get out of step, and an open OSC 8 hyperlink has a `NO_HYPERLINK` value instead of a bare `0`. The pending line wrap is named for what it is.
+
+- Gives the stream gobbler a `RUNNING`/`SUSPENDED` state and one claim on its close notification, the local socket server a `STOPPED`/`RUNNING`/`CLOSED` lifecycle, and the AM socket server a `SETUP_NOT_RUN`/`ENABLED`/`DISABLED` value instead of a nullable `Boolean`. A local socket manager now reports running only after its server starts, and starting a closed server returns an explicit error instead of leaving a server that reports running with no listener.
+
+- Gives text selection a named lifecycle (`HIDDEN`, `JUST_SHOWN`, `ACTIVE`). The 300 ms guard against a hide that follows a show is part of the state instead of an age check on a bare boolean, and the action mode is documented as owned for exactly the active interval.
+
+- Gives the split layout one intent value (`SINGLE`, `DUAL`, `DUAL_COMPACT_FORCED`) and a three-value measured width class instead of two booleans plus a nullable `Boolean` that also meant "not measured yet". The file picker in flight is one record, the editor's draft-suppression guard and the consumed creation intent have names that say what they mean, and the evidence store's import has an explicit `IDLE`/`RUNNING` state alongside the preference that survives process death.
+
+- Gives the activity and service one explicit lifecycle each. The activity is `INVALID`, `CREATED` or `STARTED` instead of two booleans, so "must not run" and "in the foreground" cannot disagree. The service records why it is stopping (`USER` or `NOTHING_LEFT`), holds its two wake locks as one value, and gets one owner for command placement: `TermuxShellManager.trackPending/trackSession/trackTask` move a command out of the pending list in the same step that starts it. A session's removal request is consumed once by its finished callback. `wantsToStop()` now reports the empty-service stop as well, which previously left the activity to clean up sessions the service had already killed.
+
+- Gives the keyboard controls explicit states. A special button is `UNCREATED`, `INACTIVE`, `ACTIVE` or `LOCKED` instead of three booleans, with tap, long-hold and read-and-release as named transitions. The extra-key press is one object that cancels its repeat or pending lock and remembers whether it already acted, instead of a count and two nullable jobs. The soft-keyboard policy owns its one shared show request plus the four reasons a show is withheld (returning, programmatic focus, startup-hidden, delayed enable). The two virtual volume-key modifiers remain two independent latches, which is their real shape.
+
+- Gives five small view machines one owner each: kitty key presses that await their release, the cursor blinker (off, or posting toggles at a valid rate), the mouse-scroll gesture anchor (one record instead of two coordinates plus a time sentinel), the waiting dead-key accent (named "no accent" instead of a bare `0`), and the one in-flight AutoFill request. Session attachment keeps its deliberate two-phase form (session first, emulator once sized) and now says so where it is implemented. Removes the unused `mCursorInvisibleIgnoreOnce` field.
+
+- Gives the IME connection one owner with two states, `ABSENT` and `BOUND`. Invalidating, adopting a new connection and queueing a restart are now `ImeConnection` transitions, and the generation it bumps is the single answer to "is this deferred work still current?". Behaviour of the composing editor, the Honeyboard virtual editor, deferred rebinding after focus loss and legacy draft cancellation is unchanged.
+
+- Gives synchronized output one frame object instead of a mode bit plus two deferred-callback flags. The frame owns the frozen renderer snapshot, the deferred cursor callback and the pending palette delivery, so "active" cannot disagree with what the renderer sees. The session keeps only its watchdog.
+
+- Gives UTF-8 decoding and OSC recognition one explicit state each. `Utf8Decoder` holds either no bytes or one incomplete sequence, so partial input can no longer be mistaken for a decoded character. The OSC string is `AWAITING_TYPE`, `UNKNOWN`, `TYPED` or `ITERM_IMAGE`, with the image phase replacing the two fast-path flags.
+
+- Gives the DCS parser one explicit phase (`DETECTING`, `SIXEL`, `OTHER`) instead of two booleans that always moved together. A separate flag names the pending `ESC` that may complete the string terminator.
+
+- Gives the APC parser and image draining one explicit state each. An APC string is now in `TYPE`, `IGNORED`, `HEADER` or `PAYLOAD`, instead of three booleans. A rejected control string records `NONE`, `OSC`, `DCS` or `APC` plus whether an ESC is pending, so draining can no longer be confused with a real escape state.
+
+- Gives a terminal session one explicit shell lifecycle (`CREATED`, `STARTING`, `RUNNING`, `EXITED`, `FAILED`, `CANCELLED`) instead of a pid that also encoded progress plus two flags. Input admission, the waiter handshake, failure handling and `isRunning()` now read that state. A session that never started no longer sends `SIGKILL` to pid `0`, which targets the app's own process group, and finishing it records `CANCELLED`, closes its queues, records exit status 137, and delivers the finished callback once. Later sizing cannot start the cancelled shell, and a missing transcript is not returned as the text "null". The input-rejection episode carries one named state instead of a nullable reason.
+
+- Gives a queue capacity reservation one explicit state (`AVAILABLE`, `HELD`, `SPENT`, `CANCELLED`) instead of two flags. Only a held promise owns reserved bytes, so spending or cancelling twice still cannot return capacity twice.
+
+- Gives each execution command one explicit lifecycle: a single result-delivery claim replaces the public `processingResultsAlreadyCalled` flag, failure records its error and state together, and `canBeKilled()` states whether a kill request can still reach the command's process.
+
+- Kills a background task's process when the service stops. Recording the kill failure previously moved the command past its executing state, so the task was reported failed while its process kept running; terminal sessions were already killed unconditionally.
+
 - Groups Fold checks by source repository and branch, so push and PR runs cancel superseded work together while preserving branch/main checks and keeping fork branches independent.
 
 - Kitty physical DOWN admission atomically protects encoder-bounded future UP capacity inside the existing input ring. Matching releases consume their original session-owned promise once even while ordinary input remains FULL; only an admitted initial DOWN owns a future release; ordinary repeat bytes remain unchanged and cannot create or revive release ownership after initial rejection or context cancellation. Context/lifecycle cancellation returns capacity without stale delivery, while IME-only rebinding retains valid physical releases. CI preserves the synthetic keyboard-capture JSON in addition to PNG/XML reports.

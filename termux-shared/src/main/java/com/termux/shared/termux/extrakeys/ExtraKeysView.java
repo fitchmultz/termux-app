@@ -203,10 +203,29 @@ public final class ExtraKeysView extends GridLayout {
      * and a swipe up action is done on an extra key. */
     protected PopupWindow mPopupWindow;
 
-    protected ScheduledExecutorService mScheduledExecutor;
-    protected Handler mHandler;
-    protected SpecialButtonsLongHoldRunnable mSpecialButtonsLongHoldRunnable;
-    protected int mLongPressCount;
+    /**
+     * The one press currently repeating or waiting to lock a special button. Its popup is tracked
+     * separately by {@link #mPopupWindow} because it outlives the press that opened it.
+     */
+    private final ExtraKeyPress mActivePress = new ExtraKeyPress();
+
+    private final class ExtraKeyPress {
+        private ScheduledExecutorService repetitions;
+        private Handler handler;
+        private SpecialButtonsLongHoldRunnable hold;
+        /** Whether repetition or a long hold already acted, so the release must not click again. */
+        private boolean handled;
+
+        /** Return to idle, cancelling any repeat or pending lock. */
+        void cancel() {
+            if (repetitions != null) {
+                repetitions.shutdownNow();
+                repetitions = null;
+            }
+            if (hold != null && handler != null) handler.removeCallbacks(hold);
+            hold = null;
+        }
+    }
     private ExtraKeyButton[][] configuredButtons;
     private boolean adaptiveRows;
 
@@ -486,7 +505,7 @@ public final class ExtraKeysView extends GridLayout {
                             view.setBackgroundColor(mButtonBackgroundColor);
                             stopScheduledExecutors();
                             // If ACTION_UP up was not from a repetitive key or was with a key with a popup button
-                            if (mLongPressCount == 0 || mPopupWindow != null) {
+                            if (!mActivePress.handled || mPopupWindow != null) {
                                 // Trigger popup button click if swipe up complete
                                 if (mPopupWindow != null) {
                                     dismissPopup();
@@ -579,14 +598,11 @@ public final class ExtraKeysView extends GridLayout {
 
     public void onAnyExtraKeyButtonClick(View view, @NonNull ExtraKeyButton buttonInfo, MaterialButton button) {
         if (isSpecialButton(buttonInfo)) {
-            if (mLongPressCount > 0) return;
+            if (mActivePress.handled) return;
             SpecialButtonState state = mSpecialButtons.get(SpecialButton.valueOf(buttonInfo.getKey()));
             if (state == null) return;
 
-            // Toggle active state and disable lock state if new state is not active
-            state.setIsActive(!state.isActive);
-            if (!state.isActive)
-                state.setIsLocked(false);
+            state.toggle();
         } else {
             onExtraKeyButtonClick(view, buttonInfo, button);
         }
@@ -595,13 +611,13 @@ public final class ExtraKeysView extends GridLayout {
 
     public void startScheduledExecutors(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
         stopScheduledExecutors();
-        mLongPressCount = 0;
+        mActivePress.handled = false;
         if (mRepetitiveKeys.contains(buttonInfo.getKey())) {
             // Auto repeat key if long pressed until ACTION_UP stops it by calling stopScheduledExecutors.
             // Currently, only one (last) repeat key can run at a time. Old ones are stopped.
-            mScheduledExecutor = Executors.newSingleThreadScheduledExecutor();
-            mScheduledExecutor.scheduleWithFixedDelay(() -> {
-                mLongPressCount++;
+            mActivePress.repetitions = Executors.newSingleThreadScheduledExecutor();
+            mActivePress.repetitions.scheduleWithFixedDelay(() -> {
+                mActivePress.handled = true;
                 onExtraKeyButtonClick(view, buttonInfo, button);
             }, mLongPressTimeout, mLongPressRepeatDelay, TimeUnit.MILLISECONDS);
         } else if (isSpecialButton(buttonInfo)) {
@@ -611,23 +627,15 @@ public final class ExtraKeysView extends GridLayout {
             // it has a chance to run.
             SpecialButtonState state = mSpecialButtons.get(SpecialButton.valueOf(buttonInfo.getKey()));
             if (state == null) return;
-            if (mHandler == null)
-                mHandler = new Handler(Looper.getMainLooper());
-            mSpecialButtonsLongHoldRunnable = new SpecialButtonsLongHoldRunnable(state);
-            mHandler.postDelayed(mSpecialButtonsLongHoldRunnable, mLongPressTimeout);
+            if (mActivePress.handler == null)
+                mActivePress.handler = new Handler(Looper.getMainLooper());
+            mActivePress.hold = new SpecialButtonsLongHoldRunnable(state);
+            mActivePress.handler.postDelayed(mActivePress.hold, mLongPressTimeout);
         }
     }
 
     public void stopScheduledExecutors() {
-        if (mScheduledExecutor != null) {
-            mScheduledExecutor.shutdownNow();
-            mScheduledExecutor = null;
-        }
-
-        if (mSpecialButtonsLongHoldRunnable != null && mHandler != null) {
-            mHandler.removeCallbacks(mSpecialButtonsLongHoldRunnable);
-            mSpecialButtonsLongHoldRunnable = null;
-        }
+        mActivePress.cancel();
     }
 
     public class SpecialButtonsLongHoldRunnable implements Runnable {
@@ -638,10 +646,8 @@ public final class ExtraKeysView extends GridLayout {
         }
 
         public void run() {
-            // Toggle active and lock state
-            mState.setIsLocked(!mState.isActive);
-            mState.setIsActive(!mState.isActive);
-            mLongPressCount++;
+            mState.longHold();
+            mActivePress.handled = true;
         }
     }
 
@@ -705,12 +711,11 @@ public final class ExtraKeysView extends GridLayout {
         SpecialButtonState state = mSpecialButtons.get(specialButton);
         if (state == null) return null;
 
-        if (!state.isCreated || !state.isActive)
+        if (!state.isCreated() || !state.isActive())
             return false;
 
         // Disable active state only if not locked
-        if (autoSetInActive && !state.isLocked)
-            state.setIsActive(false);
+        state.releaseAfterRead(autoSetInActive);
 
         return true;
     }
@@ -718,9 +723,9 @@ public final class ExtraKeysView extends GridLayout {
     public MaterialButton createSpecialButton(String buttonKey, boolean needUpdate) {
         SpecialButtonState state = mSpecialButtons.get(SpecialButton.valueOf(buttonKey));
         if (state == null) return null;
-        state.setIsCreated(true);
+        state.markCreated();
         MaterialButton button = new MaterialButton(getContext(), null, android.R.attr.buttonBarButtonStyle);
-        button.setTextColor(state.isActive ? mButtonActiveTextColor : mButtonTextColor);
+        button.setTextColor(state.isActive() ? mButtonActiveTextColor : mButtonTextColor);
         if (needUpdate) {
             state.buttons.add(button);
         }

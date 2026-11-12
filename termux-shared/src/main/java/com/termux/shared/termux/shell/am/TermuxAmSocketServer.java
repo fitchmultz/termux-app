@@ -65,9 +65,14 @@ public class TermuxAmSocketServer {
     /** The static instance for the {@link TermuxAmSocketServer} {@link LocalSocketManager}. */
     private static LocalSocketManager termuxAmSocketServer;
 
-    /** Whether {@link TermuxAmSocketServer} is enabled and running or not. */
+    /**
+     * Whether {@link TermuxAmSocketServer} is enabled and running, as exported to shells. The three
+     * values are distinct: setup has not run yet, it started, or it did not start. The value must
+     * not change after the app starts because running shells keep the environment they were given.
+     */
+    protected enum State { SETUP_NOT_RUN, ENABLED, DISABLED }
     @Keep
-    protected static Boolean TERMUX_APP_AM_SOCKET_SERVER_ENABLED;
+    protected static State TERMUX_APP_AM_SOCKET_SERVER_STATE = State.SETUP_NOT_RUN;
 
     /**
      * Setup the {@link AmSocketServer} {@link LocalServerSocket} and start listening for
@@ -92,7 +97,7 @@ public class TermuxAmSocketServer {
         // Once termux-app has started, the server state must not be changed since the variable is
         // exported in shell sessions and tasks and if state is changed, then env of older shells will
         // retain invalid value. User should force stop the app to update state after changing prop.
-        TERMUX_APP_AM_SOCKET_SERVER_ENABLED = enabled;
+        TERMUX_APP_AM_SOCKET_SERVER_STATE = enabled ? State.ENABLED : State.DISABLED;
         TermuxAppShellEnvironment.updateTermuxAppAMSocketServerEnabled(context);
     }
 
@@ -170,7 +175,11 @@ public class TermuxAmSocketServer {
     public static Boolean getTermuxAppAMSocketServerEnabled(@NonNull Context currentPackageContext) {
         boolean isTermuxApp = TermuxConstants.TERMUX_PACKAGE_NAME.equals(currentPackageContext.getPackageName());
         if (isTermuxApp) {
-            return TERMUX_APP_AM_SOCKET_SERVER_ENABLED;
+            switch (TERMUX_APP_AM_SOCKET_SERVER_STATE) {
+                case ENABLED: return true;
+                case DISABLED: return false;
+                default: return null;
+            }
         } else {
             // Currently, unsupported since plugin app processes don't know that value is set in termux
             // app process TermuxAmSocketServer class. A binder API or a way to check if server is actually
@@ -200,9 +209,9 @@ public class TermuxAmSocketServer {
         @Override
         public void onError(@NonNull LocalSocketManager localSocketManager,
                             @Nullable LocalClientSocket clientSocket, @NonNull Error error) {
-            // Don't show notification if server is not running since errors may be triggered
-            // when server is stopped and server and client sockets are closed.
-            if (localSocketManager.isRunning()) {
+            // Don't show shutdown noise, but do report a start that failed: the manager is only
+            // closed once stop() ran, while a failed start leaves it stopped.
+            if (!localSocketManager.isClosed()) {
                 TermuxAmSocketServer.showErrorNotification(localSocketManager.getContext(), error,
                     localSocketManager.getLocalSocketRunConfig(), clientSocket);
             }

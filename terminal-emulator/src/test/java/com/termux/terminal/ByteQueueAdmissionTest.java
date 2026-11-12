@@ -179,6 +179,20 @@ public class ByteQueueAdmissionTest extends TestCase {
         } catch (IllegalArgumentException expected) { }
     }
 
+    public void testCancelledPromiseIsNotBindableAgain() {
+        ByteQueue q = new ByteQueue(4);
+        ByteQueue.Reservation held = new ByteQueue.Reservation(q, 2);
+        assertEquals(ByteQueue.WriteResult.ACCEPTED, q.tryWriteAndReserve(new byte[]{1}, 0, 1, held));
+        q.cancel(held);
+        assertFalse(q.isActive(held));
+        assertEquals(ByteQueue.WriteResult.CLOSED, q.tryWriteReserved(new byte[]{2}, 0, 1, held));
+        try {
+            q.tryWriteAndReserve(new byte[]{3}, 0, 1, held);
+            fail("A cancelled promise must not be bound again");
+        } catch (IllegalArgumentException expected) { }
+        assertEquals(ByteQueue.WriteResult.ACCEPTED, q.tryWrite(new byte[]{3, 4, 5}, 0, 3));
+    }
+
     public void testCancelWakesLegacyProducerAndCloseInvalidatesLateTokens() throws Exception {
         ByteQueue q = new ByteQueue(1);
         ByteQueue.Reservation held = new ByteQueue.Reservation(q, 1);

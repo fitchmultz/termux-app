@@ -260,6 +260,10 @@ public final class AppShell {
             return;
         }
 
+        // Decided before recording the failure: FAILED sorts after EXECUTED, so once the failure is
+        // recorded no state query can tell that this shell still owns a running process.
+        final boolean ownsRunningProcess = mExecutionCommand.canBeKilled();
+
         Logger.logDebug(LOG_TAG, "Send SIGKILL to \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" AppShell");
 
         if (mExecutionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), context.getString(R.string.error_sending_sigkill_to_process))) {
@@ -269,7 +273,7 @@ public final class AppShell {
             }
         }
 
-        if (mExecutionCommand.isExecuting()) {
+        if (ownsRunningProcess) {
             kill();
         }
     }
@@ -308,7 +312,7 @@ public final class AppShell {
 
         if (executionCommand == null) return;
 
-        if (executionCommand.shouldNotProcessResults()) {
+        if (!executionCommand.claimResultDelivery()) {
             Logger.logDebug(LOG_TAG, "Ignoring duplicate call to process \"" + executionCommand.getCommandIdAndLabelLogString() + "\" AppShell result");
             return;
         }

@@ -149,7 +149,7 @@ public class TerminalImeComposingTest {
         TermuxTerminalSessionClientBase client = new TermuxTerminalSessionClientBase();
         TerminalSession result = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
         ReflectionHelpers.setField(result, "mEmulator", new TerminalEmulator(result, 80, 24, 8, 16, 100, client));
-        ReflectionHelpers.setField(result, "mShellPid", 1234);
+        TestSessions.markShell(result, 1234);
         return result;
     }
 
@@ -167,7 +167,11 @@ public class TerminalImeComposingTest {
     }
 
     private void idle() { Shadows.shadowOf(Looper.getMainLooper()).idle(); }
-    private String preview() { return ReflectionHelpers.getField(terminal, "mComposingText"); }
+    private Object imeConnection() { return ReflectionHelpers.getField(terminal, "mIme"); }
+
+    private String preview() { return ReflectionHelpers.getField(imeConnection(), "previewText"); }
+
+    private int previewCursor() { return ReflectionHelpers.getField(imeConnection(), "previewCursor"); }
 
     private Bitmap capture() {
         Bitmap bitmap = Bitmap.createBitmap(terminal.getWidth(), terminal.getHeight(), Bitmap.Config.ARGB_8888);
@@ -307,7 +311,7 @@ public class TerminalImeComposingTest {
         input.setComposingText(composing, 1);
         assertEquals(composing, preview());
         input.setSelection(1, 1);
-        assertEquals(1, (int) ReflectionHelpers.getField(terminal, "mComposingCursor"));
+        assertEquals(1, previewCursor());
         assertEquals("한", input.getTextBeforeCursor(10, 0).toString());
         assertEquals("字😀", input.getTextAfterCursor(10, 0).toString());
         ExtractedTextRequest request = new ExtractedTextRequest();
@@ -337,7 +341,7 @@ public class TerminalImeComposingTest {
         input.setComposingRegion(1, 3);
         input.setSelection(2, 2);
         assertEquals("bc", preview());
-        assertEquals(1, (int) ReflectionHelpers.getField(terminal, "mComposingCursor"));
+        assertEquals(1, previewCursor());
         input.deleteSurroundingText(1, 0);
         assertEquals("bc", preview());
         assertEquals("", received(session));

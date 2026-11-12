@@ -69,10 +69,37 @@ public final class TerminalView extends View {
 
     private TextSelectionCursorController mTextSelectionCursorController;
 
-    private Handler mTerminalCursorBlinkerHandler;
-    private TerminalCursorBlinkerRunnable mTerminalCursorBlinkerRunnable;
-    private int mTerminalCursorBlinkerRate;
-    private boolean mCursorInvisibleIgnoreOnce;
+    /**
+     * The cursor blinker: OFF posts no toggles, RUNNING posts its own toggle at the configured
+     * rate. A rate outside the supported range means OFF, never a half-started blinker.
+     */
+    private final CursorBlinker mCursorBlinker = new CursorBlinker();
+
+    private final class CursorBlinker {
+        private Handler handler;
+        private TerminalCursorBlinkerRunnable runnable;
+        private int rate;
+
+        boolean hasValidRate() {
+            return rate >= TERMINAL_CURSOR_BLINK_RATE_MIN && rate <= TERMINAL_CURSOR_BLINK_RATE_MAX;
+        }
+
+        /** Remove pending toggles. The runnable is kept for a later start. */
+        void stop() {
+            if (handler != null && runnable != null) handler.removeCallbacks(runnable);
+        }
+
+        void start(TerminalEmulator emulator) {
+            if (handler == null) handler = new Handler(Looper.getMainLooper());
+            runnable = new TerminalCursorBlinkerRunnable(emulator, rate);
+            runnable.run();
+        }
+
+        void updateEmulator(TerminalEmulator emulator) {
+            if (runnable != null) runnable.setEmulator(emulator);
+        }
+    }
+
     public static final int TERMINAL_CURSOR_BLINK_RATE_MIN = 100;
     public static final int TERMINAL_CURSOR_BLINK_RATE_MAX = 2000;
 
@@ -83,75 +110,128 @@ public final class TerminalView extends View {
     float mScaleFactor = 1.f;
     final GestureAndScaleRecognizer mGestureRecognizer;
 
-    /** Keep track of where mouse touch event started which we report as mouse scroll. */
-    private int mMouseScrollStartX = -1, mMouseScrollStartY = -1;
-    /** Keep track of the time when a touch event leading to sending mouse scroll events started. */
-    private long mMouseStartDownTime = -1;
+    /**
+     * Coordinates of the finger gesture currently reported as mouse wheel events. The gesture is
+     * identified by its DOWN time; a new DOWN replaces the anchor.
+     */
+    private static final class MouseScrollAnchor {
+        final int x, y;
+        final long downTime;
+
+        MouseScrollAnchor(int x, int y, long downTime) {
+            this.x = x;
+            this.y = y;
+            this.downTime = downTime;
+        }
+    }
+
+    private MouseScrollAnchor mMouseScrollAnchor;
 
     final Scroller mScroller;
 
     /** What was left in from scrolling movement. */
     float mScrollRemainder;
 
-    /** If non-zero, this is the last unicode code point received if that was a combining character. */
-    int mCombiningAccent;
+    /** No dead key is waiting for its letter. */
+    private static final int NO_COMBINING_ACCENT = 0;
+    /**
+     * The dead-key accent waiting for its letter, or {@link #NO_COMBINING_ACCENT}. It is cleared by
+     * the letter that combines with it, by the next dead key that replaces it, and by reattachment.
+     */
+    int mCombiningAccent = NO_COMBINING_ACCENT;
 
-    /** Identity of the served terminal connection; deferred IME metadata must not outlive it. */
-    private BaseInputConnection mInputConnection;
-    private long mInputConnectionGeneration;
-    private long mQueuedInputRestartGeneration = -1;
-    /** Legacy editors older than an admitted ON rebind must not flush drafts when closed. */
-    private long mLegacyInputCancellationGeneration = -1;
-    private boolean mImeComposingEnabled;
-    /** Carry feature-connection restart intent through temporary null and rapid session changes. */
-    private boolean mRestartInputAfterSessionChange;
-    /** Defer feature rebinding after a known window-focus loss until the matching gain callback. */
-    private boolean mInputConnectionWindowFocusLost;
-    private String mComposingText;
-    private int mComposingCursor = -1;
+    private boolean hasPendingCombiningAccent() { return mCombiningAccent != NO_COMBINING_ACCENT; }
+
+    /**
+     * The IME connection this view serves.
+     *
+     * <p>{@code ABSENT}: no connection; {@code BOUND}: one {@link BaseInputConnection} is served,
+     * either the opt-in composing editor or the legacy OFF/Honeyboard editor.
+     *
+     * <p>Invalidating returns to {@code ABSENT} and bumps {@link #generation}. Every deferred
+     * runnable, queued restart and per-connection callback compares that generation (and its own
+     * close flag), so work belonging to a replaced connection is dropped instead of replayed.
+     * Rebound editors are requested without asking the keyboard to appear; a window-focus loss
+     * defers the request until the matching gain.
+     */
+    private final ImeConnection mIme = new ImeConnection();
+
+    private final class ImeConnection {
+        private BaseInputConnection connection;
+        private long generation;
+        private long queuedRestartGeneration = -1;
+        /** Legacy editors older than an admitted ON rebind must not flush drafts when closed. */
+        private long legacyCancellationGeneration = -1;
+        private boolean composingEnabled;
+        /** Carry feature-connection restart intent through temporary null and rapid session changes. */
+        private boolean restartAfterSessionChange;
+        /** Defer feature rebinding after a known window-focus loss until the matching gain callback. */
+        private boolean windowFocusLost;
+        private String previewText;
+        private int previewCursor = -1;
+
+        /** Return to ABSENT and make every deferred runnable of the old connection stale. */
+        void invalidate() {
+            // An uncommitted preview belongs to its original editor/session, never a new pane.
+            if (composingEnabled && connection != null) connection.getEditable().clear();
+            connection = null;
+            generation++;
+            composingEnabled = false;
+            setComposingTextPreview(null, -1);
+        }
+
+        /** Make the connection just created by {@link #onCreateInputConnection(EditorInfo)} current. */
+        void adopt(BaseInputConnection served, boolean composing, boolean honeyboard, long servedGeneration) {
+            connection = served;
+            composingEnabled = composing;
+            restartAfterSessionChange = composing || honeyboard;
+            if (composing) legacyCancellationGeneration = servedGeneration;
+        }
+
+        /** Queue at most one restart per generation. @return whether a restart was queued. */
+        boolean queueRestart(long currentGeneration) {
+            if (queuedRestartGeneration == currentGeneration) return false;
+            queuedRestartGeneration = currentGeneration;
+            return true;
+        }
+    }
 
     private void invalidateInputConnection() {
-        // An uncommitted preview belongs to its original editor/session, never a new pane.
-        if (mImeComposingEnabled && mInputConnection != null) mInputConnection.getEditable().clear();
-        mInputConnection = null;
-        mInputConnectionGeneration++;
-        mImeComposingEnabled = false;
-        setComposingTextPreview(null, -1);
+        mIme.invalidate();
     }
 
     private void restartInvalidatedFeatureInputConnection() {
-        if ((mInputConnectionWindowFocusLost && !hasWindowFocus()) || mInputConnection != null ||
+        if ((mIme.windowFocusLost && !hasWindowFocus()) || mIme.connection != null ||
             mTermSession == null || !hasFocus() || !isAttachedToWindow() ||
-            (!mRestartInputAfterSessionChange && !mClient.shouldEnableImeComposing())) return;
-        long generation = mInputConnectionGeneration;
-        if (mQueuedInputRestartGeneration == generation) return;
-        mQueuedInputRestartGeneration = generation;
+            (!mIme.restartAfterSessionChange && !mClient.shouldEnableImeComposing())) return;
+        long generation = mIme.generation;
+        if (!mIme.queueRestart(generation)) return;
         TerminalSession session = mTermSession;
         post(() -> {
             // An obsolete runnable must not release a newer generation's queued restart.
-            if (mQueuedInputRestartGeneration == generation) mQueuedInputRestartGeneration = -1;
+            if (mIme.queuedRestartGeneration == generation) mIme.queuedRestartGeneration = -1;
             boolean enableComposing = mClient.shouldEnableImeComposing();
-            if (generation != mInputConnectionGeneration || mInputConnection != null || mTermSession != session ||
-                (mInputConnectionWindowFocusLost && !hasWindowFocus()) || !hasFocus() || !isAttachedToWindow() ||
-                !mClient.isTerminalViewSelected() || (!mRestartInputAfterSessionChange && !enableComposing)) return;
+            if (generation != mIme.generation || mIme.connection != null || mTermSession != session ||
+                (mIme.windowFocusLost && !hasWindowFocus()) || !hasFocus() || !isAttachedToWindow() ||
+                !mClient.isTerminalViewSelected() || (!mIme.restartAfterSessionChange && !enableComposing)) return;
             InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
             if (imm != null) {
                 // Base closure can run synchronously inside restartInput, before the replacement callback.
-                if (enableComposing) mLegacyInputCancellationGeneration = generation;
+                if (enableComposing) mIme.legacyCancellationGeneration = generation;
                 imm.restartInput(TerminalView.this);
             }
         });
     }
 
     private void setComposingTextPreview(String text, int cursor) {
-        if (TextUtils.equals(text, mComposingText) && cursor == mComposingCursor) return;
-        mComposingText = text;
-        mComposingCursor = cursor;
+        if (TextUtils.equals(text, mIme.previewText) && cursor == mIme.previewCursor) return;
+        mIme.previewText = text;
+        mIme.previewCursor = cursor;
         invalidate();
     }
 
     private void updateComposingTextPreview(BaseInputConnection connection) {
-        if (!mImeComposingEnabled || connection != mInputConnection) return;
+        if (!mIme.composingEnabled || connection != mIme.connection) return;
         Editable editable = connection.getEditable();
         int start = BaseInputConnection.getComposingSpanStart(editable);
         int end = BaseInputConnection.getComposingSpanEnd(editable);
@@ -165,13 +245,13 @@ public final class TerminalView extends View {
     }
 
     private void finalizeComposingIfActive() {
-        BaseInputConnection connection = mInputConnection;
-        if (!mImeComposingEnabled || mComposingText == null || connection == null || !hasFocus()) return;
-        long generation = mInputConnectionGeneration;
+        BaseInputConnection connection = mIme.connection;
+        if (!mIme.composingEnabled || mIme.previewText == null || connection == null || !hasFocus()) return;
+        long generation = mIme.generation;
         connection.finishComposingText();
         post(() -> {
-            if (mInputConnection != connection || generation != mInputConnectionGeneration ||
-                !mImeComposingEnabled || mComposingText != null || !hasFocus() || !isAttachedToWindow() || !mClient.isTerminalViewSelected()) return;
+            if (mIme.connection != connection || generation != mIme.generation ||
+                !mIme.composingEnabled || mIme.previewText != null || !hasFocus() || !isAttachedToWindow() || !mClient.isTerminalViewSelected()) return;
             InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
             if (imm != null) imm.restartInput(TerminalView.this);
         });
@@ -180,9 +260,9 @@ public final class TerminalView extends View {
     /** Apply a changed opt-in setting on return without stealing focus from a native editor. */
     public void refreshImeComposingPreference() {
         if (!hasFocus() || !isAttachedToWindow() || !mClient.isTerminalViewSelected() || mTermSession == null ||
-            (mInputConnectionWindowFocusLost && !hasWindowFocus())) return;
-        if (mInputConnection != null) {
-            if (mImeComposingEnabled == mClient.shouldEnableImeComposing()) return;
+            (mIme.windowFocusLost && !hasWindowFocus())) return;
+        if (mIme.connection != null) {
+            if (mIme.composingEnabled == mClient.shouldEnableImeComposing()) return;
             invalidateInputConnection();
         }
         // A lost OFF connection still needs rebinding when the preference has since become ON.
@@ -190,7 +270,46 @@ public final class TerminalView extends View {
     }
 
     /** Only terminal-delivered physical keys may produce a matching release. */
-    private final Map<Long, KittyKeyPress> mKittyKeyPresses = new HashMap<>();
+    private final KittyKeyPresses mKittyKeyPresses = new KittyKeyPresses();
+
+    /**
+     * Presses whose terminal-visible DOWN was admitted and whose UP still owns the release
+     * capacity. An entry is stale once its session, emulator, screen or keyboard generation moves.
+     */
+    private final class KittyKeyPresses {
+        private final Map<Long, KittyKeyPress> mPresses = new HashMap<>();
+
+        void put(KeyEvent event, KittyKeyPress press) { mPresses.put(kittyKeyId(event), press); }
+
+        KittyKeyPress remove(KeyEvent event) { return mPresses.remove(kittyKeyId(event)); }
+
+        void cancel(KeyEvent event) {
+            KittyKeyPress press = remove(event);
+            if (press != null) press.reservation.cancel();
+        }
+
+        void cancelAll() {
+            for (KittyKeyPress press : mPresses.values()) press.reservation.cancel();
+            mPresses.clear();
+        }
+
+        /** Drop and release presses that can no longer produce a valid release. */
+        void pruneStale() {
+            Iterator<KittyKeyPress> iterator = mPresses.values().iterator();
+            while (iterator.hasNext()) {
+                KittyKeyPress press = iterator.next();
+                if (!isCurrent(press)) {
+                    press.reservation.cancel();
+                    iterator.remove();
+                }
+            }
+        }
+
+        private boolean isCurrent(KittyKeyPress press) {
+            return mTermSession == press.session && mEmulator == press.emulator &&
+                mEmulator.getScreen() == press.screen && mEmulator.getKittyKeyboardGeneration() == press.generation;
+        }
+    }
 
     private static final class KittyKeyPress {
         final KeyHandler.KittyKey textKey;
@@ -255,7 +374,7 @@ public final class TerminalView extends View {
             mTermSession.tryWrite(code);
         } else {
             press.reservation = press.session.tryWriteAndReserveRelease(code, press.releaseBytes);
-            if (press.reservation != null) mKittyKeyPresses.put(kittyKeyId(event), press);
+            if (press.reservation != null) mKittyKeyPresses.put(event, press);
         }
     }
 
@@ -265,72 +384,31 @@ public final class TerminalView extends View {
             mTermSession.tryWriteCodePoint(altDown, codePoint);
         } else {
             press.reservation = press.session.tryWriteCodePointAndReserveRelease(altDown, codePoint, press.releaseBytes);
-            if (press.reservation != null) mKittyKeyPresses.put(kittyKeyId(event), press);
+            if (press.reservation != null) mKittyKeyPresses.put(event, press);
         }
     }
 
-    private void cancelKittyKey(KeyEvent event) {
-        KittyKeyPress press = mKittyKeyPresses.remove(kittyKeyId(event));
-        if (press != null) press.reservation.cancel();
-    }
+    private void cancelKittyKey(KeyEvent event) { mKittyKeyPresses.cancel(event); }
 
-    private void clearKittyKeyPresses() {
-        for (KittyKeyPress press : mKittyKeyPresses.values()) press.reservation.cancel();
-        mKittyKeyPresses.clear();
-    }
+    private void clearKittyKeyPresses() { mKittyKeyPresses.cancelAll(); }
 
-    private boolean isCurrentKittyKey(KittyKeyPress press) {
-        return mTermSession == press.session && mEmulator == press.emulator && mEmulator.getScreen() == press.screen &&
-            mEmulator.getKittyKeyboardGeneration() == press.generation;
-    }
-
-    private void pruneKittyKeyPresses() {
-        Iterator<KittyKeyPress> iterator = mKittyKeyPresses.values().iterator();
-        while (iterator.hasNext()) {
-            KittyKeyPress press = iterator.next();
-            if (!isCurrentKittyKey(press)) {
-                press.reservation.cancel();
-                iterator.remove();
-            }
-        }
-    }
+    private void pruneKittyKeyPresses() { mKittyKeyPresses.pruneStale(); }
 
     /**
-     * The current AutoFill type returned for {@link View#getAutofillType()} by {@link #getAutofillType()}.
-     *
-     * The default is {@link #AUTOFILL_TYPE_NONE} so that AutoFill UI, like toolbar above keyboard
-     * is not shown automatically, like on Activity starts/View create. This value should be updated
-     * to required value, like {@link #AUTOFILL_TYPE_TEXT} before calling
-     * {@link AutofillManager#requestAutofill(View)} so that AutoFill UI shows. The updated value
-     * set will automatically be restored to {@link #AUTOFILL_TYPE_NONE} in
-     * {@link #autofill(AutofillValue)} so that AutoFill UI isn't shown anymore by calling
-     * {@link #resetAutoFill()}.
+     * The one in-flight AutoFill request. While it is idle the view reports
+     * {@link #AUTOFILL_TYPE_NONE}, {@link #IMPORTANT_FOR_AUTOFILL_NO} and no hints, so AutoFill UI
+     * does not appear on its own. A request makes the view eligible only until the framework uses
+     * it; every path ends in {@link #resetAutoFill()}.
      */
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private int mAutoFillType = AUTOFILL_TYPE_NONE;
+    private static final class AutoFillRequest {
+        private int type = AUTOFILL_TYPE_NONE;
+        private int importance = IMPORTANT_FOR_AUTOFILL_NO;
+        private String[] hints = new String[0];
+    }
 
-    /**
-     * The current AutoFill type returned for {@link View#getImportantForAutofill()} by
-     * {@link #getImportantForAutofill()}.
-     *
-     * The default is {@link #IMPORTANT_FOR_AUTOFILL_NO} so that view is not considered important
-     * for AutoFill. This value should be updated to required value, like
-     * {@link #IMPORTANT_FOR_AUTOFILL_YES} before calling {@link AutofillManager#requestAutofill(View)}
-     * so that Android and apps consider the view as important for AutoFill to process the request.
-     * The updated value set will automatically be restored to {@link #IMPORTANT_FOR_AUTOFILL_NO} in
-     * {@link #autofill(AutofillValue)} by calling {@link #resetAutoFill()}.
-     */
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private int mAutoFillImportance = IMPORTANT_FOR_AUTOFILL_NO;
-
-    /**
-     * The current AutoFill hints returned for {@link View#getAutofillHints()} ()} by {@link #getAutofillHints()} ()}.
-     *
-     * The default is an empty `string[]`. This value should be updated to required value. The
-     * updated value set will automatically be restored an empty `string[]` in
-     * {@link #autofill(AutofillValue)} by calling {@link #resetAutoFill()}.
-     */
-    private String[] mAutoFillHints = new String[0];
+    private final AutoFillRequest mAutoFill = new AutoFillRequest();
 
     private final boolean mAccessibilityEnabled;
 
@@ -494,6 +572,11 @@ public final class TerminalView extends View {
     /**
      * Attach a {@link TerminalSession} to this view.
      *
+     * <p>Attachment has two phases: this method only records the session, and {@link #updateSize()}
+     * creates the emulator once the view has a non-zero size. Until then {@link #mEmulator} is
+     * {@code null}, and key, touch and render paths deliberately drop input rather than guess a
+     * geometry.
+     *
      * @param session The {@link TerminalSession} this view will be displaying.
      */
     public boolean attachSession(TerminalSession session) {
@@ -505,7 +588,7 @@ public final class TerminalView extends View {
         setTerminalCursorBlinkerState(false, true);
         mTermSession = session;
         mEmulator = null;
-        mCombiningAccent = 0;
+        mCombiningAccent = NO_COMBINING_ACCENT;
         // Do not overwrite either session's cached offset before updateSize() restores it.
         setTopRow(0);
 
@@ -590,7 +673,7 @@ public final class TerminalView extends View {
             outAttrs.initialSelStart = outAttrs.initialSelEnd = 1;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) outAttrs.setInitialSurroundingText("xx");
         }
-        final long generation = ++mInputConnectionGeneration;
+        final long generation = ++mIme.generation;
         final TerminalSession boundSession = mTermSession;
         BaseInputConnection connection = new BaseInputConnection(this, true) {
             private boolean mClosed;
@@ -598,7 +681,7 @@ public final class TerminalView extends View {
             private boolean mExtractedTextMonitor;
 
             private boolean isCurrentConnection() {
-                return !mClosed && mInputConnection == this && generation == mInputConnectionGeneration &&
+                return !mClosed && mIme.connection == this && generation == mIme.generation &&
                     boundSession == mTermSession;
             }
 
@@ -739,10 +822,10 @@ public final class TerminalView extends View {
                 mClosed = true;
                 mExtractedTextMonitor = false;
                 // A restart after retargeting must not flush a stale virtual editor into the new session.
-                if (composing || (!wasCurrent && (honeyboard || generation < mLegacyInputCancellationGeneration)))
+                if (composing || (!wasCurrent && (honeyboard || generation < mIme.legacyCancellationGeneration)))
                     getEditable().clear();
                 super.closeConnection();
-                if (mInputConnection == this) invalidateInputConnection();
+                if (mIme.connection == this) invalidateInputConnection();
             }
 
             @Override
@@ -882,10 +965,7 @@ public final class TerminalView extends View {
             }
 
         };
-        mInputConnection = connection;
-        mImeComposingEnabled = composing;
-        mRestartInputAfterSessionChange = composing || honeyboard;
-        if (composing) mLegacyInputCancellationGeneration = generation;
+        mIme.adopt(connection, composing, honeyboard, generation);
         return connection;
     }
 
@@ -1020,13 +1100,11 @@ public final class TerminalView extends View {
         int x = columnAndRow[0] + 1;
         int y = columnAndRow[1] + 1;
         if (pressed && (button == TerminalEmulator.MOUSE_WHEELDOWN_BUTTON || button == TerminalEmulator.MOUSE_WHEELUP_BUTTON)) {
-            if (mMouseStartDownTime == e.getDownTime()) {
-                x = mMouseScrollStartX;
-                y = mMouseScrollStartY;
+            if (mMouseScrollAnchor != null && mMouseScrollAnchor.downTime == e.getDownTime()) {
+                x = mMouseScrollAnchor.x;
+                y = mMouseScrollAnchor.y;
             } else {
-                mMouseStartDownTime = e.getDownTime();
-                mMouseScrollStartX = x;
-                mMouseScrollStartY = y;
+                mMouseScrollAnchor = new MouseScrollAnchor(x, y, e.getDownTime());
             }
         }
         mEmulator.sendMouseEvent(button, x, y, pressed);
@@ -1305,26 +1383,26 @@ public final class TerminalView extends View {
         int oldCombiningAccent = mCombiningAccent;
         if ((result & KeyCharacterMap.COMBINING_ACCENT) != 0) {
             // If entered combining accent previously, write it out:
-            if (mCombiningAccent != 0)
+            if (hasPendingCombiningAccent())
                 inputCodePoint(event.getDeviceId(), mCombiningAccent, controlDown, leftAltDown);
             mCombiningAccent = result & KeyCharacterMap.COMBINING_ACCENT_MASK;
         } else {
-            if (mCombiningAccent != 0) {
+            if (hasPendingCombiningAccent()) {
                 int combinedChar = KeyCharacterMap.getDeadChar(mCombiningAccent, result);
                 if (combinedChar > 0) result = combinedChar;
-                mCombiningAccent = 0;
+                mCombiningAccent = NO_COMBINING_ACCENT;
             }
             // Keep the layout's unshifted key before legacy Ctrl mapping destroys its identity.
             int unshiftedMetaState = effectiveMetaState & ~(KeyEvent.META_SHIFT_MASK | KeyEvent.META_CAPS_LOCK_ON);
             int unshiftedCodePoint = event.getUnicodeChar(unshiftedMetaState);
-            if (oldCombiningAccent != 0 || unshiftedCodePoint <= 0 || (unshiftedCodePoint & KeyCharacterMap.COMBINING_ACCENT) != 0)
+            if (oldCombiningAccent != NO_COMBINING_ACCENT || unshiftedCodePoint <= 0 || (unshiftedCodePoint & KeyCharacterMap.COMBINING_ACCENT) != 0)
                 unshiftedCodePoint = Character.toLowerCase(result);
             int textKeyMod = keyMod;
             // Right Alt is used by the keyboard layout (AltGr), rather than a terminal Alt shortcut.
             if (rightAltDownFromEvent && !leftAltDown) textKeyMod &= ~KeyHandler.KEYMOD_ALT;
             int shiftedCodePoint = 0, baseLayoutCodePoint = 0;
             if ((mEmulator.getKittyKeyboardFlags() & KeyHandler.KITTY_REPORT_ALTERNATE_KEYS) != 0 &&
-                oldCombiningAccent == 0 && unshiftedCodePoint > 0 &&
+                oldCombiningAccent == NO_COMBINING_ACCENT && unshiftedCodePoint > 0 &&
                 (event.getUnicodeChar(unshiftedMetaState) & KeyCharacterMap.COMBINING_ACCENT) == 0) {
                 if (shiftDown) shiftedCodePoint = event.getUnicodeChar(effectiveMetaState & ~KeyEvent.META_CAPS_LOCK_ON);
                 if (event.getAction() == KeyEvent.ACTION_DOWN &&
@@ -1498,7 +1576,7 @@ public final class TerminalView extends View {
         pruneKittyKeyPresses();
         // Do not return for BACK: the client may be exiting the activity.
         if (mEmulator == null && keyCode != KeyEvent.KEYCODE_BACK) return true;
-        KittyKeyPress press = mKittyKeyPresses.remove(kittyKeyId(event));
+        KittyKeyPress press = mKittyKeyPresses.remove(event);
         try {
             if (mClient.onKeyUp(keyCode, event)) {
                 invalidate();
@@ -1506,7 +1584,7 @@ public final class TerminalView extends View {
             } else if (event.isSystem() && (!mClient.shouldBackButtonBeMappedToEscape() || keyCode != KeyEvent.KEYCODE_BACK)) {
                 return super.onKeyUp(keyCode, event);
             }
-            if (press != null && isCurrentKittyKey(press) && event.getDownTime() == press.downTime &&
+            if (press != null && mKittyKeyPresses.isCurrent(press) && event.getDownTime() == press.downTime &&
                 (mEmulator.getKittyKeyboardFlags() & KeyHandler.KITTY_REPORT_EVENTS) != 0 && !event.isCanceled()) {
                 int modifiers = kittyEventModifiers(event) | press.virtualModifiers;
                 if (press.textKey != null && (event.getMetaState() & KeyEvent.META_ALT_RIGHT_ON) != 0 &&
@@ -1536,12 +1614,12 @@ public final class TerminalView extends View {
     public void onWindowFocusChanged(boolean hasWindowFocus) {
         super.onWindowFocusChanged(hasWindowFocus);
         if (!hasWindowFocus) {
-            mInputConnectionWindowFocusLost = true;
+            mIme.windowFocusLost = true;
             clearKittyKeyPresses();
             invalidateInputConnection();
         } else {
-            boolean restoreInvalidatedInput = mInputConnectionWindowFocusLost;
-            mInputConnectionWindowFocusLost = false;
+            boolean restoreInvalidatedInput = mIme.windowFocusLost;
+            mIme.windowFocusLost = false;
             // Non-IME windows can leave Android serving the invalidated connection on return.
             // Rebind the selected feature editor without asking the keyboard to become visible.
             if (restoreInvalidatedInput && hasWindowFocus()) refreshImeComposingPreference();
@@ -1557,7 +1635,12 @@ public final class TerminalView extends View {
         updateSize();
     }
 
-    /** Check if the terminal size in rows and columns should be updated. */
+    /**
+     * Check if the terminal size in rows and columns should be updated.
+     *
+     * <p>This is where a session attached by {@link #attachSession} becomes live: the emulator is
+     * created on first sizing, or resized afterwards, and the view records the new instance.
+     */
     public void updateSize() {
         int viewWidth = getWidth();
         int viewHeight = getHeight();
@@ -1572,9 +1655,8 @@ public final class TerminalView extends View {
             mEmulator = mTermSession.getEmulator();
             mClient.onEmulatorSet();
 
-            // Update mTerminalCursorBlinkerRunnable inner class mEmulator on session change
-            if (mTerminalCursorBlinkerRunnable != null)
-                mTerminalCursorBlinkerRunnable.setEmulator(mEmulator);
+            // Keep a running blinker bound to this view's current emulator.
+            mCursorBlinker.updateEmulator(mEmulator);
 
             // Reflow or history clearing may have removed rows since this view last displayed them.
             int rowsInHistory = mEmulator.getScreen().getActiveTranscriptRows();
@@ -1600,10 +1682,10 @@ public final class TerminalView extends View {
 
             // render the text selection handles
             renderTextSelection();
-            if (mImeComposingEnabled && mComposingText != null && hasFocus()) {
-                char[] chars = mComposingText.toCharArray();
+            if (mIme.composingEnabled && mIme.previewText != null && hasFocus()) {
+                char[] chars = mIme.previewText.toCharArray();
                 mRenderer.renderComposingText(mEmulator.getRendererState(), canvas, mTopRow,
-                    chars, 0, chars.length, mComposingCursor);
+                    chars, 0, chars.length, mIme.previewCursor);
             }
         }
     }
@@ -1662,13 +1744,13 @@ public final class TerminalView extends View {
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public int getAutofillType() {
-        return mAutoFillType;
+        return mAutoFill.type;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public String[] getAutofillHints() {
-        return mAutoFillHints;
+        return mAutoFill.hints;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -1680,15 +1762,15 @@ public final class TerminalView extends View {
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public int getImportantForAutofill() {
-        return mAutoFillImportance;
+        return mAutoFill.importance;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private synchronized void resetAutoFill() {
         // Restore none type so that AutoFill UI isn't shown anymore.
-        mAutoFillType = AUTOFILL_TYPE_NONE;
-        mAutoFillImportance = IMPORTANT_FOR_AUTOFILL_NO;
-        mAutoFillHints = new String[0];
+        mAutoFill.type = AUTOFILL_TYPE_NONE;
+        mAutoFill.importance = IMPORTANT_FOR_AUTOFILL_NO;
+        mAutoFill.hints = new String[0];
     }
 
     public AutofillManager getAutoFillManagerService() {
@@ -1736,12 +1818,12 @@ public final class TerminalView extends View {
             AutofillManager autofillManager = getAutoFillManagerService();
             if (autofillManager != null && autofillManager.isEnabled()) {
                 // Update type that will be returned by `getAutofillType()` so that AutoFill UI is shown.
-                mAutoFillType = AUTOFILL_TYPE_TEXT;
+                mAutoFill.type = AUTOFILL_TYPE_TEXT;
                 // Update importance that will be returned by `getImportantForAutofill()` so that
                 // AutoFill considers the view as important.
-                mAutoFillImportance = IMPORTANT_FOR_AUTOFILL_YES;
+                mAutoFill.importance = IMPORTANT_FOR_AUTOFILL_YES;
                 // Update hints that will be returned by `getAutofillHints()` for which to show AutoFill UI.
-                mAutoFillHints = autoFillHints;
+                mAutoFill.hints = autoFillHints;
                 autofillManager.requestAutofill(this);
             }
         } catch (Exception e) {
@@ -1751,7 +1833,7 @@ public final class TerminalView extends View {
 
     public synchronized void cancelRequestAutoFill() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-        if (mAutoFillType == AUTOFILL_TYPE_NONE) return;
+        if (mAutoFill.type == AUTOFILL_TYPE_NONE) return;
 
         try {
             AutofillManager autofillManager = getAutoFillManagerService();
@@ -1784,15 +1866,15 @@ public final class TerminalView extends View {
         // If cursor blinking rate is not valid
         if (blinkRate != 0 && (blinkRate < TERMINAL_CURSOR_BLINK_RATE_MIN || blinkRate > TERMINAL_CURSOR_BLINK_RATE_MAX)) {
             mClient.logError(LOG_TAG, "The cursor blink rate must be in between " + TERMINAL_CURSOR_BLINK_RATE_MIN + "-" + TERMINAL_CURSOR_BLINK_RATE_MAX + ": " + blinkRate);
-            mTerminalCursorBlinkerRate = 0;
+            mCursorBlinker.rate = 0;
             result = false;
         } else {
             mClient.logVerbose(LOG_TAG, "Setting cursor blinker rate to " + blinkRate);
-            mTerminalCursorBlinkerRate = blinkRate;
+            mCursorBlinker.rate = blinkRate;
             result = true;
         }
 
-        if (mTerminalCursorBlinkerRate == 0) {
+        if (mCursorBlinker.rate == 0) {
             mClient.logVerbose(LOG_TAG, "Cursor blinker disabled");
             stopTerminalCursorBlinker();
         }
@@ -1802,7 +1884,7 @@ public final class TerminalView extends View {
 
     /**
      * Sets whether cursor blinker should be started or stopped. Cursor blinker will only be
-     * started if {@link #mTerminalCursorBlinkerRate} does not equal 0 and is between
+     * started if {@link #mCursorBlinker.rate} does not equal 0 and is between
      * {@link #TERMINAL_CURSOR_BLINK_RATE_MIN} and {@link #TERMINAL_CURSOR_BLINK_RATE_MAX}.
      *
      * This should be called when the view holding this activity is resumed or stopped so that
@@ -1829,7 +1911,7 @@ public final class TerminalView extends View {
      *
      * How cursor blinker starting works is by registering a {@link Runnable} with the looper of
      * the main thread of the app which when run, toggles the cursor blinking state and re-registers
-     * itself to be called with the delay set by {@link #mTerminalCursorBlinkerRate}. When cursor
+     * itself to be called with the delay set by {@link #mCursorBlinker.rate}. When cursor
      * blinking needs to be disabled, we just cancel any callbacks registered. We don't run our own
      * "thread" and let the thread for the main looper do the work for us, whose usage is also
      * required to update the UI, since it also handles other calls to update the UI as well based
@@ -1859,8 +1941,7 @@ public final class TerminalView extends View {
 
         if (start) {
             // If cursor blinker is not enabled or is not valid
-            if (mTerminalCursorBlinkerRate < TERMINAL_CURSOR_BLINK_RATE_MIN || mTerminalCursorBlinkerRate > TERMINAL_CURSOR_BLINK_RATE_MAX)
-                return;
+            if (!mCursorBlinker.hasValidRate()) return;
             // If cursor blinder is to be started only if cursor is enabled
             else if (startOnlyIfCursorEnabled && ! mEmulator.isCursorEnabled()) {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
@@ -1870,12 +1951,9 @@ public final class TerminalView extends View {
 
             // Start cursor blinker runnable
             if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-                mClient.logVerbose(LOG_TAG, "Starting cursor blinker with the blink rate " + mTerminalCursorBlinkerRate);
-            if (mTerminalCursorBlinkerHandler == null)
-                mTerminalCursorBlinkerHandler = new Handler(Looper.getMainLooper());
-            mTerminalCursorBlinkerRunnable = new TerminalCursorBlinkerRunnable(mEmulator, mTerminalCursorBlinkerRate);
+                mClient.logVerbose(LOG_TAG, "Starting cursor blinker with the blink rate " + mCursorBlinker.rate);
             mEmulator.setCursorBlinkingEnabled(true);
-            mTerminalCursorBlinkerRunnable.run();
+            mCursorBlinker.start(mEmulator);
         }
     }
 
@@ -1883,11 +1961,8 @@ public final class TerminalView extends View {
      * Cancel the terminal cursor blinker callbacks
      */
     private void stopTerminalCursorBlinker() {
-        if (mTerminalCursorBlinkerHandler != null && mTerminalCursorBlinkerRunnable != null) {
-            if (TERMINAL_VIEW_KEY_LOGGING_ENABLED)
-                mClient.logVerbose(LOG_TAG, "Stopping cursor blinker");
-            mTerminalCursorBlinkerHandler.removeCallbacks(mTerminalCursorBlinkerRunnable);
-        }
+        if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logVerbose(LOG_TAG, "Stopping cursor blinker");
+        mCursorBlinker.stop();
     }
 
     private class TerminalCursorBlinkerRunnable implements Runnable {
@@ -1923,7 +1998,7 @@ public final class TerminalView extends View {
                 }
             } finally {
                 // Recall the Runnable after mBlinkRate milliseconds to toggle the blink state
-                mTerminalCursorBlinkerHandler.postDelayed(this, mBlinkRate);
+                mCursorBlinker.handler.postDelayed(this, mBlinkRate);
             }
         }
     }

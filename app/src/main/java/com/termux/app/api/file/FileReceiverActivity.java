@@ -42,13 +42,15 @@ public class FileReceiverActivity extends AppCompatActivity {
     static final String EDITOR_PROGRAM = TermuxConstants.TERMUX_HOME_DIR_PATH + "/bin/termux-file-editor";
     static final String URL_OPENER_PROGRAM = TermuxConstants.TERMUX_HOME_DIR_PATH + "/bin/termux-url-opener";
 
+    /** What dismissing the name input dialog does. */
+    enum NameDialogDismiss { FINISH_ACTIVITY, KEEP_ACTIVITY }
+
     /**
-     * If the activity should be finished when the name input dialog is dismissed. This is disabled
-     * before showing an error dialog, since the act of showing the error dialog will cause the
-     * name input dialog to be implicitly dismissed, and we do not want to finish the activity directly
-     * when showing the error dialog.
+     * The name dialog's dismissal is switched to {@link NameDialogDismiss#KEEP_ACTIVITY} before
+     * showing an error dialog, since showing it implicitly dismisses the name dialog and the
+     * activity must stay open to show the error.
      */
-    boolean mFinishOnDismissNameDialog = true;
+    private NameDialogDismiss mNameDialogDismiss = NameDialogDismiss.FINISH_ACTIVITY;
 
     private static final String API_TAG = TermuxConstants.TERMUX_APP_NAME + "FileReceiver";
 
@@ -126,7 +128,7 @@ public class FileReceiverActivity extends AppCompatActivity {
     }
 
     void showErrorDialogAndQuit(String message) {
-        mFinishOnDismissNameDialog = false;
+        mNameDialogDismiss = NameDialogDismiss.KEEP_ACTIVITY;
         MessageDialogUtils.showMessage(this,
             API_TAG, message,
             null, (dialog, which) -> finish(),
@@ -194,7 +196,7 @@ public class FileReceiverActivity extends AppCompatActivity {
                 finish();
             },
             android.R.string.cancel, text -> finish(), dialog -> {
-                if (mFinishOnDismissNameDialog) finish();
+                if (mNameDialogDismiss == NameDialogDismiss.FINISH_ACTIVITY) finish();
             });
     }
 

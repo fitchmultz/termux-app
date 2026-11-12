@@ -69,31 +69,40 @@ final class ByteQueue {
         return WriteResult.ACCEPTED;
     }
 
-    /** A single-use promise of ring capacity, owned and guarded by its queue. */
+    /**
+     * A single-use promise of ring capacity, owned and guarded by its queue.
+     *
+     * States move {@link State#AVAILABLE} (created, no capacity promised) to {@link State#HELD} when
+     * it is bound to one admitted write, and from there to {@link State#SPENT} or
+     * {@link State#CANCELLED}. Only {@code HELD} owns reserved bytes, so cancelling or spending twice
+     * cannot return capacity twice.
+     */
     static final class Reservation {
+        private enum State { AVAILABLE, HELD, SPENT, CANCELLED }
+
         private final ByteQueue owner;
         private final int capacity;
-        private boolean active;
-        private boolean used;
+        private State state = State.AVAILABLE;
 
         Reservation(ByteQueue owner, int capacity) {
             if (capacity <= 0) throw new IllegalArgumentException("Reservation must be positive");
             this.owner = owner;
             this.capacity = capacity;
         }
+
+        private boolean isHeld() { return state == State.HELD; }
     }
 
     /** Admit DOWN and its future UP capacity in one critical section, or change nothing. */
     synchronized WriteResult tryWriteAndReserve(byte[] buffer, int offset, int length, Reservation reservation) {
         checkRange(buffer, offset, length);
         checkOwner(reservation);
-        if (reservation.used) throw new IllegalArgumentException("Reservation already used");
+        if (reservation.state != Reservation.State.AVAILABLE) throw new IllegalArgumentException("Reservation already used");
         if (!mOpen) return WriteResult.CLOSED;
         int available = mBuffer.length - mStoredBytes - mReservedBytes;
         if (reservation.capacity > available || length > available - reservation.capacity) return WriteResult.FULL;
         mReservedBytes += reservation.capacity;
-        reservation.active = true;
-        reservation.used = true;
+        reservation.state = Reservation.State.HELD;
         append(buffer, offset, length);
         return WriteResult.ACCEPTED;
     }
@@ -102,10 +111,10 @@ final class ByteQueue {
     synchronized WriteResult tryWriteReserved(byte[] buffer, int offset, int length, Reservation reservation) {
         checkRange(buffer, offset, length);
         checkOwner(reservation);
-        if (!mOpen || !reservation.active) return WriteResult.CLOSED;
+        if (!mOpen || !reservation.isHeld()) return WriteResult.CLOSED;
         if (length > reservation.capacity) throw new IllegalArgumentException("Release exceeds reservation");
         mReservedBytes -= reservation.capacity;
-        reservation.active = false;
+        reservation.state = Reservation.State.SPENT;
         append(buffer, offset, length);
         notifyAll(); // Also release any unused portion to a legacy blocking producer.
         return WriteResult.ACCEPTED;
@@ -113,15 +122,15 @@ final class ByteQueue {
 
     synchronized void cancel(Reservation reservation) {
         checkOwner(reservation);
-        if (!reservation.active) return;
-        reservation.active = false;
+        if (!reservation.isHeld()) return;
+        reservation.state = Reservation.State.CANCELLED;
         if (mOpen) mReservedBytes -= reservation.capacity;
         notifyAll();
     }
 
     synchronized boolean isActive(Reservation reservation) {
         checkOwner(reservation);
-        return mOpen && reservation.active;
+        return mOpen && reservation.isHeld();
     }
 
     private void checkOwner(Reservation reservation) {

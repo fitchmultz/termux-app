@@ -51,7 +51,7 @@ public class FoldControlsTest {
         TermuxTerminalSessionClientBase client = new TermuxTerminalSessionClientBase();
         TerminalSession session = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
         ReflectionHelpers.setField(session, "mEmulator", new TerminalEmulator(session, 80, 24, 8, 16, 100, client));
-        ReflectionHelpers.setField(session, "mShellPid", 1234);
+        TestSessions.markShell(session, 1234);
         session.mSessionName = name;
         return session;
     }

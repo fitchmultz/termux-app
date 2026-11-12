@@ -50,7 +50,7 @@ public class TerminalImePasteTest {
         TermuxTerminalSessionClientBase sessionClient = new TermuxTerminalSessionClientBase();
         session = new TerminalSession("/unused", "/", new String[0], new String[0], 100, sessionClient);
         ReflectionHelpers.setField(session, "mEmulator", new TerminalEmulator(session, 80, 24, 8, 16, 100, sessionClient));
-        ReflectionHelpers.setField(session, "mShellPid", 1234);
+        TestSessions.markShell(session, 1234);
         terminal = new TerminalView(activity, null);
         terminal.setTerminalViewClient(new TermuxTerminalViewClientBase() {
             @Override public boolean shouldEnforceCharBasedInput() { return true; }

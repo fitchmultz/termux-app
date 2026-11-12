@@ -8,13 +8,14 @@ import java.util.List;
 /** The {@link Class} that maintains a state of a {@link SpecialButton} */
 public class SpecialButtonState {
 
-    /** If special button has been created for the {@link ExtraKeysView}. */
-    boolean isCreated = false;
-    /** If special button is active. */
-    boolean isActive = false;
-    /** If special button is locked due to long hold on it and should not be deactivated if its
-     * state is read. */
-    boolean isLocked = false;
+    /**
+     * Lifecycle of one special button: it either does not exist in the current layout or exists as
+     * inactive, active (one-shot modifier) or locked (activated by a long hold, so reading it does
+     * not deactivate it).
+     */
+    enum State { UNCREATED, INACTIVE, ACTIVE, LOCKED }
+
+    private State state = State.UNCREATED;
 
     List<MaterialButton> buttons = new ArrayList<>();
 
@@ -30,22 +31,42 @@ public class SpecialButtonState {
         mExtraKeysView = extraKeysView;
     }
 
-    /** Set {@link #isCreated}. */
-    public void setIsCreated(boolean value) {
-        isCreated = value;
+    /** Record that the button exists in the current layout. */
+    void markCreated() {
+        if (state == State.UNCREATED) setState(State.INACTIVE);
     }
 
-    /** Set {@link #isActive}. */
-    public void setIsActive(boolean value) {
-        isActive = value;
+    /** Tap: toggle the one-shot modifier. A locked modifier is released first. */
+    void toggle() {
+        if (state == State.UNCREATED) return;
+        setState(isActive() ? State.INACTIVE : State.ACTIVE);
+    }
+
+    /** Long hold: activate as locked, or release an already latched modifier. */
+    void longHold() {
+        if (state == State.UNCREATED) return;
+        setState(isActive() ? State.INACTIVE : State.LOCKED);
+    }
+
+    /**
+     * A modifier was read by a key press.
+     *
+     * @param allowRelease {@code false} keeps a locked modifier and any inactive button as is.
+     */
+    void releaseAfterRead(boolean allowRelease) {
+        if (allowRelease && state == State.ACTIVE) setState(State.INACTIVE);
+    }
+
+    boolean isCreated() { return state != State.UNCREATED; }
+    boolean isActive() { return state == State.ACTIVE || state == State.LOCKED; }
+    boolean isLocked() { return state == State.LOCKED; }
+
+    private void setState(State newState) {
+        state = newState;
+        boolean active = isActive();
         for (MaterialButton button : buttons) {
-            button.setTextColor(value ? mExtraKeysView.getButtonActiveTextColor() : mExtraKeysView.getButtonTextColor());
+            button.setTextColor(active ? mExtraKeysView.getButtonActiveTextColor() : mExtraKeysView.getButtonTextColor());
         }
-    }
-
-    /** Set {@link #isLocked}. */
-    public void setIsLocked(boolean value) {
-        isLocked = value;
     }
 
 }

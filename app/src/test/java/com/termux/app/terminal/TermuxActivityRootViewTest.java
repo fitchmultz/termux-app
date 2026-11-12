@@ -24,7 +24,7 @@ public class TermuxActivityRootViewTest {
         TermuxActivityRootView root = new TermuxActivityRootView(activity);
         activity.setContentView(root);
         root.setActivity(activity);
-        ReflectionHelpers.setField(activity, "mIsVisible", true);
+        TestActivities.markStarted(activity);
         View bottom = new View(activity);
         root.addView(bottom);
         ReflectionHelpers.setField(activity, "mTermuxActivityBottomSpaceView", bottom);

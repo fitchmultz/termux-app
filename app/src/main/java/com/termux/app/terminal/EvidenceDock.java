@@ -39,10 +39,26 @@ public final class EvidenceDock {
     private final EvidenceStore store;
     private final Runnable storeChanged = this::refreshFromStore;
     private TerminalSession session;
-    private String pickerTarget, pickerLabel;
-    private boolean binding;
-    private boolean shareHandled;
+
+    /** The file picker in flight, or {@code null} when none was started. */
+    private static final class PickerRequest {
+        final String handle;
+        final String label;
+
+        PickerRequest(String handle, String label) {
+            this.handle = handle;
+            this.label = label;
+        }
+    }
+    private PickerRequest mPicker;
+
+    /** True while {@link #bindText(String)} stores editor text that must not be written back as a draft. */
+    private boolean bindingStoredText;
+    /** Whether this activity instance already consumed the share intent that created it. */
+    private boolean creationIntentHandled;
+    /** A share waiting for the user to choose its target; survives activity recreation. */
     private Intent pendingShare;
+    /** The target chooser, while it is open. */
     private AlertDialog shareDialog;
 
     public EvidenceDock(TermuxActivity activity) {
@@ -59,7 +75,7 @@ public final class EvidenceDock {
         editor.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence text, int start, int count, int after) {}
             public void onTextChanged(CharSequence text, int start, int before, int count) {
-                if (!binding && session != null) draft(session.mHandle).text = text.toString();
+                if (!bindingStoredText && session != null) draft(session.mHandle).text = text.toString();
             }
             public void afterTextChanged(Editable text) {}
         });
@@ -81,9 +97,9 @@ public final class EvidenceDock {
     }
 
     private void bindText(String text) {
-        binding = true;
+        bindingStoredText = true;
         try { editor.setText(text); }
-        finally { binding = false; }
+        finally { bindingStoredText = false; }
     }
 
     private void refreshFromStore() {
@@ -172,8 +188,7 @@ public final class EvidenceDock {
     private void pickFiles() {
         if (session == null || store.isImporting()) return;
         saveDraft();
-        pickerTarget = session.mHandle;
-        pickerLabel = label(session);
+        mPicker = new PickerRequest(session.mHandle, label(session));
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE)
             .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try { activity.startActivityForResult(intent, PICK_FILES); }
@@ -182,27 +197,27 @@ public final class EvidenceDock {
 
     public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode != PICK_FILES) return false;
-        if (resultCode == Activity.RESULT_OK && data != null && pickerTarget != null) {
-            try { store.importEvidence(pickerTarget, pickerLabel, "", uris(data)); }
+        PickerRequest request = mPicker;
+        mPicker = null;
+        if (resultCode == Activity.RESULT_OK && data != null && request != null) {
+            try { store.importEvidence(request.handle, request.label, "", uris(data)); }
             catch (RuntimeException e) { message(R.string.evidence_import_failed); }
         }
-        pickerTarget = null;
-        pickerLabel = null;
         return true;
     }
 
     public void handleNewSharedIntent(Intent intent) {
         if (intent == null || !(Intent.ACTION_SEND.equals(intent.getAction()) || Intent.ACTION_SEND_MULTIPLE.equals(intent.getAction()))) return;
         if (pendingShare != null) { message(R.string.evidence_import_busy); return; }
-        shareHandled = false;
+        creationIntentHandled = false;
         handleSharedIntent(intent);
     }
 
-    private void finishSharedIntent() { pendingShare = null; shareHandled = true; }
+    private void finishSharedIntent() { pendingShare = null; creationIntentHandled = true; }
 
     public void handleSharedIntent(Intent intent) {
         if (pendingShare != null) intent = pendingShare;
-        else if (shareHandled) return;
+        else if (creationIntentHandled) return;
         if (intent == null || !(Intent.ACTION_SEND.equals(intent.getAction()) || Intent.ACTION_SEND_MULTIPLE.equals(intent.getAction()))) return;
         if (shareDialog != null && shareDialog.isShowing()) return;
         if (store.isImporting()) { message(R.string.evidence_import_busy); return; }
@@ -340,18 +355,19 @@ public final class EvidenceDock {
 
     public void saveState(Bundle state) {
         saveDraft();
-        state.putBoolean("evidence_share_handled", shareHandled);
+        state.putBoolean("evidence_share_handled", creationIntentHandled);
         state.putParcelable("evidence_pending_share", pendingShare);
-        state.putString("evidence_picker_target", pickerTarget);
-        state.putString("evidence_picker_label", pickerLabel);
+        state.putString("evidence_picker_target", mPicker == null ? null : mPicker.handle);
+        state.putString("evidence_picker_label", mPicker == null ? null : mPicker.label);
         state.putBoolean("evidence_visible", activity.findViewById(R.id.terminal_toolbar_stacked_text_input_row).getVisibility() == View.VISIBLE);
     }
 
     public void restoreState(Bundle state) {
-        shareHandled = state.getBoolean("evidence_share_handled");
+        creationIntentHandled = state.getBoolean("evidence_share_handled");
         pendingShare = state.getParcelable("evidence_pending_share");
-        pickerTarget = state.getString("evidence_picker_target");
-        pickerLabel = state.getString("evidence_picker_label");
+        String pickerHandle = state.getString("evidence_picker_target");
+        String pickerLabel = state.getString("evidence_picker_label");
+        mPicker = pickerHandle == null ? null : new PickerRequest(pickerHandle, pickerLabel);
         if (state.getBoolean("evidence_visible")) activity.showEvidenceDock();
     }
 

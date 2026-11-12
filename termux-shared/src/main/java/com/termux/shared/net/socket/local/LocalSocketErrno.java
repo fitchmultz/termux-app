@@ -24,6 +24,7 @@ public class LocalSocketErrno extends Errno {
     public static final Errno ERRNO_CLIENT_SOCKET_PEER_UID_DISALLOWED = new Errno(TYPE, 160, "Disallowed peer %1$s tried to connect with \"%2$s\" server.");
     public static final Errno ERRNO_CLOSE_SERVER_SOCKET_FAILED_WITH_EXCEPTION = new Errno(TYPE, 161, "Close \"%1$s\" server socket failed.\nException: %2$s");
     public static final Errno ERRNO_CLIENT_SOCKET_LISTENER_FAILED_WITH_EXCEPTION = new Errno(TYPE, 162, "Exception in client socket listener for \"%1$s\" server.\nException: %2$s");
+    public static final Errno ERRNO_SERVER_SOCKET_ALREADY_CLOSED = new Errno(TYPE, 163, "The \"%1$s\" server socket was already closed and cannot be started again.");
 
     /** Errors for {@link LocalClientSocket} (200-250) */
     public static final Errno ERRNO_SET_CLIENT_SOCKET_READ_TIMEOUT_FAILED = new Errno(TYPE, 200, "Set \"%1$s\" client socket read (SO_RCVTIMEO) timeout to \"%2$s\" failed.\n%3$s");

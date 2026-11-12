@@ -48,7 +48,12 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     private static final int MAX_SESSIONS = 8;
 
-    private final Set<TerminalSession> mSessionsPendingExit = new HashSet<>();
+    /**
+     * Sessions whose removal the user requested while the process was still running. The finished
+     * callback consumes the request exactly once, like a claim: an exit that was not requested is
+     * judged only by its exit status, the visible session count and the platform.
+     */
+    private final Set<TerminalSession> mRemoveOnExit = new HashSet<>();
 
     private SoundPool mBellSoundPool;
 
@@ -148,7 +153,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     @Override
     public void onSessionFinished(@NonNull TerminalSession finishedSession) {
-        boolean sessionExitRequested = mSessionsPendingExit.remove(finishedSession);
+        boolean sessionExitRequested = mRemoveOnExit.remove(finishedSession);
         TermuxService service = mActivity.getTermuxService();
 
         if (service == null || service.wantsToStop()) {
@@ -402,7 +407,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     private void exitSession(TerminalSession session) {
         if (session.isRunning()) {
-            mSessionsPendingExit.add(session);
+            mRemoveOnExit.add(session);
             session.finishIfRunning();
         } else {
             removeFinishedSession(session);

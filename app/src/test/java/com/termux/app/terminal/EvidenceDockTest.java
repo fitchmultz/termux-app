@@ -42,7 +42,7 @@ public class EvidenceDockTest {
         TermuxTerminalSessionClientBase client = new TermuxTerminalSessionClientBase();
         TerminalSession session = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
         ReflectionHelpers.setField(session, "mEmulator", new TerminalEmulator(session, 80, 24, 8, 16, 100, client));
-        ReflectionHelpers.setField(session, "mShellPid", 1234);
+        TestSessions.markShell(session, 1234);
         session.mSessionName = name;
         return session;
     }
@@ -176,7 +176,7 @@ public class EvidenceDockTest {
         activity.setContentView(R.layout.activity_termux);
         TerminalPaneLayout panes = activity.findViewById(R.id.terminal_panes);
         ReflectionHelpers.setField(activity, "mTerminalPanes", panes);
-        ReflectionHelpers.setField(activity, "mIsVisible", true);
+        TestActivities.markStarted(activity);
         for (TerminalView terminal : panes.getTerminals()) {
             terminal.setTerminalViewClient(new TermuxTerminalViewClientBase());
             panes.setFontSize(terminal, 16);

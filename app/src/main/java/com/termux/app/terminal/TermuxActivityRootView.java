@@ -66,8 +66,17 @@ public class TermuxActivityRootView extends LinearLayout implements ViewTreeObse
     public TermuxActivity mActivity;
     public Integer marginBottom;
     public Integer lastMarginBottom;
-    public long lastMarginBottomTime;
-    public long lastMarginBottomExtraTime;
+
+    /**
+     * When the margin was last reset to 0, and when a margin caused by extra bottom space was last
+     * reset. They guard two separate adjustments, and each is limited to one reset per
+     * {@link #MARGIN_RESET_MIN_INTERVAL_MS} so a layout loop or a moving split-screen divider
+     * cannot make the margin jitter.
+     */
+    public long lastMarginResetTime;
+    public long lastExtraMarginResetTime;
+
+    private static final long MARGIN_RESET_MIN_INTERVAL_MS = 40;
 
     /** Log root view events. */
     private boolean ROOT_VIEW_LOGGING_ENABLED = false;
@@ -193,8 +202,8 @@ public class TermuxActivityRootView extends LinearLayout implements ViewTreeObse
                 // if its greater than 0, which was already above the keyboard creating x2x margin.
                 // Adding time check since moving split screen divider in landscape causes jitter
                 // and prevents some infinite loops
-                if ((System.currentTimeMillis() - lastMarginBottomTime) > 40) {
-                    lastMarginBottomTime = System.currentTimeMillis();
+                if ((System.currentTimeMillis() - lastMarginResetTime) > MARGIN_RESET_MIN_INTERVAL_MS) {
+                    lastMarginResetTime = System.currentTimeMillis();
                     marginBottom = 0;
                 } else {
                     if (root_view_logging_enabled)
@@ -211,10 +220,10 @@ public class TermuxActivityRootView extends LinearLayout implements ViewTreeObse
             // onGlobalLayout: Bottom margin already equals 0
             if (isVisibleBecauseExtraMargin) {
                 // Adding time check since prevents infinite loops, like in landscape mode in freeform mode in Taskbar
-                if ((System.currentTimeMillis() - lastMarginBottomExtraTime) > 40) {
+                if ((System.currentTimeMillis() - lastExtraMarginResetTime) > MARGIN_RESET_MIN_INTERVAL_MS) {
                     if (root_view_logging_enabled)
                         Logger.logVerbose(LOG_TAG, "Resetting margin since visible due to extra margin");
-                    lastMarginBottomExtraTime = System.currentTimeMillis();
+                    lastExtraMarginResetTime = System.currentTimeMillis();
                     // lastMarginBottom must be invalid. May also happen when keyboards are changed.
                     lastMarginBottom = null;
                     setMargin = true;

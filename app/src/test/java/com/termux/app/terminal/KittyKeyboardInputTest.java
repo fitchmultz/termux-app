@@ -41,7 +41,7 @@ public class KittyKeyboardInputTest {
             new TermuxTerminalSessionClientBase());
         TerminalEmulator emulator = new TerminalEmulator(mSession, 20, 4, 8, 16, 100, null);
         ReflectionHelpers.setField(mSession, "mEmulator", emulator);
-        ReflectionHelpers.setField(mSession, "mShellPid", 1);
+        TestSessions.markShell(mSession, 1);
         mView = new TerminalView(RuntimeEnvironment.getApplication(), null);
         mView.setTerminalViewClient(new TermuxTerminalViewClientBase());
         ReflectionHelpers.setField(mView, "mTermSession", mSession);

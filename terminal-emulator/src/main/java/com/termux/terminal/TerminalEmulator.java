@@ -116,14 +116,9 @@ public final class TerminalEmulator implements TerminalRendererState {
      *     {@link #mTerminalControlArgs}, and for later code points {@link #receiveOsc(int)} is called
      *     instead.
      * <p>
-     * While an `OSC` is being received, {@link #mOscType} may be set to the command type when it
-     * has been fully received by {@link #setOscTypeVariables()}.
-     * <p>
-     * See also {@link #mIsFastPathOsc} for enabling fast path for specific `OSC` commands if required
-     * via {@link #setOscTypeVariables()}.
-     * <p>
-     * See also {@link #mIgnoreCrLfForOsc} to prevent printing of CR/LF characters for specific
-     * `OSC` commands if required via {@link #setOscTypeVariables()}.
+     * While an `OSC` is being received, {@link #mOscPhase} and {@link #mOscType} describe the
+     * command once its `type;` prefix has been received by {@link #setOscTypeVariables()}. The
+     * iTerm2 image phase also enables the byte fast path and suppresses printed CR/LF.
      * <p>
      * - https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands
      */
@@ -141,14 +136,14 @@ public final class TerminalEmulator implements TerminalRendererState {
      * If an `DCS` escape sequence is received, then {@link #mEscapeState} is set to {@link #ESC_DCS}
      * and {@link #doDcs(int)} is called by {@link #processCodePoint(int)}.
      * - By default it will add bytes received after `DCS` escape sequence to {@link #mTerminalControlArgs}.
-     * - If an `ESC` is received by {@link #processCodePoint(int)}, then {@link #ESC_DCS__ESC} set
-     *   to `true`.
+     * - If an `ESC` is received by {@link #processCodePoint(int)}, then {@link #mDcsEscapePending}
+     *   is set to `true`.
      * - If the next code point is a `\` for `ST`, then {@link #doDcs(int)} processes the DCS command.
-     * - If the next code point is not a `\`, then {@link #ESC_DCS__ESC} is set back to `false` as
-     *   `ESC` may be part of command data as so it is added to {@link #mTerminalControlArgs}.
+     * - If the next code point is not a `\`, then {@link #mDcsEscapePending} is set back to `false`
+     *   as `ESC` may be part of command data as so it is added to {@link #mTerminalControlArgs}.
      *  - For certain commands like sixel commands, {@link #doDcs(int)} alters the default behaviour.
      * <p>
-     * See also {@link #mIsFastPathDcs} for enabling fast path for specific `DCS` commands if required.
+     * See also {@link #mDcsPhase} for the sixel fast path.
      * <p>
      * <p>
      * - https://vt100.net/docs/vt220-rm/chapter2.html#S2.5.3
@@ -319,46 +314,30 @@ public final class TerminalEmulator implements TerminalRendererState {
 
 
     /**
-     * The integer Operating System Command `type` received as `ESC ] type ;`.
-     * This will be set as soon as `type` followed by `;` is received, and before any further
-     * optional parameters are received.
+     * Recognition of the Operating System Command being received. The numeric type is known once
+     * `type;` has arrived; {@link #ITERM_IMAGE} is the large-payload command that takes the byte
+     * fast path and does not print CR/LF.
      */
+    private enum OscPhase { AWAITING_TYPE, UNKNOWN, TYPED, ITERM_IMAGE }
+    private OscPhase mOscPhase = OscPhase.AWAITING_TYPE;
+    /** The integer type of a recognized command (`ESC ] type ;`); meaningful only once typed. */
     private int mOscType = -1;
 
-    /**
-     * If `true`, then `processCodePoint()` will directly call `receiveOsc()` as a fast path
-     * without additional checks.
-     *
-     * Can be enabled for OSC commands via {@link #setOscTypeVariables()}.
-     */
-    private boolean mIsFastPathOsc = false;
+    private boolean isItermImageOsc() { return mOscPhase == OscPhase.ITERM_IMAGE; }
 
-    /**
-     * If `true`, then `processCodePoint()` will not print any CR/LF characters received.
-     * This is ignored if `mIsFastPathOsc` is already `true` for a command.
-     *
-     * Can be enabled for OSC commands via {@link #setOscTypeVariables()}.
-     */
-    private boolean mIgnoreCrLfForOsc = false;
+
+    /** Whether an `ESC` inside a DCS is waiting for the `\` that completes the string terminator. */
+    private boolean mDcsEscapePending = false;
 
 
     /**
-     * If `true`, then `processCodePoint()` will directly call `doDcs()` as a fast path
-     * without additional checks.
-     *
-     * Can be enabled for DCS commands via {@link #doDcs(int)}.
+     * Interpretation of the current DCS string: still deciding whether it is a sixel, streaming a
+     * sixel payload, or another DCS command. The sixel phase is the fast path.
      */
-    private boolean mIsFastPathDcs = false;
+    private enum DcsPhase { DETECTING, SIXEL, OTHER }
+    private DcsPhase mDcsPhase = DcsPhase.DETECTING;
 
-    /** Whether processing an `ESC` for a DCS command. */
-    private boolean ESC_DCS__ESC = false;
-
-
-    /** Whether processing a sixel `DCS q s..s ST` or `DCS P1; P2; P3; q s..s ST` command to create a {@link TerminalSixel}. */
-    private boolean ESC_DCS__SIXEL = false;
-
-    /** Whether to check if sixel command is being received when processing a DCS command. */
-    private boolean ESC_DCS__CHECK_IF_SIXEL = true;
+    private boolean isSixelDcs() { return mDcsPhase == DcsPhase.SIXEL; }
 
     /** The command part number in case a long sixel command was broken into parts for processing. */
     private int mSixelCommandPartNum;
@@ -380,10 +359,19 @@ public final class TerminalEmulator implements TerminalRendererState {
     /** The {@link ITermImage} if an iTerm image command is being processed. */
     private ITermImage mITermImage;
     private KittyImage mKittyImage, mKittyPending;
-    private boolean mApcHasType, mApcGraphics, mApcPayload;
-    /** Drain a rejected image string through its terminator, never print its remaining bytes. */
-    private int mDiscardImageControl = ESC_NONE;
-    private boolean mDiscardImageEscape;
+    /**
+     * Phase of the APC string being received: reading its type, ignoring it, reading a Kitty
+     * graphics header into {@link #mTerminalControlArgs}, or streaming its payload.
+     */
+    private enum ApcPhase { TYPE, IGNORED, HEADER, PAYLOAD }
+    private ApcPhase mApcPhase = ApcPhase.TYPE;
+    /**
+     * A rejected control string whose remaining bytes are drained through its terminator and never
+     * printed. The escaped flag remembers an ESC, so the following {@code '\\'} completes the ST.
+     */
+    private enum DiscardControlString { NONE, OSC, DCS, APC }
+    private DiscardControlString mDiscardControlString = DiscardControlString.NONE;
+    private boolean mDiscardControlStringEscape;
 
 
 
@@ -407,11 +395,25 @@ public final class TerminalEmulator implements TerminalRendererState {
      */
     private int mCurrentDecSetFlags, mSavedDecSetFlags;
 
-    /** A cursor visibility callback received inside a synchronized frame and deferred until its end. */
-    private boolean mSynchronizedOutputCursorStateChanged;
+    /**
+     * The open synchronized-output frame, or {@code null} when presentation is live. While a frame
+     * is open the renderer sees its frozen snapshot, and cursor and palette callbacks are deferred
+     * until {@link #finishSynchronizedOutput()}.
+     */
+    private SynchronizedOutputFrame mSynchronizedFrame;
 
-    /** Last completed visible state retained while synchronized output mutates the live emulator. */
-    private CompletedScreenSnapshot mSynchronizedOutputRendererState;
+    /** One deferral state per open frame. */
+    private static final class SynchronizedOutputFrame {
+        final CompletedScreenSnapshot rendererState;
+        boolean cursorStateChanged;
+
+        SynchronizedOutputFrame(TerminalEmulator emulator) {
+            rendererState = new CompletedScreenSnapshot(emulator);
+        }
+    }
+
+    /** A palette change received inside a frame and deferred until presentation. */
+    private boolean mDeferredPaletteChange;
 
     /**
      * If insert mode (as opposed to replace mode) is active. In insert mode new characters are inserted, pushing
@@ -434,18 +436,21 @@ public final class TerminalEmulator implements TerminalRendererState {
      * output in the last column, the cursor not moving but this flag will be set. When outputting another character
      * this will move to the next line.
      */
-    private boolean mAboutToAutoWrap;
+    /**
+     * Set when the last printed character ended exactly at the right margin. The next character
+     * wraps first, which is what keeps a full-width line from showing a blank continuation row.
+     * Any cursor movement clears it.
+     */
+    private boolean mAutoWrapPending;
 
     /**
-     * If the cursor blinking is enabled. It requires cursor itself to be enabled, which is controlled
-     * byt whether {@link #DECSET_BIT_CURSOR_ENABLED} bit is set or not.
+     * Whether the view's blinker drives the cursor. Orthogonal to {@link #mCursorBlinkState}: the
+     * phase is preserved while blinking is off, so re-enabling resumes the same phase. Cursor
+     * enablement itself is the separate {@link #DECSET_BIT_CURSOR_ENABLED} mode.
      */
     private boolean mCursorBlinkingEnabled;
 
-    /**
-     * If currently cursor should be in a visible state or not if {@link #mCursorBlinkingEnabled}
-     * is {@code true}.
-     */
+    /** The current phase of the blinker, meaningful only while {@link #mCursorBlinkingEnabled}. */
     private boolean mCursorBlinkState;
 
     /**
@@ -483,7 +488,9 @@ public final class TerminalEmulator implements TerminalRendererState {
     private final String[] mHyperlinkKeys = new String[MAX_HYPERLINKS + 1];
     private final HashMap<String, Integer> mHyperlinkIds = new HashMap<>();
     /** The link cells are printed under now, 0 for none. Not part of the pen SGR resets or DECSC saves. */
-    private int mHyperlink = 0;
+    /** The open OSC 8 hyperlink, or {@link #NO_HYPERLINK} when none is open. */
+    private static final int NO_HYPERLINK = 0;
+    private int mHyperlinkId = NO_HYPERLINK;
     private int mNextHyperlink = 1;
     /** Opens since the table was last swept. */
     private int mHyperlinkOpensSinceSweep = 0;
@@ -495,7 +502,7 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     /** Resolve a hyperlink from the same completed cells the terminal presents. */
     public String getHyperlinkAt(int column, int row) {
-        CompletedScreenSnapshot snapshot = isSynchronizedOutputActive() ? mSynchronizedOutputRendererState : null;
+        CompletedScreenSnapshot snapshot = mSynchronizedFrame == null ? null : mSynchronizedFrame.rendererState;
         TerminalBuffer screen = snapshot == null ? mScreen : snapshot.mScreen;
         if (column < 0 || column >= screen.mColumns || row < -screen.getActiveTranscriptRows() || row >= screen.mScreenRows)
             return null;
@@ -505,9 +512,57 @@ public final class TerminalEmulator implements TerminalRendererState {
         return (snapshot == null ? mHyperlinkUris : snapshot.mHyperlinkUris)[link];
     }
 
-    private byte mUtf8ToFollow, mUtf8Index;
-    private final byte[] mUtf8InputBuffer = new byte[4];
+    private final Utf8Decoder mUtf8Decoder = new Utf8Decoder();
     private int mLastEmittedCodePoint = -1;
+
+    /**
+     * Incremental UTF-8 decoder for PTY bytes. It is idle, or collecting exactly one 2-4 byte
+     * sequence; bytes are never accepted partially. Invalid input is reported, not guessed.
+     */
+    private static final class Utf8Decoder {
+        /** The byte was stored; a later byte completes the sequence. */
+        static final int NEED_MORE = -1;
+        /** The byte does not continue the held sequence; the caller reports it and retries the byte. */
+        static final int REPROCESS = -2;
+
+        private final byte[] mBytes = new byte[4];
+        private int mLength;
+        private int mExpectedLength;
+
+        boolean isIdle() { return mExpectedLength == 0; }
+
+        int feed(byte b) {
+            if (mExpectedLength == 0) {
+                if ((b & 0b10000000) == 0) return b; // 7-bit ASCII
+                else if ((b & 0b11100000) == 0b11000000) mExpectedLength = 2; // 110xxxxx
+                else if ((b & 0b11110000) == 0b11100000) mExpectedLength = 3; // 1110xxxx
+                else if ((b & 0b11111000) == 0b11110000) mExpectedLength = 4; // 11110xxx
+                else return UNICODE_REPLACEMENT_CHAR; // Not a valid sequence start.
+                mBytes[mLength++] = b;
+                return NEED_MORE;
+            }
+
+            if ((b & 0b11000000) != 0b10000000) { // 10xxxxxx is the only continuation byte.
+                reset();
+                return REPROCESS;
+            }
+
+            mBytes[mLength++] = b;
+            if (mLength < mExpectedLength) return NEED_MORE;
+
+            byte firstByteMask = (byte) (mLength == 2 ? 0b00011111 : (mLength == 3 ? 0b00001111 : 0b00000111));
+            int codePoint = mBytes[0] & firstByteMask;
+            for (int i = 1; i < mLength; i++) codePoint = (codePoint << 6) | (mBytes[i] & 0b00111111);
+            if (((codePoint <= 0b1111111) && mLength > 1) || (codePoint < 0b11111111111 && mLength > 2)
+                || (codePoint < 0b1111111111111111 && mLength > 3)) {
+                codePoint = UNICODE_REPLACEMENT_CHAR; // Overlong encoding.
+            }
+            reset();
+            return codePoint;
+        }
+
+        void reset() { mLength = mExpectedLength = 0; }
+    }
 
     public final TerminalColors mColors = new TerminalColors();
 
@@ -610,18 +665,19 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     /** State a renderer must use; immutable while a synchronized frame is in progress. */
     public TerminalRendererState getRendererState() {
-        return isSynchronizedOutputActive()
-            ? Objects.requireNonNull(mSynchronizedOutputRendererState, "active synchronized output requires a completed-screen snapshot")
-            : this;
-    }
-
-    private void captureSynchronizedOutputRendererState() {
-        mSynchronizedOutputRendererState = new CompletedScreenSnapshot(this);
+        return mSynchronizedFrame == null ? this : mSynchronizedFrame.rendererState;
     }
 
     /** Whether DEC private mode 2026 is currently deferring screen presentation. */
     public boolean isSynchronizedOutputActive() {
-        return isDecsetInternalBitSet(DECSET_BIT_SYNCHRONIZED_OUTPUT);
+        return mSynchronizedFrame != null;
+    }
+
+    /** Open a frame; the DECSET bit mirrors the frame for mode reporting. */
+    private void beginSynchronizedOutput() {
+        if (mSynchronizedFrame != null) return;
+        mSynchronizedFrame = new SynchronizedOutputFrame(this);
+        setDecsetinternalBit(DECSET_BIT_SYNCHRONIZED_OUTPUT, true);
     }
 
     /**
@@ -629,17 +685,29 @@ public final class TerminalEmulator implements TerminalRendererState {
      * Package-private so {@link TerminalSession} can guarantee that rendering never remains frozen.
      */
     void finishSynchronizedOutput() {
-        if (!isSynchronizedOutputActive()) return;
+        if (mSynchronizedFrame == null) return;
+        final boolean cursorStateChanged = mSynchronizedFrame.cursorStateChanged;
+        mSynchronizedFrame = null;
         setDecsetinternalBit(DECSET_BIT_SYNCHRONIZED_OUTPUT, false);
-        mSynchronizedOutputRendererState = null;
-        dispatchDeferredCursorStateChange();
+        if (cursorStateChanged && mClient != null) mClient.onTerminalCursorStateChange(isCursorEnabled());
     }
 
-    private void dispatchDeferredCursorStateChange() {
-        if (!mSynchronizedOutputCursorStateChanged) return;
-        mSynchronizedOutputCursorStateChanged = false;
-        if (mClient != null)
-            mClient.onTerminalCursorStateChange(isCursorEnabled());
+    /**
+     * Defer a palette change while a frame is open.
+     *
+     * @return {@code true} when the change was deferred and must not be delivered yet.
+     */
+    boolean deferPaletteChange() {
+        if (mSynchronizedFrame == null) return false;
+        mDeferredPaletteChange = true;
+        return true;
+    }
+
+    /** @return whether a deferred palette change must now be delivered. */
+    boolean takeDeferredPaletteChange() {
+        if (!mDeferredPaletteChange) return false;
+        mDeferredPaletteChange = false;
+        return true;
     }
 
     public int getCellWidthPixels() { return mCellWidthPixels; }
@@ -692,16 +760,14 @@ public final class TerminalEmulator implements TerminalRendererState {
             // or font change. An in-progress synchronized snapshot keeps its completed pixels.
             mMainBuffer.discardTerminalBitmapPlacements();
             mAltBuffer.discardTerminalBitmapPlacements();
-            if (ESC_DCS__SIXEL) {
-                mDiscardImageControl = ESC_DCS;
-                mDiscardImageEscape = ESC_DCS__ESC;
+            if (isSixelDcs()) {
+                beginDiscardControlString(DiscardControlString.DCS, mDcsEscapePending);
                 finishSequence();
             }
             clearDcsTypeVariables();
             mITermImage = null;
             if (mEscapeState == ESC_APC || mEscapeState == ESC_APC__ESC) {
-                mDiscardImageControl = ESC_APC;
-                mDiscardImageEscape = mEscapeState == ESC_APC__ESC;
+                beginDiscardControlString(DiscardControlString.APC, mEscapeState == ESC_APC__ESC);
                 finishSequence();
                 // The args buffer also belongs to OSC/DCS; abort only the active APC here.
                 clearApcTypeVariables();
@@ -828,19 +894,19 @@ public final class TerminalEmulator implements TerminalRendererState {
      */
     public void append(byte[] buffer, int length) {
         for (int i = 0; i < length; ) {
-            if (buffer[i] >= 32 && buffer[i] < 127 && mEscapeState == ESC_NONE && mDiscardImageControl == ESC_NONE && mUtf8ToFollow == 0
-                && !mAboutToAutoWrap && !mInsertMode && mCursorCol >= 0 && mCursorCol < mRightMargin
+            if (buffer[i] >= 32 && buffer[i] < 127 && mEscapeState == ESC_NONE && mDiscardControlString == DiscardControlString.NONE && mUtf8Decoder.isIdle()
+                && !mAutoWrapPending && !mInsertMode && mCursorCol >= 0 && mCursorCol < mRightMargin
                 && !(mUseLineDrawingUsesG0 ? mUseLineDrawingG0 : mUseLineDrawingG1)) {
                 int end = i + 1;
                 int limit = i + Math.min(length - i, mRightMargin - mCursorCol);
                 while (end < limit && buffer[end] >= 32 && buffer[end] < 127) end++;
 
                 TerminalRow row = mScreen.allocateFullLineIfNecessary(mScreen.externalToInternalRow(mCursorRow));
-                row.setAscii(mCursorCol, buffer, i, end - i, getStyle(), mHyperlink);
+                row.setAscii(mCursorCol, buffer, i, end - i, getStyle(), mHyperlinkId);
                 mLastEmittedCodePoint = buffer[end - 1];
                 int columnAfterRun = mCursorCol + end - i;
                 if (isDecsetInternalBitSet(DECSET_BIT_AUTOWRAP))
-                    mAboutToAutoWrap = columnAfterRun == mRightMargin;
+                    mAutoWrapPending = columnAfterRun == mRightMargin;
                 mCursorCol = Math.min(columnAfterRun, mRightMargin - 1);
                 i = end;
             } else {
@@ -850,81 +916,62 @@ public final class TerminalEmulator implements TerminalRendererState {
     }
 
     private void processByte(byte byteToProcess) {
-        if (mUtf8ToFollow > 0) {
-            if ((byteToProcess & 0b11000000) == 0b10000000) {
-                // 10xxxxxx, a continuation byte.
-                mUtf8InputBuffer[mUtf8Index++] = byteToProcess;
-                if (--mUtf8ToFollow == 0) {
-                    byte firstByteMask = (byte) (mUtf8Index == 2 ? 0b00011111 : (mUtf8Index == 3 ? 0b00001111 : 0b00000111));
-                    int codePoint = (mUtf8InputBuffer[0] & firstByteMask);
-                    for (int i = 1; i < mUtf8Index; i++)
-                        codePoint = ((codePoint << 6) | (mUtf8InputBuffer[i] & 0b00111111));
-                    if (((codePoint <= 0b1111111) && mUtf8Index > 1) || (codePoint < 0b11111111111 && mUtf8Index > 2)
-                        || (codePoint < 0b1111111111111111 && mUtf8Index > 3)) {
-                        // Overlong encoding.
-                        codePoint = UNICODE_REPLACEMENT_CHAR;
-                    }
-
-                    mUtf8Index = mUtf8ToFollow = 0;
-
-                    if (codePoint >= 0x80 && codePoint <= 0x9F) {
-                        // Sequence decoded to a C1 control character which we ignore. They are
-                        // not used nowadays and increases the risk of messing up the terminal state
-                        // on binary input. XTerm does not allow them in utf-8:
-                        // "It is not possible to use a C1 control obtained from decoding the
-                        // UTF-8 text" - http://invisible-island.net/xterm/ctlseqs/ctlseqs.html
-                    } else {
-                        switch (Character.getType(codePoint)) {
-                            case Character.UNASSIGNED:
-                            case Character.SURROGATE:
-                                codePoint = UNICODE_REPLACEMENT_CHAR;
-                        }
-                        processCodePoint(codePoint);
-                    }
-                }
-            } else {
-                // Not a UTF-8 continuation byte so replace the entire sequence up to now with the replacement char:
-                mUtf8Index = mUtf8ToFollow = 0;
-                emitCodePoint(UNICODE_REPLACEMENT_CHAR);
-                // The Unicode Standard Version 6.2 – Core Specification
-                // (http://www.unicode.org/versions/Unicode6.2.0/ch03.pdf):
-                // "If the converter encounters an ill-formed UTF-8 code unit sequence which starts with a valid first
-                // byte, but which does not continue with valid successor bytes (see Table 3-7), it must not consume the
-                // successor bytes as part of the ill-formed subsequence
-                // whenever those successor bytes themselves constitute part of a well-formed UTF-8 code unit
-                // subsequence."
-                processByte(byteToProcess);
-            }
-        } else {
-            if ((byteToProcess & 0b10000000) == 0) { // The leading bit is not set so it is a 7-bit ASCII character.
-                processCodePoint(byteToProcess);
-                return;
-            } else if ((byteToProcess & 0b11100000) == 0b11000000) { // 110xxxxx, a two-byte sequence.
-                mUtf8ToFollow = 1;
-            } else if ((byteToProcess & 0b11110000) == 0b11100000) { // 1110xxxx, a three-byte sequence.
-                mUtf8ToFollow = 2;
-            } else if ((byteToProcess & 0b11111000) == 0b11110000) { // 11110xxx, a four-byte sequence.
-                mUtf8ToFollow = 3;
-            } else {
-                // Not a valid UTF-8 sequence start, signal invalid data:
-                processCodePoint(UNICODE_REPLACEMENT_CHAR);
-                return;
-            }
-            mUtf8InputBuffer[mUtf8Index++] = byteToProcess;
+        final int decoded = mUtf8Decoder.feed(byteToProcess);
+        if (decoded == Utf8Decoder.NEED_MORE) return;
+        if (decoded == Utf8Decoder.REPROCESS) {
+            // Replace the truncated sequence, then retry this byte unchanged. The Unicode Standard
+            // 6.2, Table 3-7: successor bytes that form a valid sequence are not consumed as part of
+            // the ill-formed one.
+            emitCodePoint(UNICODE_REPLACEMENT_CHAR);
+            processByte(byteToProcess);
+            return;
         }
+
+        int codePoint = decoded;
+        if (codePoint >= 0x80 && codePoint <= 0x9F) {
+            // A C1 control decoded from UTF-8 is ignored. They are not used nowadays and increase
+            // the risk of messing up the terminal state on binary input. XTerm does not allow them
+            // in utf-8: "It is not possible to use a C1 control obtained from decoding the UTF-8
+            // text" - http://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+            return;
+        }
+        switch (Character.getType(codePoint)) {
+            case Character.UNASSIGNED:
+            case Character.SURROGATE:
+                codePoint = UNICODE_REPLACEMENT_CHAR;
+        }
+        processCodePoint(codePoint);
+    }
+
+    /** Start draining a rejected control string after its remaining bytes are unusable. */
+    private void beginDiscardControlString(DiscardControlString kind, boolean afterEscape) {
+        mDiscardControlString = kind;
+        mDiscardControlStringEscape = afterEscape;
+    }
+
+    private void clearDiscardControlString() {
+        mDiscardControlString = DiscardControlString.NONE;
+        mDiscardControlStringEscape = false;
+    }
+
+    /**
+     * Consume a code point while a rejected control string is being drained.
+     *
+     * @return {@code true} when the code point belonged to the drain and must not be interpreted.
+     */
+    private boolean drainDiscardedControlString(int b) {
+        if (mDiscardControlString == DiscardControlString.NONE) return false;
+        if (b == 24 || b == 26 || (mDiscardControlString == DiscardControlString.OSC && b == 7)
+            || (mDiscardControlStringEscape && b == '\\')) {
+            clearDiscardControlString();
+        } else {
+            mDiscardControlStringEscape = b == 27;
+        }
+        return true;
     }
 
     public void processCodePoint(int b) {
-        if (mDiscardImageControl != ESC_NONE) {
-            if (b == 24 || b == 26 || (mDiscardImageControl == ESC_OSC && b == 7)
-                || (mDiscardImageEscape && b == '\\')) {
-                mDiscardImageControl = ESC_NONE;
-                mDiscardImageEscape = false;
-            } else {
-                mDiscardImageEscape = b == 27;
-            }
-            return;
-        }
+        if (drainDiscardedControlString(b)) return;
         // Cancellation must take precedence over image fast paths and release partial payloads.
         if ((b == 24 || b == 26) && (mEscapeState == ESC_DCS || mEscapeState == ESC_OSC
             || mEscapeState == ESC_OSC__ESC || mEscapeState == ESC_APC || mEscapeState == ESC_APC__ESC)) {
@@ -937,16 +984,16 @@ public final class TerminalEmulator implements TerminalRendererState {
             finishSequence();
             return;
         }
-        if (mEscapeState == ESC_OSC && mIsFastPathOsc) {
+        if (mEscapeState == ESC_OSC && isItermImageOsc()) {
             mContinueSequence = false;
             receiveOsc(b);
             if (!mContinueSequence) mEscapeState = ESC_NONE;
             return;
         }
 
-        if (mEscapeState == ESC_DCS && mIsFastPathDcs) {
+        if (mEscapeState == ESC_DCS && isSixelDcs()) {
             if (b == 27) { // ESC
-                ESC_DCS__ESC = true;
+                mDcsEscapePending = true;
                 return;
             }
             mContinueSequence = false;
@@ -1005,14 +1052,14 @@ public final class TerminalEmulator implements TerminalRendererState {
                 // Ignore CR/LF inside DCS by default (including sixel) or OSC if requested (like for iTerm).
                 if (!
                     (mEscapeState == ESC_DCS ||
-                    ((mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC) && mIgnoreCrLfForOsc))) {
+                    ((mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC) && isItermImageOsc()))) {
                     doLinefeed();
                 }
                 break;
             case 13: // Carriage return (CR, \r).
                 if (!
                     (mEscapeState == ESC_DCS ||
-                    ((mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC) && mIgnoreCrLfForOsc))) {
+                    ((mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC) && isItermImageOsc()))) {
                     setCursorCol(mLeftMargin);
                 }
                 break;
@@ -1033,7 +1080,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 // Starts an escape sequence unless we're parsing a string
                 if (mEscapeState == ESC_DCS) {
                     // XXX: Ignore escape when reading device control sequence, since it may be part of string terminator.
-                    ESC_DCS__ESC = true;
+                    mDcsEscapePending = true;
                     return;
                 } else if (mEscapeState != ESC_OSC) {
                     startEscapeSequence();
@@ -1340,7 +1387,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     private void doDcs(final int b) {
         if (
             // End of DCS if string terminator ST `ESC \` received.
-            (ESC_DCS__ESC && b == '\\') ||
+            (mDcsEscapePending && b == '\\') ||
             // If sixel continuation after sixel start and a
             // Color Introducer `#`, Graphics Repeat Introducer `!` or Raster Attributes `"`
             // command is received, then process any previous commands, or if end of input
@@ -1359,7 +1406,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             // and also resize the bitmap, so that memory allocations are avoided if possible.
             // `mTerminalControlArgs.length() > 1` is done so that loop does not engage on first
             // character after `q` and only after first command has been fully received.
-            (ESC_DCS__SIXEL && ((b == '#' || b == '!' || b == '"') &&
+            (isSixelDcs() && ((b == '#' || b == '!' || b == '"') &&
                 ((mTerminalControlArgs.length() >= (mTerminalControlArgsMaxLength / 2)) || (mTerminalControlArgs.length() > 1 && mSixelCommandPartNum == 1))))
         ) {
                 String dcs = mTerminalControlArgs.toString();
@@ -1368,7 +1415,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 // buffer was flushed and its next chunk happens to start with a request prefix.
                 // Request Selection or Setting (DECRQSS) `DCS $ q P t ST`.
                 // - https://vt100.net/docs/vt510-rm/DECRQSS.html
-                if (!ESC_DCS__SIXEL && dcs.startsWith("$q")) {
+                if (!isSixelDcs() && dcs.startsWith("$q")) {
                     if (dcs.equals("$q\"p")) {
                         // DECSCL, conformance level, http://www.vt100.net/docs/vt510-rm/DECSCL:
                         String csiString = "64;1\"p";
@@ -1376,7 +1423,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                     } else {
                         finishSequenceAndLogError("Unrecognized DECRQSS string: '" + dcs + "'");
                     }
-                } else if (!ESC_DCS__SIXEL && dcs.startsWith("+q")) {
+                } else if (!isSixelDcs() && dcs.startsWith("+q")) {
                     // Request Termcap/Terminfo String. The string following the "q" is a list of names encoded in
                     // hexadecimal (2 digits per character) separated by ; which correspond to termcap or terminfo key
                     // names.
@@ -1467,7 +1514,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                     }
                 }
                 // If `s..s` or `ST` received from Sixel Device Control String `DCS q s..s ST` or `DCS P1; P2; P3; q s..s ST` command.
-                else if (ESC_DCS__SIXEL) {
+                else if (isSixelDcs()) {
                     mSixelCommandPartNum++;
 
                     boolean isValidDcs = processSixelDcs(dcs);
@@ -1475,16 +1522,15 @@ public final class TerminalEmulator implements TerminalRendererState {
                     if (!isValidDcs) {
                         clearTerminalControlArgs();
                         mScreen.sixelIgnore();
-                        if (!(ESC_DCS__ESC && b == '\\')) {
-                            mDiscardImageControl = ESC_DCS;
-                            mDiscardImageEscape = b == 27;
+                        if (!(mDcsEscapePending && b == '\\')) {
+                            beginDiscardControlString(DiscardControlString.DCS, b == 27);
                         }
                         clearDcsTypeVariables();
                         finishSequence();
                         return;
                     }
 
-                    if (ESC_DCS__ESC && b == '\\') {
+                    if (mDcsEscapePending && b == '\\') {
                         TerminalBuffer target = beginImagePlacement();
                         boolean imageCanScroll = target.canScrollImage();
                         int n;
@@ -1497,7 +1543,7 @@ public final class TerminalEmulator implements TerminalRendererState {
 
                         // Clear DCS args buffer and variables and finish sequence.
                     } else {
-                        ESC_DCS__ESC = false;
+                        mDcsEscapePending = false;
 
                         // Clear DCS args buffer to receive further new input in empty buffer.
                         clearTerminalControlArgs();
@@ -1530,25 +1576,24 @@ public final class TerminalEmulator implements TerminalRendererState {
                 clearDcsTypeVariables();
                 finishSequence();
         } else {
-                ESC_DCS__ESC = false;
+                mDcsEscapePending = false;
 
                 if (!collectTerminalControlArgs(b)) return;
 
                 // A data character completes any preceding color/repeat/raster arguments. Flush
                 // here too, so a wide uncompressed image needs no artificial subcommand breaks.
-                if (ESC_DCS__SIXEL && mTerminalControlArgs.length() >= mTerminalControlArgsMaxLength / 2
+                if (isSixelDcs() && mTerminalControlArgs.length() >= mTerminalControlArgsMaxLength / 2
                     && ((b >= '?' && b <= '~') || b == '$' || b == '-')) {
                     if (!processSixelDcs(mTerminalControlArgs.toString())) {
                         mScreen.sixelIgnore();
-                        mDiscardImageControl = ESC_DCS;
-                        mDiscardImageEscape = false;
+                        beginDiscardControlString(DiscardControlString.DCS, false);
                         clearDcsTypeVariables();
                         finishSequence();
                     }
                     clearTerminalControlArgs();
                 }
 
-                if (ESC_DCS__CHECK_IF_SIXEL && !ESC_DCS__SIXEL) {
+                if (mDcsPhase == DcsPhase.DETECTING) {
                     // Check if `DCS q` or `DCS P1; P2; P3; q` received from Sixel
                     // Device Control String `DCS q s..s ST` or `DCS P1; P2; P3; q s..s ST` command.
                     // If received, then wait for more input after `q`.
@@ -1557,18 +1602,15 @@ public final class TerminalEmulator implements TerminalRendererState {
                     } else if (b == ';' || (b >= '0' && b <= '9')) {
                         // Ignore.
                     } else {
-                        ESC_DCS__CHECK_IF_SIXEL = false;
+                        mDcsPhase = DcsPhase.OTHER;
                     }
                 }
         }
     }
 
     public void clearDcsTypeVariables() {
-        ESC_DCS__ESC = false;
-        mIsFastPathDcs = false;
-
-        ESC_DCS__SIXEL = false;
-        ESC_DCS__CHECK_IF_SIXEL = true;
+        mDcsEscapePending = false;
+        mDcsPhase = DcsPhase.DETECTING;
         mSixelCommandPartNum = 0;
         mSixelArgsCapacity = null;
         mScreen.sixelClear();
@@ -1579,9 +1621,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     private void startIfSixelDcs() {
         int[] sixelDcsSetupArgs = getSixelDcsSetupArgs(mTerminalControlArgs.toString(), 0);
         if (sixelDcsSetupArgs != null) {
-            mIsFastPathDcs = true;
-            ESC_DCS__SIXEL = true;
-            ESC_DCS__CHECK_IF_SIXEL = false;
+            mDcsPhase = DcsPhase.SIXEL;
             mSixelCommandPartNum = 1;
 
             // Do not actually increase capacity yet, as it will be increased by `doDcs()` after
@@ -1622,7 +1662,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                             return args;
                         } else {
                             // Must be some other command, so no need to check again.
-                            ESC_DCS__CHECK_IF_SIXEL = false;
+                            mDcsPhase = DcsPhase.OTHER;
                         }
                     }
                     break;
@@ -1937,7 +1977,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             case 'J': // Selective erase in display (DECSED) - http://www.vt100.net/docs/vt510-rm/DECSED.
             case 'K': // Selective erase in line (DECSEL) - http://vt100.net/docs/vt510-rm/DECSEL.
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 int fillChar = ' ';
                 int startCol = -1;
                 int startRow = -1;
@@ -2021,8 +2061,6 @@ public final class TerminalEmulator implements TerminalRendererState {
     }
 
     public void doDecSetOrReset(boolean setting, int externalBit) {
-        if (externalBit == 2026 && setting && !isSynchronizedOutputActive())
-            captureSynchronizedOutputRendererState();
         int internalBit = mapDecSetBitToInternalBit(externalBit);
         if (internalBit != -1) {
             setDecsetinternalBit(internalBit, setting);
@@ -2056,8 +2094,8 @@ public final class TerminalEmulator implements TerminalRendererState {
             case 9: // X10 mouse reporting - outdated. Do not implement.
             case 12: // Control cursor blinking - ignore.
             case 25: // Hide/show cursor - no action needed, renderer will check with shouldCursorBeVisible().
-                if (isSynchronizedOutputActive()) {
-                    mSynchronizedOutputCursorStateChanged = true;
+                if (mSynchronizedFrame != null) {
+                    mSynchronizedFrame.cursorStateChanged = true;
                 } else if (mClient != null) {
                     mClient.onTerminalCursorStateChange(setting);
                 }
@@ -2083,10 +2121,8 @@ public final class TerminalEmulator implements TerminalRendererState {
             case 1034: // Interpret "meta" key, sets eighth bit.
                 break;
             case 2026: // Synchronized output. Present the completed frame when reset.
-                if (!setting) {
-                    mSynchronizedOutputRendererState = null;
-                    dispatchDeferredCursorStateChange();
-                }
+                if (setting) beginSynchronizedOutput();
+                else finishSynchronizedOutput();
                 break;
             case 1048: // Set: Save cursor as in DECSC. Reset: Restore cursor as in DECRC.
                 if (setting)
@@ -2405,7 +2441,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             case '@': {
                 // "CSI{n}@" - Insert ${n} space characters (ICH) - http://www.vt100.net/docs/vt510-rm/ICH.
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 int columnsAfterCursor = mColumns - mCursorCol;
                 int spacesToInsert = Math.min(getArg0(1), columnsAfterCursor);
                 int charsToMove = columnsAfterCursor - spacesToInsert;
@@ -2464,7 +2500,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                         unknownSequence(b);
                         return;
                 }
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 break;
             case 'K': // "CSI{n}K" - Erase in line (EL).
                 switch (getArg0(0)) {
@@ -2481,7 +2517,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                         unknownSequence(b);
                         return;
                 }
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 break;
             case 'L': // "${CSI}{N}L" - insert ${N} lines (IL).
             {
@@ -2494,7 +2530,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             break;
             case 'M': // "${CSI}${N}M" - delete N lines (DL).
             {
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 int linesAfterCursor = mBottomMargin - mCursorRow;
                 int linesToDelete = Math.min(getArg0(1), linesAfterCursor);
                 int linesToMove = linesAfterCursor - linesToDelete;
@@ -2509,7 +2545,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 // As characters are deleted, the remaining characters between the cursor and right margin move to the left.
                 // Character attributes move with the characters. The terminal adds blank spaces with no visual character
                 // attributes at the right margin. DCH has no effect outside the scrolling margins."
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 int cellsAfterCursor = mColumns - mCursorCol;
                 int cellsToDelete = Math.min(getArg0(1), cellsAfterCursor);
                 int cellsToMove = cellsAfterCursor - cellsToDelete;
@@ -2543,7 +2579,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 }
                 break;
             case 'X': // "${CSI}${N}X" - Erase ${N:=1} character(s) (ECH). FIXME: Clears character attributes?
-                mAboutToAutoWrap = false;
+                mAutoWrapPending = false;
                 mScreen.blockSet(mCursorCol, mCursorRow, Math.min(getArg0(1), mColumns - mCursorCol), 1, ' ', getStyle());
                 break;
             case 'Z': // Cursor Backward Tabulation (CBT). Move the active position n tabs backward.
@@ -2855,40 +2891,48 @@ public final class TerminalEmulator implements TerminalRendererState {
             continueSequence(ESC_APC__ESC);
             return;
         }
-        if (!mApcHasType) {
-            mApcHasType = true;
-            mApcGraphics = b == 'G';
-        } else if (mApcGraphics) {
-            if (mApcPayload) {
+        switch (mApcPhase) {
+            case TYPE:
+                mApcPhase = b == 'G' ? ApcPhase.HEADER : ApcPhase.IGNORED;
+                break;
+            case HEADER:
+                if (b == ';') startKittyCommand();
+                else if (mTerminalControlArgs.length() < TERMINAL_CONTROL_ARGS__DEFAULT_MAX_LENGTH) mTerminalControlArgs.appendCodePoint(b);
+                else {
+                    startKittyCommand();
+                    mKittyImage.fail("EINVAL");
+                }
+                break;
+            case PAYLOAD:
                 mKittyImage.read(b);
-            } else if (b == ';') {
-                startKittyCommand();
-            } else if (mTerminalControlArgs.length() < TERMINAL_CONTROL_ARGS__DEFAULT_MAX_LENGTH) {
-                mTerminalControlArgs.appendCodePoint(b);
-            } else {
-                startKittyCommand();
-                mKittyImage.fail("EINVAL");
-            }
+                break;
+            case IGNORED:
+                break;
         }
         continueSequence(ESC_APC);
     }
 
     private void receiveApcEsc(final int b) {
         if (b == '\\') {
-            if (mApcGraphics) doApc();
+            if (isApcGraphics()) doApc();
             clearApcTypeVariables();
             finishSequence();
         } else {
-            if (mApcGraphics) {
-                if (!mApcPayload) startKittyCommand();
+            if (isApcGraphics()) {
+                if (mApcPhase != ApcPhase.PAYLOAD) startKittyCommand();
                 mKittyImage.fail("EINVAL");
             }
             continueSequence(b == 27 ? ESC_APC__ESC : ESC_APC);
         }
     }
 
+    /** Whether the current APC string is Kitty graphics rather than an ignored type. */
+    private boolean isApcGraphics() {
+        return mApcPhase == ApcPhase.HEADER || mApcPhase == ApcPhase.PAYLOAD;
+    }
+
     public void clearApcTypeVariables() {
-        mApcHasType = mApcGraphics = mApcPayload = false;
+        mApcPhase = ApcPhase.TYPE;
         mKittyImage = null;
         clearTerminalControlArgs();
     }
@@ -2902,12 +2946,12 @@ public final class TerminalEmulator implements TerminalRendererState {
         }
         mKittyPending = null; // A new action, notably delete, aborts a pending upload.
         mKittyImage = command;
-        mApcPayload = true;
+        mApcPhase = ApcPhase.PAYLOAD;
         command.start();
     }
 
     private void doApc() {
-        if (!mApcPayload) startKittyCommand(); // Pi's placement/delete commands have no ';'.
+        if (mApcPhase != ApcPhase.PAYLOAD) startKittyCommand(); // Pi's placement/delete commands have no ';'.
         KittyImage command = mKittyImage;
         if (command.error == null && command.more) {
             mKittyPending = command;
@@ -2965,7 +3009,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             // Kitty's production graphics.c moves by effective rows-1, unlike its prose.
             advanceImageRows(Math.max(0, delta[0] - 1), canScroll);
             mCursorCol = Math.min(right - 1, mCursorCol + delta[1]);
-            mAboutToAutoWrap = false;
+            mAutoWrapPending = false;
         }
     }
 
@@ -2984,7 +3028,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             default:
                 if (!collectTerminalControlArgs(b)) return;
-                if (mOscType == -1) {
+                if (mOscPhase == OscPhase.AWAITING_TYPE) {
                     setOscTypeVariables();
                 }
                 break;
@@ -3014,7 +3058,7 @@ public final class TerminalEmulator implements TerminalRendererState {
      * Set {@link #ESC_OSC} type variables.
      */
     void setOscTypeVariables() {
-        if (mOscType >= 0) return;
+        if (mOscPhase != OscPhase.AWAITING_TYPE) return;
         if (mTerminalControlArgs.indexOf(";") < 0) return;
 
         int value = -1;
@@ -3025,22 +3069,21 @@ public final class TerminalEmulator implements TerminalRendererState {
             char b = mTerminalControlArgs.charAt(i);
             if (b == ';') {
                 mOscType = value;
+                mOscPhase = value == 1337 ? OscPhase.ITERM_IMAGE : OscPhase.TYPED;
                 break;
             } else if (b >= '0' && b <= '9') {
                 value = ((value < 0) ? 0 : value * 10) + (b - '0');
             } else {
-                mOscType = -2; // Unknown sequence.
+                mOscPhase = OscPhase.UNKNOWN; // Non-numeric type.
                 return;
             }
         }
 
-        if (mOscType >= 0) {
+        if (mOscPhase == OscPhase.ITERM_IMAGE || mOscPhase == OscPhase.TYPED) {
             Integer terminalControlArgsCapacity = null;
             Integer terminalControlArgsMaxLength = null;
             switch (mOscType) {
                 case 1337: // iTerm image command sends the base64 encoded image, do not run complex logic for each byte.
-                    mIsFastPathOsc = true;
-                    mIgnoreCrLfForOsc = true;
                     // Expect large amount of data for image bytes.
                     // `imgcat` utility splits image bytes into 200-byte chunks when sending with `FilePart=` commands.
                     // - https://github.com/gnachman/iTerm2-shell-integration/blob/d1d4012068c3c6761d5676c28ed73e0e2df2b715/utilities/imgcat#L89
@@ -3069,9 +3112,8 @@ public final class TerminalEmulator implements TerminalRendererState {
      * Clear {@link #ESC_OSC} type variables.
      */
     public void clearOscTypeVariables() {
+        mOscPhase = OscPhase.AWAITING_TYPE;
         mOscType = -1;
-        mIsFastPathOsc = false;
-        mIgnoreCrLfForOsc = false;
     }
 
     /**
@@ -3416,7 +3458,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         int split = parameters.indexOf(';');
         String uri = split < 0 ? "" : parameters.substring(split + 1);
         if (uri.isEmpty()) {
-            mHyperlink = 0;
+            mHyperlinkId = NO_HYPERLINK;
             return;
         }
         String id = null;
@@ -3424,7 +3466,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             if (parameter.startsWith("id=") && parameter.length() > 3) id = parameter.substring(3);
         String key = id == null ? null : id + '\u0000' + uri;
         Integer existing = key == null ? null : mHyperlinkIds.get(key);
-        mHyperlink = existing != null ? existing : allocateHyperlink(key, uri);
+        mHyperlinkId = existing != null ? existing : allocateHyperlink(key, uri);
     }
 
     private int allocateHyperlink(String key, String uri) {
@@ -3456,7 +3498,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     /** Frees every id no cell of either buffer holds, and that is not the link being printed now. */
     private void sweepHyperlinks() {
         boolean[] live = new boolean[MAX_HYPERLINKS + 1];
-        live[mHyperlink] = true;
+        live[mHyperlinkId] = true;
         for (TerminalBuffer buffer : new TerminalBuffer[]{mMainBuffer, mAltBuffer})
             for (TerminalRow row : buffer.mLines)
                 if (row != null && row.mLinks != null)
@@ -3646,9 +3688,8 @@ public final class TerminalEmulator implements TerminalRendererState {
     }
 
     private void abortControlString(int b) {
-        if (ESC_DCS__SIXEL || (mOscType == 1337 && (mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC))) {
-            mDiscardImageControl = ESC_DCS__SIXEL ? ESC_DCS : ESC_OSC;
-            mDiscardImageEscape = b == 27;
+        if (isSixelDcs() || (mOscType == 1337 && (mEscapeState == ESC_OSC || mEscapeState == ESC_OSC__ESC))) {
+            beginDiscardControlString(isSixelDcs() ? DiscardControlString.DCS : DiscardControlString.OSC, b == 27);
         }
         clearTerminalControlArgs();
         clearOscTypeVariables();
@@ -3885,7 +3926,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         final boolean cursorInLastColumn = mCursorCol == mRightMargin - 1;
 
         if (autoWrap) {
-            if (cursorInLastColumn && ((mAboutToAutoWrap && displayWidth == 1) || displayWidth == 2)) {
+            if (cursorInLastColumn && ((mAutoWrapPending && displayWidth == 1) || displayWidth == 2)) {
                 mScreen.setLineWrap(mCursorRow);
                 mCursorCol = mLeftMargin;
                 if (mCursorRow + 1 < mBottomMargin) {
@@ -3907,7 +3948,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 mScreen.blockCopy(mCursorCol, mCursorRow, mRightMargin - destCol, 1, destCol, mCursorRow);
         }
 
-        int offsetDueToCombiningChar = ((displayWidth <= 0 && mCursorCol > 0 && !mAboutToAutoWrap) ? 1 : 0);
+        int offsetDueToCombiningChar = ((displayWidth <= 0 && mCursorCol > 0 && !mAutoWrapPending) ? 1 : 0);
         int column = mCursorCol - offsetDueToCombiningChar;
 
         // Fix TerminalRow.setChar() ArrayIndexOutOfBoundsException index=-1 exception reported
@@ -3915,22 +3956,22 @@ public final class TerminalEmulator implements TerminalRendererState {
         // so was mCursorCol changed after the offsetDueToCombiningChar conditional by another thread?
         // TODO: Check if there are thread synchronization issues with mCursorCol and mCursorRow, possibly causing others bugs too.
         if (column < 0) column = 0;
-        mScreen.setChar(column, mCursorRow, codePoint, getStyle(), mHyperlink);
+        mScreen.setChar(column, mCursorRow, codePoint, getStyle(), mHyperlinkId);
 
         if (autoWrap && displayWidth > 0)
-            mAboutToAutoWrap = (mCursorCol == mRightMargin - displayWidth);
+            mAutoWrapPending = (mCursorCol == mRightMargin - displayWidth);
 
         mCursorCol = Math.min(mCursorCol + displayWidth, mRightMargin - 1);
     }
 
     private void setCursorRow(int row) {
         mCursorRow = row;
-        mAboutToAutoWrap = false;
+        mAutoWrapPending = false;
     }
 
     private void setCursorCol(int col) {
         mCursorCol = col;
-        mAboutToAutoWrap = false;
+        mAutoWrapPending = false;
     }
 
     /**
@@ -3959,7 +4000,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     private void setCursorRowCol(int row, int col) {
         mCursorRow = Math.max(0, Math.min(row, mRows - 1));
         mCursorCol = Math.max(0, Math.min(col, mColumns - 1));
-        mAboutToAutoWrap = false;
+        mAutoWrapPending = false;
     }
 
     public int getScrollCounter() {
@@ -3991,7 +4032,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     public void reset() {
         mKittyKeyboardMain.reset();
         mKittyKeyboardAlt.reset();
-        mHyperlink = 0;
+        mHyperlinkId = NO_HYPERLINK;
         setCursorStyle();
         mArgIndex = 0;
         mContinueSequence = false;
@@ -4000,7 +4041,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         mTopMargin = mLeftMargin = 0;
         mBottomMargin = mRows;
         mRightMargin = mColumns;
-        mAboutToAutoWrap = false;
+        mAutoWrapPending = false;
         mForeColor = mSavedStateMain.mSavedForeColor = mSavedStateAlt.mSavedForeColor = TextStyle.COLOR_INDEX_FOREGROUND;
         mBackColor = mSavedStateMain.mSavedBackColor = mSavedStateAlt.mSavedBackColor = TextStyle.COLOR_INDEX_BACKGROUND;
         setDefaultTabStops();
@@ -4010,8 +4051,8 @@ public final class TerminalEmulator implements TerminalRendererState {
 
         mSavedStateMain.mSavedCursorRow = mSavedStateMain.mSavedCursorCol = mSavedStateMain.mSavedEffect = mSavedStateMain.mSavedDecFlags = 0;
         mSavedStateAlt.mSavedCursorRow = mSavedStateAlt.mSavedCursorCol = mSavedStateAlt.mSavedEffect = mSavedStateAlt.mSavedDecFlags = 0;
-        mSynchronizedOutputCursorStateChanged = false;
-        mSynchronizedOutputRendererState = null;
+        mSynchronizedFrame = null;
+        mDeferredPaletteChange = false;
         mCurrentDecSetFlags = 0;
         // Initial wrap-around is not accurate but makes terminal more useful, especially on a small screen:
         setDecsetinternalBit(DECSET_BIT_AUTOWRAP, true);
@@ -4019,7 +4060,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         mSavedDecSetFlags = mSavedStateMain.mSavedDecFlags = mSavedStateAlt.mSavedDecFlags = mCurrentDecSetFlags;
 
         // XXX: Should we set terminal driver back to IUTF8 with termios?
-        mUtf8Index = mUtf8ToFollow = 0;
+        mUtf8Decoder.reset();
 
         mColors.reset();
         mSession.onColorsChanged();
@@ -4031,8 +4072,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         mKittyPending = null;
         mMainBuffer.resetKittyGraphics();
         mAltBuffer.resetKittyGraphics();
-        mDiscardImageControl = ESC_NONE;
-        mDiscardImageEscape = false;
+        clearDiscardControlString();
         clearDcsTypeVariables();
     }
 

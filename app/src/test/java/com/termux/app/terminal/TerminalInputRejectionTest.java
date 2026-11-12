@@ -49,7 +49,7 @@ public class TerminalInputRejectionTest {
         TermuxTerminalSessionClientBase client = new TermuxTerminalSessionClientBase();
         TerminalSession terminal = new TerminalSession("/unused", "/", new String[0], new String[0], 100, client);
         ReflectionHelpers.setField(terminal, "mEmulator", new TerminalEmulator(terminal, 80, 24, 8, 16, 100, client));
-        ReflectionHelpers.setField(terminal, "mShellPid", Integer.MAX_VALUE);
+        TestSessions.markShell(terminal, Integer.MAX_VALUE);
         terminal.mSessionName = name;
         ExecutionCommand command = new ExecutionCommand(1, "/unused", new String[0], null, "/",
             ExecutionCommand.Runner.TERMINAL_SESSION.getName(), true);
