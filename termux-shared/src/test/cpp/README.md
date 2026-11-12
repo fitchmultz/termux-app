@@ -18,6 +18,15 @@ c++ -std=c++17 -pthread -fsanitize=address -g \
 /tmp/termux-local-socket-test
 ```
 
+Fold checks run the same harness with ASan/UBSan after Java setup:
+
+```sh
+python3 tools/ci/check-local-sockets.py
+```
+
+Run that command from the repository root. The CI job installs `g++` and libc
+development headers; `JAVA_HOME` supplies JNI headers.
+
 `LOCAL_SOCKET_SOURCE` can name a baseline copy of the production file to verify
 that the regression fails before the fix. No Android build or APK is required.
 Pass `close` or `read` to the executable to run one boundary independently.

@@ -1,6 +1,7 @@
 package com.termux.shared.net.socket.local;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.termux.shared.errors.Error;
 import com.termux.shared.file.FileUtils;
@@ -27,7 +28,7 @@ public class LocalServerSocket implements Closeable {
     @NonNull protected final ILocalSocketManager mLocalSocketManagerClient;
 
     /** The {@link ClientSocketListener} {@link Thread} for the {@link LocalServerSocket}. */
-    @NonNull protected final Thread mClientSocketListener;
+    @Nullable protected Thread mClientSocketListener;
 
     /**
      * The required permissions for server socket file parent directory.
@@ -45,12 +46,15 @@ public class LocalServerSocket implements Closeable {
         mLocalSocketManager = localSocketManager;
         mLocalSocketRunConfig = localSocketManager.getLocalSocketRunConfig();
         mLocalSocketManagerClient = mLocalSocketRunConfig.getLocalSocketManagerClient();
-        mClientSocketListener = new Thread(new ClientSocketListener());
     }
 
     /** Start server by creating server socket. */
     public synchronized Error start() {
         Logger.logDebug(LOG_TAG, "start");
+        if (mClientSocketListener != null) {
+            return LocalSocketErrno.ERRNO_CREATE_SERVER_SOCKET_FAILED.getError(
+                mLocalSocketRunConfig.getTitle(), "Listener already started");
+        }
 
         String path = mLocalSocketRunConfig.getPath();
         if (path == null || path.isEmpty()) {
@@ -111,6 +115,7 @@ public class LocalServerSocket implements Closeable {
         // Update fd to signify that server socket has been created successfully
         mLocalSocketRunConfig.setFD(fd);
 
+        mClientSocketListener = new Thread(new ClientSocketListener(fd));
         mClientSocketListener.setUncaughtExceptionHandler(mLocalSocketManager.getLocalSocketManagerClientThreadUEH());
 
         try {
@@ -118,6 +123,11 @@ public class LocalServerSocket implements Closeable {
             mClientSocketListener.start();
         } catch (Exception e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "mClientSocketListener start failed", e);
+            mLocalSocketRunConfig.setFD(-1);
+            LocalSocketManager.closeSocket(mLocalSocketRunConfig.getLogTitle() + " (server)", fd);
+            mClientSocketListener = null;
+            return LocalSocketErrno.ERRNO_CREATE_SERVER_SOCKET_FAILED.getError(
+                e, mLocalSocketRunConfig.getTitle(), e.getMessage());
         }
 
         return null;
@@ -129,7 +139,7 @@ public class LocalServerSocket implements Closeable {
 
         try {
             // Stop the LocalClientSocket listener.
-            mClientSocketListener.interrupt();
+            if (mClientSocketListener != null) mClientSocketListener.interrupt();
         } catch (Exception ignored) {}
 
         Error error = closeServerSocket(false);
@@ -155,7 +165,7 @@ public class LocalServerSocket implements Closeable {
         return null;
     }
 
-    /** Implementation for {@link Closeable#close()} to close server socket. */
+    /** Stop accepting; the listener closes its descriptor after its last native call returns. */
     @Override
     public synchronized void close() throws IOException {
         Logger.logDebug(LOG_TAG, "close");
@@ -163,9 +173,9 @@ public class LocalServerSocket implements Closeable {
         int fd = mLocalSocketRunConfig.getFD();
 
         if (fd >= 0) {
-            // Detach before waking accept(), which must not retry using the released descriptor.
+            // The listener retains the descriptor until its last native accept has returned.
             mLocalSocketRunConfig.setFD(-1);
-            JniResult result = LocalSocketManager.closeSocket(mLocalSocketRunConfig.getLogTitle() + " (server)", fd);
+            JniResult result = LocalSocketManager.shutdownSocket(mLocalSocketRunConfig.getLogTitle() + " (server)", fd);
             if (result == null || result.retval != 0) {
                 throw new IOException(JniResult.getErrorString(result));
             }
@@ -247,6 +257,11 @@ public class LocalServerSocket implements Closeable {
 
     /** The {@link LocalClientSocket} listener {@link java.lang.Runnable} for {@link LocalServerSocket}. */
     protected class ClientSocketListener implements Runnable {
+        private final int mOwnedFD;
+
+        ClientSocketListener(int fd) {
+            mOwnedFD = fd;
+        }
 
         @Override
         public void run() {
@@ -294,9 +309,13 @@ public class LocalServerSocket implements Closeable {
                 }
             } catch (Exception ignored) {
             } finally {
-                try {
-                    close();
-                } catch (Exception ignored) {}
+                synchronized (LocalServerSocket.this) {
+                    mLocalSocketRunConfig.setFD(-1);
+                    JniResult result = LocalSocketManager.closeSocket(
+                        mLocalSocketRunConfig.getLogTitle() + " (server)", mOwnedFD);
+                    if (result == null || result.retval != 0)
+                        Logger.logError(LOG_TAG, JniResult.getErrorString(result));
+                }
             }
 
             Logger.logVerbose(LOG_TAG, "ClientSocketListener end");

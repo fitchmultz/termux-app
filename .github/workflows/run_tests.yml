@@ -36,7 +36,7 @@ jobs:
           work="$(mktemp -d "$RUNNER_TEMP/fold-ci.XXXXXXXX")"
           printf 'FOLD_CI_WORK=%s\n' "$work" >> "$GITHUB_ENV"
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates git curl unzip binutils dpkg gpgv gzip xz-utils zip jq python3 make file libstdc++6 gcc libc6-dev
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gnupg ca-certificates git curl unzip binutils dpkg gpgv gzip xz-utils zip jq python3 make file libstdc++6 gcc g++ libc6-dev
       - name: Clone repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,6 +47,8 @@ jobs:
           distribution: temurin
           java-version: '21'
           check-latest: true
+      - name: Check native socket ownership and buffer boundaries on Linux
+        run: python3 tools/ci/check-local-sockets.py
       - name: Validate wrapper and restore Gradle state
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - name: Install pinned Android SDK

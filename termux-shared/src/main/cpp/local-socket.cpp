@@ -334,6 +334,16 @@ Java_com_termux_shared_net_socket_local_LocalSocketManager_closeSocketNative(JNI
 
 extern "C"
 JNIEXPORT jobject JNICALL
+Java_com_termux_shared_net_socket_local_LocalSocketManager_shutdownSocketNative(JNIEnv *env, jclass clazz,
+                                                                                jstring logTitle, jint fd) {
+    if (shutdown(fd, SHUT_RDWR) == -1) {
+        return getJniResult(env, logTitle, -1, errno, "shutdownSocketNative(): Failed to shut down socket fd " + to_string(fd));
+    }
+    return getJniResult(env, logTitle);
+}
+
+extern "C"
+JNIEXPORT jobject JNICALL
 Java_com_termux_shared_net_socket_local_LocalSocketManager_acceptNative(JNIEnv *env, jclass clazz,
                                                                         jstring logTitle, jint fd) {
     if (fd < 0) {

@@ -22,6 +22,9 @@ import org.robolectric.util.ReflectionHelpers;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -84,6 +87,41 @@ public class SharedSocketRegressionTest {
             NativeAvailability.fd);
         assertEquals(config.getLogTitle() + " (client)", NativeAvailability.title);
         assertEquals(SERVER_FD, config.getFD().intValue());
+    }
+
+    @Test
+    public void stopRetainsDescriptorUntilTheListenersLastAcceptReturns() throws Exception {
+        boolean libraryLoaded = ReflectionHelpers.getStaticField(LocalSocketManager.class,
+            "localSocketLibraryLoaded");
+        ReflectionHelpers.setStaticField(LocalSocketManager.class, "localSocketLibraryLoaded", true);
+        NativeAvailability.accepting = new CountDownLatch(1);
+        NativeAvailability.releaseAccept = new CountDownLatch(1);
+        NativeAvailability.closed = new CountDownLatch(1);
+        NativeAvailability.closeCalls = new AtomicInteger();
+        NativeAvailability.createCalls = 0;
+        NativeAvailability.shutdownFD = -1;
+        config.setFD(-1);
+        try {
+            assertNull(manager.start());
+            assertTrue(NativeAvailability.accepting.await(5, TimeUnit.SECONDS));
+            assertNull(manager.start());
+            assertEquals("A running manager must not replace its listener's FD", 1,
+                NativeAvailability.createCalls);
+
+            assertNull(manager.stop());
+            assertEquals(-1, config.getFD().intValue());
+            assertEquals(SERVER_FD, NativeAvailability.shutdownFD);
+            assertEquals("An accept still owns this integer descriptor", 0,
+                NativeAvailability.closeCalls.get());
+        } finally {
+            manager.stop();
+            NativeAvailability.releaseAccept.countDown();
+            assertTrue(NativeAvailability.closed.await(5, TimeUnit.SECONDS));
+            ReflectionHelpers.setStaticField(LocalSocketManager.class,
+                "localSocketLibraryLoaded", libraryLoaded);
+        }
+        assertEquals(1, NativeAvailability.closeCalls.get());
+        assertEquals(SERVER_FD, NativeAvailability.closedFD);
     }
 
     @Test
@@ -302,6 +340,50 @@ public class SharedSocketRegressionTest {
         static String title;
         static JniResult result;
         static LinkageError failure;
+        static CountDownLatch accepting;
+        static CountDownLatch releaseAccept;
+        static CountDownLatch closed;
+        static AtomicInteger closeCalls;
+        static int createCalls;
+        static volatile int shutdownFD;
+        static volatile int closedFD;
+
+        @Implementation
+        protected static JniResult createServerSocketNative(String title, byte[] path, int backlog) {
+            createCalls++;
+            return new JniResult(0, 0, null, SERVER_FD);
+        }
+
+        @Implementation
+        protected static JniResult acceptNative(String title, int fd) {
+            accepting.countDown();
+            boolean interrupted = false;
+            while (true) {
+                try {
+                    releaseAccept.await();
+                    break;
+                } catch (InterruptedException e) {
+                    // Real native accept does not observe Java Thread.interrupt().
+                    interrupted = true;
+                }
+            }
+            if (interrupted) Thread.currentThread().interrupt();
+            return new JniResult(-1, 22, "shutdown", 0);
+        }
+
+        @Implementation
+        protected static JniResult shutdownSocketNative(String title, int fd) {
+            shutdownFD = fd;
+            return new JniResult(0, 0, null, 0);
+        }
+
+        @Implementation
+        protected static JniResult closeSocketNative(String title, int fd) {
+            closedFD = fd;
+            closeCalls.incrementAndGet();
+            closed.countDown();
+            return new JniResult(0, 0, null, 0);
+        }
 
         @Implementation
         protected static JniResult availableNative(String serverTitle, int socketFd) {

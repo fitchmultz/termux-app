@@ -36,6 +36,14 @@ default JDK signature verification is not silently skipped on the minimal image.
 Make serves the actual native incremental gate; `file` serves NDK 21.1's 64-bit
 shell check.
 
+Fold checks also install `g++` for `tools/ci/check-local-sockets.py`, run after
+Java 21 setup. It compiles the production local-socket JNI source with the JDK's
+JNI headers, a test-only JNI value table/log header, and AddressSanitizer/UBSan.
+Real Linux AF_UNIX sockets exercise blocked-listener close and fragmented bulk
+reads. The Java socket regression separately checks that shutdown retains the
+descriptor until the listener's last accept returns. These are host-native and
+Java ownership checks, not Android VM or physical-device evidence.
+
 Signers install [GitHub CLI 2.103.2](https://github.com/cli/cli/releases/tag/v2.103.2)
 from the official `gh_2.103.2_linux_amd64.tar.gz`, not Ubuntu's older package.
 The inline workflow checks its 15,031,001-byte size and SHA-256 before extraction:
