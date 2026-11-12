@@ -37,6 +37,7 @@ public class TermuxSessionLifecycleTest {
         append(emulator, "before");
 
         fixture.wrapper.killIfExecuting(RuntimeEnvironment.getApplication(), true);
+        fixture.mark(TerminalSession.ShellState.DRAINING);
         fixture.wrapper.finish();
         assertEquals(0, fixture.callbacks.get());
         assertEquals("", fixture.command.resultData.stdout.toString());

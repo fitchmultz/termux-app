@@ -1,7 +1,6 @@
 package com.termux.shared.termux.shell.command.runner.terminal;
 
 import android.content.Context;
-import android.system.OsConstants;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -200,14 +199,23 @@ public class TermuxSession {
     }
 
     /**
-     * Kill this {@link TermuxSession} by sending a {@link OsConstants#SIGILL} to its {@link #mTerminalSession}
-     * if its still executing.
+     * Complete an already-finished terminal with its actual status, or request SIGKILL if it is
+     * still executing. A terminal draining final output remains running until its finished callback.
      *
      * @param context The {@link Context} for operations.
-     * @param processResult Whether to deliver the failure when the terminal's finished callback
-     *                      calls {@link #finish()}. Output remains owned by the terminal until then.
+     * @param processResult Whether to deliver the result. Already-finished terminals complete
+     *                      immediately; otherwise output remains owned by the terminal until its
+     *                      finished callback calls {@link #finish()}.
      */
     public void killIfExecuting(@NonNull final Context context, boolean processResult) {
+        // An unexpected exit may be retained for inspection without finishing this wrapper.
+        // No further native callback will arrive for it, and nothing remains to cancel.
+        if (!mTerminalSession.isRunning()) {
+            mProcessResultOnExit = processResult;
+            finish();
+            return;
+        }
+
         // If execution command has already finished executing, then no need to process results or send SIGKILL
         if (mExecutionCommand.hasExecuted()) {
             Logger.logDebug(LOG_TAG, "Ignoring sending SIGKILL to \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" TermuxSession since it has already finished executing");

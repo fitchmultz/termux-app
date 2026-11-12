@@ -15,6 +15,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - In this source branch, after shell exit, terminal readers recheck PTY readiness after every read instead of treating one `FIONREAD` count as the whole tail. Queued flip-buffer output reaches the transcript before completion; quiet inherited slave holders do not delay it. Active descendant output can continue while readable.
 
+- This source branch retires already-finished terminal sessions during shutdown with their real exit status, rather than inventing a SIGKILL result and waiting for a callback that cannot arrive. Running sessions, including those draining readable PTY output, still defer completion until their finished callback.
+
 - This source branch retires each run-command forwarding service start after handoff or rejection, including null restarts. Removing its foreground notification no longer leaves an idle started service behind.
 
 - This source branch makes Help own and destroy its WebView, removing it from the view hierarchy first and ignoring page callbacks after destruction. Both the loading and displayed states release the browser's native resources.
@@ -54,7 +56,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - This source branch resumes the evidence share-target chooser after backgrounding and resolves its selected session at confirmation time; ended or removed targets refresh the choices without losing the pending share or reattaching an untracked session.
 
-- Source branch candidate: cancelled terminal commands that owe a result finish through their session wrapper after native exit and the finite PTY tail drain, including non-plugin user shutdown. Ordinary unexpected nonzero exits remain inspectable; shutdown paths that owe no result may retire immediately. Android process death can still prevent deferred delivery.
+- Source branch candidate: cancelled terminal commands that owe a result finish through their session wrapper after native exit and the readable PTY tail drain, including non-plugin user shutdown. Ordinary unexpected nonzero exits remain inspectable; shutdown paths that owe no result may retire immediately. Android process death can still prevent deferred delivery.
 
 - Source branch candidate: pending plugin requests leave the pending list after every dispatch outcome, including rejected starts, invalid create modes and reuse of a named shell. Shutdown takes and clears pending requests before cancellation delivery, preventing stale entries and later duplicate results.
 

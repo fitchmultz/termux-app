@@ -88,6 +88,29 @@ public class TermuxServiceCompletionTest {
         assertTrue(manager.mTermuxSessions.isEmpty());
     }
 
+    @Test public void userShutdownRetiresRetainedUnexpectedExitWithItsRealStatus() {
+        exited(7);
+        assertSame(session, service.getTermuxSession(0));
+        requestUserStop();
+        shutdown();
+        assertTrue(manager.mTermuxSessions.isEmpty());
+        assertEquals(7, command.resultData.exitCode.intValue());
+        assertFalse(command.isStateFailed());
+        assertEquals(0, results());
+        shutdown();
+        assertEquals(7, command.resultData.exitCode.intValue());
+    }
+
+    @Test public void nonUserShutdownRetiresRetainedExitWithoutInventingCancellation() {
+        exited(7);
+        assertSame(session, service.getTermuxSession(0));
+        shutdown();
+        assertTrue(manager.mTermuxSessions.isEmpty());
+        assertEquals(7, command.resultData.exitCode.intValue());
+        assertFalse(command.isStateFailed());
+        assertEquals(0, results());
+    }
+
     private void shutdown() {
         ReflectionHelpers.callInstanceMethod(service, "killAllTermuxExecutionCommands");
     }

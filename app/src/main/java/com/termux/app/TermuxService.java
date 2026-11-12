@@ -255,7 +255,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
      * onDestroy() was directly called because of unintended shutdown. The processing of results
      * will only be done if user manually exited termux or if the session was started by a plugin
      * which **expects** the result back via a pending intent. These result-owning sessions stay
-     * tracked until native exit and the finite PTY tail drain; signalling alone does not complete
+     * tracked until native exit and the readable PTY tail drain; signalling alone does not complete
      * their output. Sessions without a required result may be untracked immediately.
      *
      * For TermuxTasks, only tasks that were started by a plugin which **expects** the result
