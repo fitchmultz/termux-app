@@ -23,6 +23,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - This source branch keeps a large report's serialized backing file across activity configuration recreation, so the replacement can reload its contents. Final dismissal still deletes the file, and the existing age-based cleanup removes abandoned files.
 
+- This source branch keeps background-command results with the worker until the child exits and both output readers finish, including cancellation and stdin-write failure. Cancellation no longer publishes still-changing output or loses its exit status to late worker initialization.
+
 - This source branch closes background-command stdin before waiting, including when no input was supplied, so commands that read until EOF can finish.
 
 - Gives the bell the earliest time the next bell may sound plus whether a follow-up is already posted, instead of one timestamp that had to mean both, the file receiver's name dialog an explicit `FINISH_ACTIVITY`/`KEEP_ACTIVITY` dismissal, and the installer a `BootstrapState` read from the prefix directory instead of nested existence checks. The keyboard-margin workaround's two debounce timestamps are named for the adjustment each guards, with the 40 ms interval as a constant.

@@ -39,6 +39,8 @@ public final class AppShell {
     private final Process mProcess;
     private final ExecutionCommand mExecutionCommand;
     private final AppShellClient mAppShellClient;
+    /** A failed command may suppress delivery, but its worker still owns cleanup and output. */
+    private boolean mProcessResultOnExit = true;
 
     private static final String LOG_TAG = "AppShell";
 
@@ -47,6 +49,7 @@ public final class AppShell {
         this.mProcess = process;
         this.mExecutionCommand = executionCommand;
         this.mAppShellClient = appShellClient;
+        executionCommand.resultData.exitCode = null;
     }
 
     /**
@@ -172,8 +175,6 @@ public final class AppShell {
 
         Logger.logDebug(LOG_TAG, "Running \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" AppShell with pid " + mExecutionCommand.mPid);
 
-        mExecutionCommand.resultData.exitCode = null;
-
         // setup stdin, and stdout and stderr gobblers
         DataOutputStream STDIN = new DataOutputStream(mProcess.getOutputStream());
         StreamGobbler STDOUT = new StreamGobbler(mExecutionCommand.mPid + "-stdout", mProcess.getInputStream(), mExecutionCommand.resultData.stdout, mExecutionCommand.backgroundCustomLogLevel);
@@ -196,13 +197,13 @@ public final class AppShell {
                 // STDIN, the script already contained the exit command, etc.
                 // these cases we want the output instead of returning null.
             } else {
-                // other issues we don't know how to handle, leads to
-                // returning null
-                mExecutionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), context.getString(R.string.error_exception_received_while_executing_app_shell_command, mExecutionCommand.getCommandIdAndLabelLogString(), e.getMessage()), e);
-                mExecutionCommand.resultData.exitCode = 1;
-                AppShell.processAppShellResult(this, null);
+                synchronized (this) {
+                    if (!mExecutionCommand.isStateFailed()) {
+                        mExecutionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), context.getString(R.string.error_exception_received_while_executing_app_shell_command, mExecutionCommand.getCommandIdAndLabelLogString(), e.getMessage()), e);
+                        mExecutionCommand.resultData.exitCode = 1;
+                    }
+                }
                 kill();
-                return;
             }
         }
 
@@ -229,16 +230,14 @@ public final class AppShell {
         else
             Logger.logDebug(LOG_TAG, "The \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" AppShell with pid " + mExecutionCommand.mPid + " exited with code: " + exitCode);
 
-        // If the execution command has already failed, like SIGKILL was sent, then don't continue
-        if (mExecutionCommand.isStateFailed()) {
-            Logger.logDebug(LOG_TAG, "Ignoring setting \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" AppShell state to ExecutionState.EXECUTED and processing results since it has already failed");
-            return;
+        synchronized (this) {
+            if (mExecutionCommand.isStateFailed()) {
+                if (!mProcessResultOnExit) return;
+            } else {
+                mExecutionCommand.resultData.exitCode = exitCode;
+                if (!mExecutionCommand.setState(ExecutionState.EXECUTED)) return;
+            }
         }
-
-        mExecutionCommand.resultData.exitCode = exitCode;
-
-        if (!mExecutionCommand.setState(ExecutionState.EXECUTED))
-            return;
 
         AppShell.processAppShellResult(this, null);
     }
@@ -251,24 +250,21 @@ public final class AppShell {
      * @param processResult If set to {@code true}, then the {@link #processAppShellResult(AppShell, ExecutionCommand)}
      *                      will be called to process the failure.
      */
-    public void killIfExecuting(@NonNull final Context context, boolean processResult) {
+    public synchronized void killIfExecuting(@NonNull final Context context, boolean processResult) {
         // If execution command has already finished executing, then no need to process results or send SIGKILL
         if (mExecutionCommand.hasExecuted()) {
             Logger.logDebug(LOG_TAG, "Ignoring sending SIGKILL to \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" AppShell since it has already finished executing");
             return;
         }
 
-        // Decided before recording the failure: FAILED sorts after EXECUTED, so once the failure is
-        // recorded no state query can tell that this shell still owns a running process.
+        // The worker releases output only after reaping the child and joining both readers.
         final boolean ownsRunningProcess = mExecutionCommand.canBeKilled();
 
         Logger.logDebug(LOG_TAG, "Send SIGKILL to \"" + mExecutionCommand.getCommandIdAndLabelLogString() + "\" AppShell");
 
         if (mExecutionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), context.getString(R.string.error_sending_sigkill_to_process))) {
-            if (processResult) {
-                mExecutionCommand.resultData.exitCode = 137; // SIGKILL
-                AppShell.processAppShellResult(this, null);
-            }
+            mExecutionCommand.resultData.exitCode = 137; // SIGKILL
+            mProcessResultOnExit = processResult;
         }
 
         if (ownsRunningProcess) {

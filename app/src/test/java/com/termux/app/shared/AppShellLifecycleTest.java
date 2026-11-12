@@ -2,6 +2,7 @@ package com.termux.app.shared;
 
 import android.app.Application;
 import android.content.Context;
+import android.system.Os;
 
 import com.termux.shared.shell.ShellUtils;
 import com.termux.shared.shell.command.ExecutionCommand;
@@ -13,18 +14,25 @@ import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
+import org.robolectric.annotation.Implementation;
+import org.robolectric.annotation.Implements;
 
 import java.util.HashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /** Exercises real host child processes, not Android's process implementation. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {24, 37}, application = Application.class)
+@Config(sdk = {24, 37}, application = Application.class, shadows = {
+    AppShellLifecycleTest.HostProcessIds.class, AppShellLifecycleTest.HostSignals.class
+})
 public class AppShellLifecycleTest {
     @Test
     public void missingAndEmptyInputReachEofBeforeWaitingForExit() throws Exception {
@@ -35,6 +43,35 @@ public class AppShellLifecycleTest {
     @Test
     public void suppliedInputIsDrainedBeforeEof() throws Exception {
         assertInputReachesEof("hello", "hello\n");
+    }
+
+    @Test
+    public void cancellationPublishesOnlyAfterChildAndReadersFinish() throws Exception {
+        ExecutionCommand command = new ExecutionCommand(1, "/bin/sh",
+            new String[]{"-c", "while :; do printf 'output\\n'; done"},
+            null, "/", ExecutionCommand.Runner.APP_SHELL.getName(), false);
+        CountDownLatch exited = new CountDownLatch(1);
+        AtomicInteger callbacks = new AtomicInteger();
+        AtomicReference<Boolean> aliveAtCallback = new AtomicReference<>();
+        AtomicReference<String> outputAtCallback = new AtomicReference<>();
+        AppShell shell = AppShell.execute(RuntimeEnvironment.getApplication(), command, completed -> {
+            aliveAtCallback.set(completed.getProcess().isAlive());
+            outputAtCallback.set(completed.getExecutionCommand().resultData.stdout.toString());
+            callbacks.incrementAndGet();
+            exited.countDown();
+        }, HOST_ENVIRONMENT, null, false);
+        assertNotNull(shell);
+        try {
+            shell.killIfExecuting(RuntimeEnvironment.getApplication(), true);
+            assertTrue(exited.await(5, TimeUnit.SECONDS));
+            assertFalse(aliveAtCallback.get());
+            assertEquals(Integer.valueOf(137), command.resultData.exitCode);
+            assertEquals(outputAtCallback.get(), command.resultData.stdout.toString());
+            shell.killIfExecuting(RuntimeEnvironment.getApplication(), true);
+            assertEquals(1, callbacks.get());
+        } finally {
+            shell.getProcess().destroyForcibly();
+        }
     }
 
     private void assertInputReachesEof(String input, String expected) throws Exception {
@@ -65,4 +102,21 @@ public class AppShellLifecycleTest {
             return new HashMap<>();
         }
     };
+
+    /** Bridge only Android signal/PID operations; child execution and pipe readers stay real. */
+    @Implements(value = ShellUtils.class, isInAndroidSdk = false)
+    public static class HostProcessIds {
+        @Implementation
+        protected static int getPid(Process process) {
+            return Math.toIntExact(process.pid());
+        }
+    }
+
+    @Implements(Os.class)
+    public static class HostSignals {
+        @Implementation
+        protected static void kill(int pid, int signal) {
+            ProcessHandle.of(pid).ifPresent(ProcessHandle::destroyForcibly);
+        }
+    }
 }
