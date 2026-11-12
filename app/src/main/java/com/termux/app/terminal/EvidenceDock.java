@@ -89,7 +89,11 @@ public final class EvidenceDock {
 
     private EvidenceDraft draft(String handle) { return store.get(handle); }
 
-    public void onStart() { store.listen(storeChanged); refreshFromStore(); }
+    public void onStart() {
+        store.listen(storeChanged);
+        refreshFromStore();
+        if (pendingShare != null) handleSharedIntent(null);
+    }
     public void onStop() { saveDraft(); dispose(); }
     public void dispose() {
         store.unlisten(storeChanged);
@@ -233,17 +237,24 @@ public final class EvidenceDock {
         pendingShare = new Intent(Intent.ACTION_SEND_MULTIPLE).putExtra(Intent.EXTRA_TEXT, text)
             .putParcelableArrayListExtra(Intent.EXTRA_STREAM, files);
         if (activity.getTermuxService() == null) return;
-        List<TerminalSession> targets = new ArrayList<>();
+        List<String> targets = new ArrayList<>();
         List<String> labels = new ArrayList<>();
         for (TermuxSession candidate : activity.getTermuxService().getTermuxSessions()) {
             if (!candidate.getTerminalSession().isRunning()) continue;
-            targets.add(candidate.getTerminalSession());
+            targets.add(candidate.getTerminalSession().mHandle);
             labels.add(label(candidate.getTerminalSession()));
         }
         if (targets.isEmpty()) { message(R.string.evidence_no_session); return; }
         shareDialog = new AlertDialog.Builder(activity).setTitle(R.string.evidence_choose_target).setItems(labels.toArray(new String[0]), (dialog, which) -> {
+            TerminalSession target = activity.getTermuxService() == null ? null
+                : activity.getTermuxService().getTerminalSessionForHandle(targets.get(which));
+            if (target == null || !target.isRunning()) {
+                message(R.string.evidence_no_session);
+                shareDialog = null;
+                handleSharedIntent(null);
+                return;
+            }
             finishSharedIntent();
-            TerminalSession target = targets.get(which);
             activity.getTermuxTerminalSessionClient().setCurrentSession(target);
             activity.showEvidenceDock();
             saveDraft();
