@@ -322,6 +322,8 @@ Java_com_termux_shared_net_socket_local_LocalSocketManager_closeSocketNative(JNI
         return getJniResult(env, logTitle, -1, "closeSocketNative(): Invalid fd \"" + to_string(fd) + "\" passed");
     }
 
+    // close() alone does not wake another Linux thread blocked in accept/read on this socket.
+    shutdown(fd, SHUT_RDWR);
     if (close(fd) == -1) {
         return getJniResult(env, logTitle, -1, errno, "closeSocketNative(): Failed to close socket fd " + to_string(fd));
     }

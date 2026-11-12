@@ -163,12 +163,12 @@ public class LocalServerSocket implements Closeable {
         int fd = mLocalSocketRunConfig.getFD();
 
         if (fd >= 0) {
+            // Detach before waking accept(), which must not retry using the released descriptor.
+            mLocalSocketRunConfig.setFD(-1);
             JniResult result = LocalSocketManager.closeSocket(mLocalSocketRunConfig.getLogTitle() + " (server)", fd);
             if (result == null || result.retval != 0) {
                 throw new IOException(JniResult.getErrorString(result));
             }
-            // Update fd to signify that server socket has been closed
-            mLocalSocketRunConfig.setFD(-1);
         }
     }
 
@@ -262,6 +262,10 @@ public class LocalServerSocket implements Closeable {
                         // If server socket is closed, then stop listener thread.
                         if (clientSocket == null)
                             break;
+                        if (Thread.currentThread().isInterrupted()) {
+                            clientSocket.closeClientSocket(true);
+                            break;
+                        }
 
                         Error error;
 

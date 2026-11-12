@@ -51,7 +51,7 @@ public class LocalSocketManager {
      * thread cannot be started twice, so a closed server reports that instead of appearing to run.
      */
     protected enum State { STOPPED, RUNNING, CLOSED }
-    protected State mState = State.STOPPED;
+    protected volatile State mState = State.STOPPED;
 
 
     /**
