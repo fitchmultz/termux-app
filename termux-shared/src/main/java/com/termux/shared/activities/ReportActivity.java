@@ -186,7 +186,8 @@ public class ReportActivity extends AppCompatActivity {
         super.onDestroy();
         Logger.logVerbose(LOG_TAG, "onDestroy");
 
-        deleteReportInfoFile(this, mReportInfoFilePath);
+        if (!isChangingConfigurations())
+            deleteReportInfoFile(this, mReportInfoFilePath);
     }
 
     @Override
@@ -318,7 +319,8 @@ public class ReportActivity extends AppCompatActivity {
      *
      * If {@link ReportInfo} size is too large, then a TransactionTooLargeException will be thrown
      * so its object may be saved to a file in the {@link Context#getCacheDir()}. Then when activity
-     * starts, its read back and the file is deleted in {@link #onDestroy()}.
+     * starts, its read back and the file is deleted in {@link #onDestroy()} unless the activity is
+     * being recreated for a configuration change.
      * Note that files may still be left if {@link #onDestroy()} is not called or doesn't finish.
      * A separate cleanup routine is implemented from that case by
      * {@link #deleteReportInfoFilesOlderThanXDays(Context, int, boolean)} which should be called
