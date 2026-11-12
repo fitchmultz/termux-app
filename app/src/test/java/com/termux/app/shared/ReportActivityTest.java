@@ -18,9 +18,11 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.fakes.RoboMenuItem;
+import org.robolectric.shadows.ShadowLog;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.nio.file.Files;
 import java.util.Arrays;
 
@@ -41,13 +43,17 @@ public class ReportActivityTest {
         File savedReport = new File(context.getCacheDir(), "saved-report.md");
         report.setReportSaveFileLabelAndPath("Report", savedReport.getAbsolutePath());
 
+        // Robolectric 4.17's ShadowLinux.lstat does not throw ENOENT for missing paths.
+        // Use real serialized data at an existing path for the Activity lifetime regression.
+        File backingFile = new File(context.getCacheDir(), "report_activity/report_info_" + report.reportTimestamp);
+        Files.createDirectories(backingFile.getParentFile().toPath());
+        try (ObjectOutputStream output = new ObjectOutputStream(Files.newOutputStream(backingFile.toPath()))) {
+            output.writeObject(report);
+        }
+
         ReportActivity.NewInstanceResult intents = ReportActivity.newInstance(context, report);
-        assertNotNull(intents.contentIntent);
+        assertNotNull("Report creation failed: " + ShadowLog.getLogs(), intents.contentIntent);
         assertNotNull("Large reports must use file transport", intents.deleteIntent);
-        File[] files = new File(context.getCacheDir(), "report_activity").listFiles();
-        assertNotNull(files);
-        assertEquals(1, files.length);
-        File backingFile = files[0];
         assertTrue(backingFile.isFile());
 
         ActivityController<ReportActivity> controller =
@@ -80,7 +86,7 @@ public class ReportActivityTest {
         assertNotNull(view.getAdapter());
         assertTrue(view.getAdapter().getItemCount() > 0);
 
-        Files.deleteIfExists(savedReport.toPath());
+        Files.writeString(savedReport.toPath(), "Previous export");
         activity.onOptionsItemSelected(new RoboMenuItem(R.id.menu_item_save_report_to_file));
         assertEquals(contents, Files.readString(savedReport.toPath()));
     }
