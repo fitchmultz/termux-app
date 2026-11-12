@@ -389,7 +389,7 @@ Java_com_termux_shared_net_socket_local_LocalSocketManager_readNative(JNIEnv *en
         }
 
         // Read data from socket
-        int ret = read(fd, current, bytes);
+        int ret = read(fd, current, bytes - bytesRead);
         if (ret == -1) {
             int errnoBackup = errno;
             env->ReleaseByteArrayElements(dataArray, data, 0);

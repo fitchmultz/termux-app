@@ -25,6 +25,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Source branch `audit-fix/appshell-review`: failed or cancelled background commands close their owned stdout/stderr streams before reader joins, so an inherited writer cannot hold Android cancellation delivery open; successful commands still drain to EOF before publishing results.
 
+- This source branch bounds every native socket read by the buffer space still available after a partial read, preventing fragmented bulk input from writing beyond the JNI byte array.
+
 - This source branch shuts down native sockets before closing them so a stopped listener wakes from Linux `accept()`. The listener sees the detached descriptor and closed manager state across threads, and closes a client accepted during interruption instead of dispatching it.
 
 - This source branch keeps background-command results with the worker until the child exits and both output readers finish, including cancellation and stdin-write failure. Cancellation no longer publishes still-changing output or loses its exit status to late worker initialization.
