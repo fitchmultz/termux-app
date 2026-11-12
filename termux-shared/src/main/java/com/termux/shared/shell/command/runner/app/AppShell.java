@@ -183,28 +183,26 @@ public final class AppShell {
         STDOUT.start();
         STDERR.start();
 
-        if (!DataUtils.isNullOrEmpty(mExecutionCommand.stdin)) {
-            try {
+        try {
+            if (!DataUtils.isNullOrEmpty(mExecutionCommand.stdin)) {
                 STDIN.write((mExecutionCommand.stdin + "\n").getBytes(StandardCharsets.UTF_8));
                 STDIN.flush();
-                STDIN.close();
-                //STDIN.write("exit\n".getBytes(StandardCharsets.UTF_8));
-                //STDIN.flush();
-            } catch(IOException e) {
-                if (e.getMessage() != null && (e.getMessage().contains("EPIPE") || e.getMessage().contains("Stream closed"))) {
-                    // Method most horrid to catch broken pipe, in which case we
-                    // do nothing. The command is not a shell, the shell closed
-                    // STDIN, the script already contained the exit command, etc.
-                    // these cases we want the output instead of returning null.
-                } else {
-                    // other issues we don't know how to handle, leads to
-                    // returning null
-                    mExecutionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), context.getString(R.string.error_exception_received_while_executing_app_shell_command, mExecutionCommand.getCommandIdAndLabelLogString(), e.getMessage()), e);
-                    mExecutionCommand.resultData.exitCode = 1;
-                    AppShell.processAppShellResult(this, null);
-                    kill();
-                    return;
-                }
+            }
+            STDIN.close();
+        } catch(IOException e) {
+            if (e.getMessage() != null && (e.getMessage().contains("EPIPE") || e.getMessage().contains("Stream closed"))) {
+                // Method most horrid to catch broken pipe, in which case we
+                // do nothing. The command is not a shell, the shell closed
+                // STDIN, the script already contained the exit command, etc.
+                // these cases we want the output instead of returning null.
+            } else {
+                // other issues we don't know how to handle, leads to
+                // returning null
+                mExecutionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), context.getString(R.string.error_exception_received_while_executing_app_shell_command, mExecutionCommand.getCommandIdAndLabelLogString(), e.getMessage()), e);
+                mExecutionCommand.resultData.exitCode = 1;
+                AppShell.processAppShellResult(this, null);
+                kill();
+                return;
             }
         }
 
