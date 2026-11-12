@@ -139,6 +139,11 @@ public class TerminalImageSafetyTest {
         for (TerminalSessionClient client : retainedClients) client.logError("test", "original");
         assertEquals("original\n".repeat(retainedClients.length), logs.messages.toString());
         assertEquals("replacement\n".repeat(retainedClients.length), replacement.messages.toString());
+
+        emulator.updateTerminalSessionClient(null);
+        for (TerminalSessionClient client : retainedClients) client.logError("replacement-null", "fallback");
+        assertEquals(retainedClients.length, org.robolectric.shadows.ShadowLog.getLogsForTag("replacement-null").size());
+        assertEquals("fallback", org.robolectric.shadows.ShadowLog.getLogsForTag("replacement-null").get(0).msg);
     }
 
     @Test

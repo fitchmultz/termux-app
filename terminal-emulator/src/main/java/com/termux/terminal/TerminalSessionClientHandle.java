@@ -72,27 +72,27 @@ final class TerminalSessionClientHandle implements TerminalSessionClient {
 
     @Override public void logError(String tag, String message) {
         TerminalSessionClient client = delegate;
-        if (client != null) client.logError(tag, message);
+        Logger.logError(client, tag, message);
     }
 
     @Override public void logWarn(String tag, String message) {
         TerminalSessionClient client = delegate;
-        if (client != null) client.logWarn(tag, message);
+        Logger.logWarn(client, tag, message);
     }
 
     @Override public void logInfo(String tag, String message) {
         TerminalSessionClient client = delegate;
-        if (client != null) client.logInfo(tag, message);
+        Logger.logInfo(client, tag, message);
     }
 
     @Override public void logDebug(String tag, String message) {
         TerminalSessionClient client = delegate;
-        if (client != null) client.logDebug(tag, message);
+        Logger.logDebug(client, tag, message);
     }
 
     @Override public void logVerbose(String tag, String message) {
         TerminalSessionClient client = delegate;
-        if (client != null) client.logVerbose(tag, message);
+        Logger.logVerbose(client, tag, message);
     }
 
     @Override public void logStackTraceWithMessage(String tag, String message, Exception e) {
