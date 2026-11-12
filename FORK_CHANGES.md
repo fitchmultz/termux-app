@@ -31,6 +31,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Source branch `audit-fix/extra-keys`: Runs extra-key repeats on the main looper and cancels pending presses on reload or detach. Removed modifiers lose their latches and locks; popups are released on cancellation, dismissal, reload, and detach.
 
+- Source branch `audit-fix/terminal`: session changes, view detach and framework action-mode destruction tear selection down immediately; only gesture dismissal retains the short grace period.
+
 - Source branch `audit-fix/terminal`: retained terminal screens, images, partial transfers and synchronized frames share a stable callback handle, so replacing the session client releases the previous activity. A null client retains the existing Android logging fallback.
 
 - Gives the bell the earliest time the next bell may sound plus whether a follow-up is already posted, instead of one timestamp that had to mean both, the file receiver's name dialog an explicit `FINISH_ACTIVITY`/`KEEP_ACTIVITY` dismissal, and the installer a `BootstrapState` read from the prefix directory instead of nested existence checks. The keyboard-margin workaround's two debounce timestamps are named for the adjustment each guards, with the 40 ms interval as a constant.

@@ -6,6 +6,7 @@ import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.ActionMode;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -21,6 +22,8 @@ import com.termux.terminal.KeyHandler;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalSession;
 import com.termux.view.TerminalView;
+import com.termux.view.textselection.TextSelectionCursorController;
+import com.termux.view.textselection.TextSelectionHandleView;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -464,6 +467,43 @@ public class TerminalPaneLayoutTest {
     @Test
     public void foregroundRetainedSelectionStaysAnchored() throws InterruptedException {
         assertForegroundSelectionAfterOutput(false, false);
+    }
+
+    @Test
+    public void selectionOwnershipEndsImmediatelyOnRetargetDetachAndFrameworkFinish() {
+        for (int ending = 0; ending < 3; ending++) {
+            ActivityController<TermuxActivity> activityController = Robolectric.buildActivity(TermuxActivity.class);
+            TermuxActivity activity = notificationActivity(activityController);
+            activityController.visible();
+            TerminalPaneLayout panes = activity.getTerminalPanes();
+            size(panes, 900, 1000);
+            panes.showSession(session("Old selection"));
+            TerminalView terminal = panes.getActiveTerminal();
+            long now = android.os.SystemClock.uptimeMillis();
+            MotionEvent press = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN,
+                terminal.mRenderer.getFontWidth(), terminal.getPointY(1) - 1, 0);
+            terminal.startTextSelectionMode(press);
+            press.recycle();
+            TextSelectionCursorController selection = ReflectionHelpers.getField(terminal, "mTextSelectionCursorController");
+            assertTrue(selection.isActive());
+            ActionMode mode = selection.getActionMode();
+            assertNotNull(mode);
+
+            if (ending == 0) panes.showSession(session("Replacement"));
+            else if (ending == 1) activity.setContentView(new View(activity));
+            else mode.finish();
+
+            assertFalse("Selection belongs to its original attachment/action mode", terminal.isSelectingText());
+            assertNull(selection.getActionMode());
+            assertNull(terminal.getSelectedText());
+            TextSelectionHandleView start = ReflectionHelpers.getField(selection, "mStartHandle");
+            TextSelectionHandleView end = ReflectionHelpers.getField(selection, "mEndHandle");
+            assertFalse(start.isShowing());
+            assertFalse(end.isShowing());
+            terminal.stopTextSelectionMode();
+            mode.finish();
+            assertFalse("Repeated and stale completion must be harmless", selection.isActive());
+        }
     }
 
     @Test

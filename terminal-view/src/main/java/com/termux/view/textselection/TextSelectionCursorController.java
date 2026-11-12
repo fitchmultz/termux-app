@@ -51,13 +51,14 @@ public class TextSelectionCursorController implements CursorController {
 
     @Override
     public void show(MotionEvent event) {
+        finish();
         setInitialTextSelectionPosition(event);
         mStartHandle.positionAtCursor(mSelX1, mSelY1, true);
         mEndHandle.positionAtCursor(mSelX2 + 1, mSelY2, true);
 
-        setActionModeCallBacks();
         mShowStartTime = System.currentTimeMillis();
         mSelectionState = SelectionState.JUST_SHOWN;
+        setActionModeCallBacks();
     }
 
     @Override
@@ -72,18 +73,26 @@ public class TextSelectionCursorController implements CursorController {
             return false;
         }
 
-        mStartHandle.hide();
-        mEndHandle.hide();
+        return finish();
+    }
 
-        if (mActionMode != null) {
-            // This will hide the TextSelectionCursorController
-            mActionMode.finish();
-        }
-
+    /** End ownership immediately, even during the gesture-dismissal grace period. */
+    public boolean finish() {
+        boolean wasActive = isActive();
+        ActionMode mode = mActionMode;
+        mActionMode = null;
         mSelX1 = mSelY1 = mSelX2 = mSelY2 = -1;
         mSelectionState = SelectionState.HIDDEN;
+        mStartHandle.hide();
+        mEndHandle.hide();
+        if (mode != null) mode.finish();
+        return wasActive;
+    }
 
-        return true;
+    private void onActionModeDestroyed(ActionMode mode) {
+        if (mActionMode != mode) return;
+        mActionMode = null;
+        terminalView.stopTextSelectionMode();
     }
 
     @Override
@@ -169,6 +178,7 @@ public class TextSelectionCursorController implements CursorController {
 
             @Override
             public void onDestroyActionMode(ActionMode mode) {
+                onActionModeDestroyed(mode);
             }
 
         };
@@ -197,7 +207,7 @@ public class TextSelectionCursorController implements CursorController {
 
             @Override
             public void onDestroyActionMode(ActionMode mode) {
-                // Ignore.
+                onActionModeDestroyed(mode);
             }
 
             @Override
@@ -362,6 +372,7 @@ public class TextSelectionCursorController implements CursorController {
 
     @Override
     public void onDetached() {
+        finish();
     }
 
     @Override
