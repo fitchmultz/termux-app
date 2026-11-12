@@ -18,15 +18,19 @@ import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 
 import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.io.IOException;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertThrows;
 
 /** Exercises real host child processes, not Android's process implementation. */
 @RunWith(RobolectricTestRunner.class)
@@ -63,6 +67,8 @@ public class AppShellLifecycleTest {
         assertNotNull(shell);
         try {
             shell.killIfExecuting(RuntimeEnvironment.getApplication(), true);
+            assertThrows(IOException.class, () -> shell.getProcess().getInputStream().read());
+            assertThrows(IOException.class, () -> shell.getProcess().getErrorStream().read());
             assertTrue(exited.await(5, TimeUnit.SECONDS));
             assertFalse(aliveAtCallback.get());
             assertEquals(Integer.valueOf(137), command.resultData.exitCode);
@@ -106,9 +112,13 @@ public class AppShellLifecycleTest {
     /** Bridge only Android signal/PID operations; child execution and pipe readers stay real. */
     @Implements(value = ShellUtils.class, isInAndroidSdk = false)
     public static class HostProcessIds {
+        private static final Map<Integer, Process> processes = new ConcurrentHashMap<>();
+
         @Implementation
         protected static int getPid(Process process) {
-            return Math.toIntExact(process.pid());
+            int pid = Math.toIntExact(process.pid());
+            processes.put(pid, process);
+            return pid;
         }
     }
 
@@ -116,7 +126,8 @@ public class AppShellLifecycleTest {
     public static class HostSignals {
         @Implementation
         protected static void kill(int pid, int signal) {
-            ProcessHandle.of(pid).ifPresent(ProcessHandle::destroyForcibly);
+            Process process = HostProcessIds.processes.get(pid);
+            if (process != null) process.destroyForcibly();
         }
     }
 }

@@ -23,6 +23,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - This source branch keeps a large report's serialized backing file across activity configuration recreation, so the replacement can reload its contents. Final dismissal still deletes the file, and the existing age-based cleanup removes abandoned files.
 
+- Source branch `audit-fix/appshell-review`: failed or cancelled background commands close their owned stdout/stderr streams before reader joins, so an inherited writer cannot hold Android cancellation delivery open; successful commands still drain to EOF before publishing results.
+
 - This source branch keeps background-command results with the worker until the child exits and both output readers finish, including cancellation and stdin-write failure. Cancellation no longer publishes still-changing output or loses its exit status to late worker initialization.
 
 - This source branch closes background-command stdin before waiting, including when no input was supplied, so commands that read until EOF can finish.

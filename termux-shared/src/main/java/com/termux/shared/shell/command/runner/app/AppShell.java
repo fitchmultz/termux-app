@@ -220,6 +220,9 @@ public final class AppShell {
         } catch (IOException e) {
             // might be closed already
         }
+        synchronized (this) {
+            if (mExecutionCommand.isStateFailed()) closeProcessOutputStreams();
+        }
         STDOUT.join();
         STDERR.join();
         mProcess.destroy();
@@ -269,6 +272,28 @@ public final class AppShell {
 
         if (ownsRunningProcess) {
             kill();
+        }
+        // Cancellation can also arrive after waitFor(), while the worker is joining readers.
+        closeProcessOutputStreams();
+    }
+
+    /**
+     * End failed-command output ownership without waiting for inherited writers to reach EOF.
+     * Android's ProcessPipeInputStream owns its FileInputStream; unsynchronized close signals
+     * blocked reads through IoBridge.closeAndSignalBlockedThreads.
+     * https://android.googlesource.com/platform/libcore/+/android-7.0.0_r1/ojluni/src/main/java/java/lang/UNIXProcess.java#271
+     * https://android.googlesource.com/platform/libcore/+/android-7.0.0_r1/luni/src/main/java/libcore/io/IoBridge.java#196
+     */
+    private void closeProcessOutputStreams() {
+        try {
+            mProcess.getInputStream().close();
+        } catch (IOException ignored) {
+            // Already closed by a reader or the process reaper.
+        }
+        try {
+            mProcess.getErrorStream().close();
+        } catch (IOException ignored) {
+            // Still attempt both owned streams if the first close failed.
         }
     }
 
