@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- This source branch makes Help own and destroy its WebView, removing it from the view hierarchy first and ignoring page callbacks after destruction. Both the loading and displayed states release the browser's native resources.
+
 - This source branch makes settings preference stores belong to their fragment instead of process-wide singletons. Closing or recreating Settings no longer leaves its first Activity retained by every visited preference page; companion-app error dialogs keep their Activity context.
 
 - Gives the bell the earliest time the next bell may sound plus whether a follow-up is already posted, instead of one timestamp that had to mean both, the file receiver's name dialog an explicit `FINISH_ACTIVITY`/`KEEP_ACTIVITY` dismissal, and the installer a `BootstrapState` read from the prefix directory instead of nested existence checks. The keyboard-margin workaround's two debounce timestamps are named for the adjustment each guards, with the 40 ms interval as a constant.
