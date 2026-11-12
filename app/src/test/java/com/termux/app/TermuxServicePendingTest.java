@@ -6,7 +6,7 @@ import android.content.Intent;
 import android.net.Uri;
 
 import com.termux.shared.shell.command.ExecutionCommand;
-import com.termux.shared.termux.TermuxConstants.TERMUX_SERVICE;
+import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_SERVICE;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
 import com.termux.shared.termux.shell.TermuxShellManager;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
