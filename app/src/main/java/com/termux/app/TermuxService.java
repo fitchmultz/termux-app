@@ -106,6 +106,9 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
      */
     private TermuxShellManager mShellManager;
 
+    // Owned by the service so an Activity replacement cannot lose a requested exit.
+    private final java.util.Set<TerminalSession> mRemoveOnExit = new java.util.HashSet<>();
+
     /**
      * The service's wake locks. They are always acquired and released together, so they are held as
      * one value instead of two nullable fields that callers must keep in step.
@@ -635,6 +638,36 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         return newTermuxSession;
     }
 
+    public synchronized void requestSessionRemoval(TerminalSession session) {
+        if (getIndexOfSession(session) < 0) return;
+        if (session.isRunning()) {
+            // finishIfRunning can synchronously deliver completion for an unstarted session.
+            mRemoveOnExit.add(session);
+            session.finishIfRunning();
+        } else {
+            removeTermuxSession(session);
+        }
+    }
+
+    /** Completion policy is independent of the currently attached Activity. */
+    public synchronized void onTerminalSessionFinished(TerminalSession session) {
+        boolean requested = mRemoveOnExit.remove(session);
+        TermuxSession termuxSession = getTermuxSessionForTerminalSession(session);
+        if (termuxSession == null) return;
+        if (shouldRemoveFinishedSession(requested,
+            getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK),
+            getTermuxSessionsSize(), session.getExitStatus(),
+            termuxSession.getExecutionCommand().isPluginExecutionCommandWithPendingResult()))
+            removeTermuxSession(session);
+    }
+
+    static boolean shouldRemoveFinishedSession(boolean requested, boolean leanback,
+                                                       int count, int exitStatus, boolean pluginResultPending) {
+        if (requested || pluginResultPending) return true;
+        if (leanback) return count > 1;
+        return exitStatus == 0 || exitStatus == 130;
+    }
+
     /** Remove a TermuxSession. */
     public synchronized int removeTermuxSession(TerminalSession sessionToRemove) {
         int index = getIndexOfSession(sessionToRemove);
@@ -648,7 +681,10 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     /** Callback received when a {@link TermuxSession} finishes. */
     @Override
     public void onTermuxSessionExited(final TermuxSession termuxSession) {
-        if (termuxSession != null) {
+        if (termuxSession != null && mShellManager.mTermuxSessions.contains(termuxSession)) {
+            int index = getIndexOfSession(termuxSession.getTerminalSession());
+            mRemoveOnExit.remove(termuxSession.getTerminalSession());
+            mShellManager.untrackSession(termuxSession);
             ExecutionCommand executionCommand = termuxSession.getExecutionCommand();
 
             Logger.logVerbose(LOG_TAG, "The onTermuxSessionExited() callback called for \"" + executionCommand.getCommandIdAndLabelLogString() + "\" TermuxSession command");
@@ -657,7 +693,8 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             if (executionCommand != null && executionCommand.isPluginExecutionCommand)
                 TermuxPluginUtils.processPluginExecutionCommandResult(this, LOG_TAG, executionCommand);
 
-            mShellManager.untrackSession(termuxSession);
+            if (mTermuxTerminalSessionActivityClient != null)
+                mTermuxTerminalSessionActivityClient.onSessionRemoved(termuxSession.getTerminalSession(), index);
 
             // Notify {@link TermuxSessionsListViewController} that sessions list has been updated if
             // activity in is foreground
