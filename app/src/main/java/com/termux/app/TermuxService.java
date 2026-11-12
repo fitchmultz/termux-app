@@ -254,7 +254,9 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
      * For TermuxSessions, all sessions will be killed, whether user manually exited Termux or if
      * onDestroy() was directly called because of unintended shutdown. The processing of results
      * will only be done if user manually exited termux or if the session was started by a plugin
-     * which **expects** the result back via a pending intent.
+     * which **expects** the result back via a pending intent. These result-owning sessions stay
+     * tracked until native exit and the finite PTY tail drain; signalling alone does not complete
+     * their output. Sessions without a required result may be untracked immediately.
      *
      * For TermuxTasks, only tasks that were started by a plugin which **expects** the result
      * back via a pending intent will be killed, whether user manually exited Termux or if
@@ -299,6 +301,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             ExecutionCommand executionCommand = termuxSessions.get(i).getExecutionCommand();
             processResult = mStopRequest == StopRequest.USER || executionCommand.isPluginExecutionCommandWithPendingResult();
             termuxSessions.get(i).killIfExecuting(this, processResult);
+            // No result is owed in this shutdown path; do not retain the session for delivery.
             if (!processResult)
                 mShellManager.untrackSession(termuxSessions.get(i));
         }
@@ -665,7 +668,10 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         boolean requested = mRemoveOnExit.remove(session);
         TermuxSession termuxSession = getTermuxSessionForTerminalSession(session);
         if (termuxSession == null) return;
-        if (shouldRemoveFinishedSession(requested,
+        // Cancellation records FAILED before signalling the process. Its wrapper must finish
+        // after native exit/tail drain even when the exit status would normally stay for inspection.
+        // An ordinary nonzero shell exit does not mark the execution command FAILED.
+        if (termuxSession.getExecutionCommand().isStateFailed() || shouldRemoveFinishedSession(requested,
             getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK),
             getTermuxSessionsSize(), session.getExitStatus(),
             termuxSession.getExecutionCommand().isPluginExecutionCommandWithPendingResult()))

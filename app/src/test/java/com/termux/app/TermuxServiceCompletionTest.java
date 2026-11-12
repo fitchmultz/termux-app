@@ -88,6 +88,73 @@ public class TermuxServiceCompletionTest {
         assertTrue(manager.mTermuxSessions.isEmpty());
     }
 
+    private void shutdown() {
+        ReflectionHelpers.callInstanceMethod(service, "killAllTermuxExecutionCommands");
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void requestUserStop() {
+        Class stopRequest = ReflectionHelpers.getField(service, "mStopRequest").getClass();
+        ReflectionHelpers.setField(service, "mStopRequest", Enum.valueOf(stopRequest, "USER"));
+    }
+
+    private int results() {
+        return Shadows.shadowOf((Application) service.getApplication()).getBroadcastIntents().size();
+    }
+
+    @Test public void userShutdownRetiresCancelledNonPluginOnlyAfterNativeExit() {
+        ReflectionHelpers.setField(terminal, "mShellState", TerminalSession.ShellState.STARTING);
+        requestUserStop();
+        shutdown();
+        assertTrue(service.wantsToStop());
+        assertTrue(command.isStateFailed());
+        assertSame(session, service.getTermuxSession(0));
+        assertEquals(0, results());
+
+        exited(-9);
+        assertTrue(manager.mTermuxSessions.isEmpty());
+        assertEquals(137, command.resultData.exitCode.intValue());
+        assertEquals(0, results());
+        service.getTermuxTerminalSessionClient().onSessionFinished(terminal);
+        assertTrue(manager.mTermuxSessions.isEmpty());
+    }
+
+    @Test public void nonUserShutdownDefersPluginCancellationAndDeliversOnce() {
+        ReflectionHelpers.setField(terminal, "mShellState", TerminalSession.ShellState.STARTING);
+        command.isPluginExecutionCommand = true;
+        command.resultConfig.resultPendingIntent = PendingIntent.getBroadcast(service, 1,
+            new Intent("test.plugin.cancelled"), 0);
+        assertFalse(service.wantsToStop());
+        shutdown();
+        // A service destruction without USER still owes a plugin its cancellation result.
+        assertFalse(service.wantsToStop());
+        assertSame(session, service.getTermuxSession(0));
+        assertTrue(command.isStateFailed());
+        assertEquals(0, results());
+
+        exited(-9);
+        assertTrue(manager.mTermuxSessions.isEmpty());
+        assertEquals(137, command.resultData.exitCode.intValue());
+        assertEquals(1, results());
+        service.getTermuxTerminalSessionClient().onSessionFinished(terminal);
+        service.onTermuxSessionExited(session);
+        shutdown();
+        assertEquals(1, results());
+    }
+
+    @Test public void nonUserShutdownWithoutResultRetiresWithoutWaitingOrDelivery() {
+        ReflectionHelpers.setField(terminal, "mShellState", TerminalSession.ShellState.STARTING);
+        assertFalse(service.wantsToStop());
+        shutdown();
+        assertTrue(command.isStateFailed());
+        assertTrue(manager.mTermuxSessions.isEmpty());
+        assertEquals(0, results());
+        exited(-9);
+        shutdown();
+        assertTrue(manager.mTermuxSessions.isEmpty());
+        assertEquals(0, results());
+    }
+
     @Test public void unstartedRequestedExitCanCompleteReentrantly() {
         service.requestSessionRemoval(terminal);
         assertTrue(manager.mTermuxSessions.isEmpty());

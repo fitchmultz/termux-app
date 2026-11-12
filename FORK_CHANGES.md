@@ -54,6 +54,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - This source branch resumes the evidence share-target chooser after backgrounding and resolves its selected session at confirmation time; ended or removed targets refresh the choices without losing the pending share or reattaching an untracked session.
 
+- Source branch candidate: cancelled terminal commands that owe a result finish through their session wrapper after native exit and the finite PTY tail drain, including non-plugin user shutdown. Ordinary unexpected nonzero exits remain inspectable; shutdown paths that owe no result may retire immediately. Android process death can still prevent deferred delivery.
+
 - Source branch candidate: pending plugin requests leave the pending list after every dispatch outcome, including rejected starts, invalid create modes and reuse of a named shell. Shutdown takes and clears pending requests before cancellation delivery, preventing stale entries and later duplicate results.
 
 - Source branch candidate: the service owns terminal completion policy and requested removal across Activity replacement, including detached plugin results; the Activity only updates panes and exit notices. Unexpected nonzero exits remain available for inspection.

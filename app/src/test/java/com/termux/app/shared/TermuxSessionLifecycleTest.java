@@ -2,7 +2,7 @@ package com.termux.app.shared;
 
 import android.app.Application;
 
-import com.termux.app.terminal.TermuxTerminalSessionClientBase;
+import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
 import com.termux.shared.shell.command.ExecutionCommand;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.terminal.TerminalEmulator;
