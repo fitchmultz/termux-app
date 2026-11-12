@@ -37,6 +37,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - This source branch admits each delivered file-receiver intent once across pause/resume and owns its name dialog explicitly. A new intent retires the previous prompt/input before presenting its own; the existing shared text-input API keeps its behavior.
 
+- This source branch gives bootstrap installation one application-owned job. Stopped or destroyed activities detach their dialogs and completion callbacks; replacements join the existing filesystem writer, and background completion is picked up on return. Error reporting, retry, and prefix checks remain available.
+
 - This source branch resumes the evidence share-target chooser after backgrounding and resolves its selected session at confirmation time; ended or removed targets refresh the choices without losing the pending share or reattaching an untracked session.
 
 - Source branch candidate: pending plugin requests leave the pending list after every dispatch outcome, including rejected starts, invalid create modes and reuse of a named shell. Shutdown takes and clears pending requests before cancellation delivery, preventing stale entries and later duplicate results.
