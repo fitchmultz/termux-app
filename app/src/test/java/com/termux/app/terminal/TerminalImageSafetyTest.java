@@ -12,6 +12,8 @@ import com.termux.terminal.TerminalBitmap;
 import com.termux.terminal.TerminalBuffer;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalOutput;
+import com.termux.terminal.TerminalRendererState;
+import com.termux.terminal.TerminalSessionClient;
 import com.termux.terminal.TerminalSixel;
 import com.termux.terminal.TextStyle;
 
@@ -25,6 +27,7 @@ import org.robolectric.util.ReflectionHelpers.ClassParameter;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.zip.CRC32;
 
@@ -96,6 +99,46 @@ public class TerminalImageSafetyTest {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, bytes));
         return bytes.toByteArray();
+    }
+
+    @Test
+    public void retainedScreensImagesAndTransfersFollowClientReplacement() {
+        TerminalEmulator emulator = emulator();
+        TerminalBuffer main = emulator.getScreen();
+        main.addTerminalBitmapForImage(png(colors()), 0, 0, 8, 16, -1, -1, true);
+        TerminalBitmap image = main.getTerminalBitmap(main.getStyleAt(0, 0));
+        assertNotNull(image);
+        byte[] beginFrame = "\033[?2026h".getBytes(StandardCharsets.UTF_8);
+        emulator.append(beginFrame, beginFrame.length);
+        TerminalRendererState completed = emulator.getRendererState();
+        assertNotSame(emulator, completed);
+
+        byte[] multipart = "\033]1337;MultipartFile=inline=1\007".getBytes(StandardCharsets.UTF_8);
+        emulator.append(multipart, multipart.length);
+        ITermImage transfer = ReflectionHelpers.getField(emulator, "mITermImage");
+        assertNotNull(transfer);
+        main.sixelStart(1, 6);
+        TerminalSixel sixel = ReflectionHelpers.getField(main, "mTerminalSixel");
+        assertNotNull(sixel);
+        TerminalBuffer alternate = ReflectionHelpers.getField(emulator, "mAltBuffer");
+
+        Logs replacement = new Logs();
+        emulator.updateTerminalSessionClient(replacement);
+        TerminalSessionClient[] retainedClients = {
+            main.getClient(), alternate.getClient(), completed.getScreen().getClient(),
+            image.getClient(), completed.getScreen().getTerminalBitmap(
+                completed.getScreen().getStyleAt(0, 0)).getClient(),
+            transfer.getClient(), sixel.getClient()
+        };
+        for (TerminalSessionClient client : retainedClients) client.logError("test", "replacement");
+        assertEquals("", logs.messages.toString());
+        assertEquals("replacement\n".repeat(retainedClients.length), replacement.messages.toString());
+
+        // A second replacement must release the first replacement too, not chain delegates.
+        emulator.updateTerminalSessionClient(logs);
+        for (TerminalSessionClient client : retainedClients) client.logError("test", "original");
+        assertEquals("original\n".repeat(retainedClients.length), logs.messages.toString());
+        assertEquals("replacement\n".repeat(retainedClients.length), replacement.messages.toString());
     }
 
     @Test
