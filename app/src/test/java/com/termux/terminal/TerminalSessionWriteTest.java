@@ -2,6 +2,7 @@ package com.termux.terminal;
 
 import android.app.Application;
 import android.os.Looper;
+import android.os.ParcelFileDescriptor;
 import android.system.Os;
 import android.system.OsConstants;
 
@@ -15,9 +16,11 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.LooperMode;
+import org.robolectric.shadows.ShadowParcelFileDescriptor;
 import org.robolectric.util.ReflectionHelpers;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -402,17 +405,39 @@ public class TerminalSessionWriteTest {
         assertTrue(NoSignals.killedPids.isEmpty());
     }
 
+    /** Bridge adoption only; the existing PFD shadow closes a real host RandomAccessFile. */
+    @Implements(ParcelFileDescriptor.class)
+    public static class OpenFileAdoption extends ShadowParcelFileDescriptor {
+        private static ParcelFileDescriptor owner;
+
+        @Implementation protected static ParcelFileDescriptor adoptFd(int descriptor) {
+            assertEquals(owner.getFd(), descriptor);
+            return owner;
+        }
+    }
+
+    @Config(shadows = OpenFileAdoption.class)
     @Test public void adoptedDescriptorCleanupInvalidatesTheBorrowedJavaDescriptor() throws Exception {
-        // No real PTY or syscall claim: protect the shared Java descriptor's ownership identity.
-        TerminalPty pty = new TerminalPty(9123);
-        java.io.FileDescriptor borrowed = pty.getFileDescriptor();
-        assertTrue(borrowed.valid());
-        ReflectionHelpers.setField(session, "mPty", pty);
-        ReflectionHelpers.setField(session, "mTerminalFileDescriptor", 9123);
-        session.cleanupResources(0);
-        session.cleanupResources(0);
-        assertFalse(borrowed.valid());
-        assertTrue("Adopted descriptors must not also use raw JNI.close", NoPty.closed.isEmpty());
+        File file = File.createTempFile("terminal-pty", ".test");
+        try (ParcelFileDescriptor owner = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE)) {
+            // API 28's native Linux.close is not implemented by Robolectric. A fake adopted
+            // integer has no backing file; use its supported file owner without mocking close.
+            OpenFileAdoption.owner = owner;
+            int descriptor = owner.getFd();
+            TerminalPty pty = new TerminalPty(descriptor);
+            java.io.FileDescriptor borrowed = pty.getFileDescriptor();
+            assertSame(owner.getFileDescriptor(), borrowed);
+            assertTrue(borrowed.valid());
+            ReflectionHelpers.setField(session, "mPty", pty);
+            ReflectionHelpers.setField(session, "mTerminalFileDescriptor", descriptor);
+            session.cleanupResources(0);
+            session.cleanupResources(0);
+            assertFalse(borrowed.valid());
+            assertTrue("Adopted descriptors must not also use raw JNI.close", NoPty.closed.isEmpty());
+        } finally {
+            OpenFileAdoption.owner = null;
+            file.delete();
+        }
     }
 
     @Test public void postNativeClientFailureRejectsReentrantInputAndHandsChildToExistingWaiter() throws Exception {

@@ -13,9 +13,13 @@ import java.io.IOException;
 
 /**
  * Owns the master descriptor and the reader's process-exit wakeup pipe. Streams borrow the same
- * FileDescriptor; closing the PFD invalidates it and wakes Android's blocked-I/O monitors.
- * https://android.googlesource.com/platform/frameworks/base/+/android-7.0.0_r1/core/java/android/os/ParcelFileDescriptor.java#686
- * https://android.googlesource.com/platform/libcore/+/android-7.0.0_r1/luni/src/main/java/libcore/io/IoBridge.java#196
+ * FileDescriptor; closing the PFD invalidates it. The exit pipe wakes the reader after shell
+ * exit, independently of cross-thread close behavior. API 24/28 invalidate in native close;
+ * current IoUtils.close additionally signals blocked-I/O monitors. Do not assume the latter
+ * wakeup mechanism exists on every supported Android release.
+ * https://android.googlesource.com/platform/libcore/+/android-7.0.0_r1/luni/src/main/native/libcore_io_Posix.cpp#791
+ * https://android.googlesource.com/platform/libcore/+/android-9.0.0_r1/luni/src/main/native/libcore_io_Linux.cpp#1086
+ * https://android.googlesource.com/platform/libcore/+/refs/heads/main/luni/src/main/java/libcore/io/IoUtils.java#179
  */
 final class TerminalPty implements Closeable {
     private final ParcelFileDescriptor master;
