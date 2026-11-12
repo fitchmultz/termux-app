@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Documents resource owners, cleanup boundaries, main-thread obligations and borrowed-data validity in [App ownership and lifetimes](docs/OWNERSHIP.md), with borrowing contracts beside the shared APIs.
+
 - In this source branch, after shell exit, terminal readers recheck PTY readiness after every read instead of treating one `FIONREAD` count as the whole tail. Queued flip-buffer output reaches the transcript before completion; quiet inherited slave holders do not delay it. Active descendant output can continue while readable.
 
 - This source branch retires already-finished terminal sessions during shutdown with their real exit status, rather than inventing a SIGKILL result and waiting for a callback that cannot arrive. Running sessions, including those draining readable PTY output, still defer completion until their finished callback.
@@ -27,7 +29,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - This source branch keeps a large report's serialized backing file across activity configuration recreation, so the replacement can reload its contents. Final dismissal still deletes the file, and the existing age-based cleanup removes abandoned files.
 
-- Source branch `audit-fix/appshell-review`: failed or cancelled background commands close their owned stdout/stderr streams before reader joins, so an inherited writer cannot hold Android cancellation delivery open; successful commands still drain to EOF before publishing results.
+- In this source branch, failed or cancelled background commands close their owned stdout/stderr streams before reader joins, so an inherited writer cannot hold Android cancellation delivery open; successful commands still drain to EOF before publishing results.
 
 - This source branch delivers terminal-command cancellation results only after the terminal's finished callback, including its final output drain. Failed commands still complete once, suppressed results stay suppressed, and transcript collection happens once with no literal `"null"` for a session cancelled before initialization.
 
@@ -42,13 +44,13 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - This source branch closes background-command stdin before waiting, including when no input was supplied, so commands that read until EOF can finish.
 
-- Source branch `audit-fix/extra-keys`: Runs extra-key repeats on the main looper and cancels pending presses on reload or detach. Removed modifiers lose their latches and locks; popups are released on cancellation, dismissal, reload, and detach.
+- This source branch runs extra-key repeats on the main looper and cancels pending presses on reload or detach. Removed modifiers lose their latches and locks; popups are released on cancellation, dismissal, reload, and detach.
 
-- Source branch `audit-fix/terminal`: Android owns the shared PTY descriptor through `ParcelFileDescriptor`; process exit wakes the reader to publish its readable tail before the finished callback, rejects further input/signals to the reaped PID, and does not wait for descendants to close the slave.
+- In this source branch, Android owns the shared PTY descriptor through `ParcelFileDescriptor`; process exit wakes the reader to publish its readable tail before the finished callback, rejects further input/signals to the reaped PID, and does not wait for descendants to close the slave.
 
-- Source branch `audit-fix/terminal`: session changes, view detach and framework action-mode destruction tear selection down immediately; only gesture dismissal retains the short grace period.
+- In this source branch, session changes, view detach and framework action-mode destruction tear selection down immediately; only gesture dismissal retains the short grace period.
 
-- Source branch `audit-fix/terminal`: retained terminal screens, images, partial transfers and synchronized frames share a stable callback handle, so replacing the session client releases the previous activity. A null client retains the existing Android logging fallback.
+- In this source branch, retained terminal screens, images, partial transfers and synchronized frames share a stable callback handle, so replacing the session client releases the previous activity. A null client retains the existing Android logging fallback.
 
 - This source branch admits each delivered file-receiver intent once across pause/resume and owns its name dialog explicitly. A new intent retires the previous prompt/input before presenting its own; the existing shared text-input API keeps its behavior.
 
@@ -56,11 +58,11 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - This source branch resumes the evidence share-target chooser after backgrounding and resolves its selected session at confirmation time; ended or removed targets refresh the choices without losing the pending share or reattaching an untracked session.
 
-- Source branch candidate: cancelled terminal commands that owe a result finish through their session wrapper after native exit and the readable PTY tail drain, including non-plugin user shutdown. Ordinary unexpected nonzero exits remain inspectable; shutdown paths that owe no result may retire immediately. Android process death can still prevent deferred delivery.
+- In this source branch, cancelled terminal commands that owe a result finish through their session wrapper after native exit and the readable PTY tail drain, including non-plugin user shutdown. Ordinary unexpected nonzero exits remain inspectable; shutdown paths that owe no result may retire immediately. Android process death can still prevent deferred delivery.
 
-- Source branch candidate: pending plugin requests leave the pending list after every dispatch outcome, including rejected starts, invalid create modes and reuse of a named shell. Shutdown takes and clears pending requests before cancellation delivery, preventing stale entries and later duplicate results.
+- In this source branch, pending plugin requests leave the pending list after every dispatch outcome, including rejected starts, invalid create modes and reuse of a named shell. Shutdown takes and clears pending requests before cancellation delivery, preventing stale entries and later duplicate results.
 
-- Source branch candidate: the service owns terminal completion policy and requested removal across Activity replacement, including detached plugin results; the Activity only updates panes and exit notices. Unexpected nonzero exits remain available for inspection.
+- In this source branch, the service owns terminal completion policy and requested removal across Activity replacement, including detached plugin results; the Activity only updates panes and exit notices. Unexpected nonzero exits remain available for inspection.
 
 - Gives the bell the earliest time the next bell may sound plus whether a follow-up is already posted, instead of one timestamp that had to mean both, the file receiver's name dialog an explicit `FINISH_ACTIVITY`/`KEEP_ACTIVITY` dismissal, and the installer a `BootstrapState` read from the prefix directory instead of nested existence checks. The keyboard-margin workaround's two debounce timestamps are named for the adjustment each guards, with the 40 ms interval as a constant.
 
