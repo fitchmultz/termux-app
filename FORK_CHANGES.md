@@ -39,6 +39,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - This source branch resumes the evidence share-target chooser after backgrounding and resolves its selected session at confirmation time; ended or removed targets refresh the choices without losing the pending share or reattaching an untracked session.
 
+- Source branch candidate: pending plugin requests leave the pending list after every dispatch outcome, including rejected starts, invalid create modes and reuse of a named shell. Shutdown takes and clears pending requests before cancellation delivery, preventing stale entries and later duplicate results.
+
 - Source branch candidate: the service owns terminal completion policy and requested removal across Activity replacement, including detached plugin results; the Activity only updates panes and exit notices. Unexpected nonzero exits remain available for inspection.
 
 - Gives the bell the earliest time the next bell may sound plus whether a follow-up is already posted, instead of one timestamp that had to mean both, the file receiver's name dialog an explicit `FINISH_ACTIVITY`/`KEEP_ACTIVITY` dismissal, and the installer a `BootstrapState` read from the prefix directory instead of nested existence checks. The keyboard-margin workaround's two debounce timestamps are named for the adjustment each guards, with the 40 ms interval as a constant.

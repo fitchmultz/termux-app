@@ -44,6 +44,7 @@ public class TermuxShellManager {
     /**
      * Where an execution command currently lives. A command moves
      * {@code PENDING → SESSION} or {@code PENDING → TASK}, and leaves either place when it finishes.
+     * Rejected or reused requests leave PENDING without starting a new shell; shutdown drains PENDING.
      * These are the only mutations this class performs on the lists above, so a command cannot be
      * pending and started at the same time.
      */
@@ -54,15 +55,27 @@ public class TermuxShellManager {
         mPendingPluginExecutionCommands.add(command);
     }
 
+    /** Retire a request after dispatch, including rejection or reuse of an existing shell. */
+    public synchronized boolean retirePending(@NonNull ExecutionCommand command) {
+        return mPendingPluginExecutionCommands.remove(command);
+    }
+
+    /** Transfer pending requests to shutdown before delivering any cancellation results. */
+    public synchronized List<ExecutionCommand> takePendingCommands() {
+        List<ExecutionCommand> pending = new ArrayList<>(mPendingPluginExecutionCommands);
+        mPendingPluginExecutionCommands.clear();
+        return pending;
+    }
+
     /** Track a started session, removing its command from the pending list. */
     public synchronized void trackSession(@NonNull TermuxSession session) {
-        mPendingPluginExecutionCommands.remove(session.getExecutionCommand());
+        retirePending(session.getExecutionCommand());
         mTermuxSessions.add(session);
     }
 
     /** Track a started background task, removing its command from the pending list. */
     public synchronized void trackTask(@NonNull AppShell task) {
-        mPendingPluginExecutionCommands.remove(task.getExecutionCommand());
+        retirePending(task.getExecutionCommand());
         mTermuxTasks.add(task);
     }
 

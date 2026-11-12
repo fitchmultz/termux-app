@@ -293,7 +293,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
         List<TermuxSession> termuxSessions = new ArrayList<>(mShellManager.mTermuxSessions);
         List<AppShell> termuxTasks = new ArrayList<>(mShellManager.mTermuxTasks);
-        List<ExecutionCommand> pendingPluginExecutionCommands = new ArrayList<>(mShellManager.mPendingPluginExecutionCommands);
+        List<ExecutionCommand> pendingPluginExecutionCommands = mShellManager.takePendingCommands();
 
         for (int i = 0; i < termuxSessions.size(); i++) {
             ExecutionCommand executionCommand = termuxSessions.get(i).getExecutionCommand();
@@ -434,14 +434,21 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         // Track the command as pending until it starts a session or task.
         mShellManager.trackPending(executionCommand);
 
-        if (Runner.APP_SHELL.equalsRunner(executionCommand.runner))
-            executeTermuxTaskCommand(executionCommand);
-        else if (Runner.TERMINAL_SESSION.equalsRunner(executionCommand.runner))
-            executeTermuxSessionCommand(executionCommand);
-        else {
-            String errmsg = getString(R.string.error_termux_service_unsupported_execution_command_runner, executionCommand.runner);
-            executionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), errmsg);
-            TermuxPluginUtils.processPluginExecutionCommandError(this, LOG_TAG, executionCommand, false);
+        try {
+            if (Runner.APP_SHELL.equalsRunner(executionCommand.runner))
+                executeTermuxTaskCommand(executionCommand);
+            else if (Runner.TERMINAL_SESSION.equalsRunner(executionCommand.runner))
+                executeTermuxSessionCommand(executionCommand);
+            else {
+                mShellManager.retirePending(executionCommand);
+                String errmsg = getString(R.string.error_termux_service_unsupported_execution_command_runner, executionCommand.runner);
+                executionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), errmsg);
+                TermuxPluginUtils.processPluginExecutionCommandError(this, LOG_TAG, executionCommand, false);
+            }
+        } finally {
+            // A started shell already took ownership. Rejected and reused requests have no shell
+            // to retire them later and must not be cancelled again during service shutdown.
+            mShellManager.retirePending(executionCommand);
         }
     }
 
@@ -464,6 +471,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         if (shellCreateMode == null) return;
         if (ShellCreateMode.NO_SHELL_WITH_NAME.equals(shellCreateMode)) {
             newTermuxTask = getTermuxTaskForShellName(executionCommand.shellName);
+            if (newTermuxTask != null) mShellManager.retirePending(executionCommand);
             if (newTermuxTask != null)
                 Logger.logVerbose(LOG_TAG, "Existing TermuxTask with \"" + executionCommand.shellName + "\" shell name found for shell create mode \"" + shellCreateMode.getMode() + "\"");
             else
@@ -501,6 +509,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         AppShell newTermuxTask = AppShell.execute(this, executionCommand, this,
             new TermuxShellEnvironment(), null,false);
         if (newTermuxTask == null) {
+            mShellManager.retirePending(executionCommand);
             Logger.logError(LOG_TAG, "Failed to execute new TermuxTask command for:\n" + executionCommand.getCommandIdAndLabelLogString());
             // If the execution command was started for a plugin, then process the error
             if (executionCommand.isPluginExecutionCommand)
@@ -559,6 +568,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         if (shellCreateMode == null) return;
         if (ShellCreateMode.NO_SHELL_WITH_NAME.equals(shellCreateMode)) {
             newTermuxSession = getTermuxSessionForShellName(executionCommand.shellName);
+            if (newTermuxSession != null) mShellManager.retirePending(executionCommand);
             if (newTermuxSession != null)
                 Logger.logVerbose(LOG_TAG, "Existing TermuxSession with \"" + executionCommand.shellName + "\" shell name found for shell create mode \"" + shellCreateMode.getMode() + "\"");
             else
@@ -611,6 +621,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         TermuxSession newTermuxSession = TermuxSession.execute(this, executionCommand, getTermuxTerminalSessionClient(),
             this, new TermuxShellEnvironment(), null, executionCommand.isPluginExecutionCommand);
         if (newTermuxSession == null) {
+            mShellManager.retirePending(executionCommand);
             Logger.logError(LOG_TAG, "Failed to execute new TermuxSession command for:\n" + executionCommand.getCommandIdAndLabelLogString());
             // If the execution command was started for a plugin, then process the error
             if (executionCommand.isPluginExecutionCommand)
@@ -714,6 +725,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             return ShellCreateMode.ALWAYS; // Default
         else if (ShellCreateMode.NO_SHELL_WITH_NAME.equalsMode(executionCommand.shellCreateMode))
             if (DataUtils.isNullOrEmpty(executionCommand.shellName)) {
+                mShellManager.retirePending(executionCommand);
                 TermuxPluginUtils.setAndProcessPluginExecutionCommandError(this, LOG_TAG, executionCommand, false,
                     getString(R.string.error_termux_service_execution_command_shell_name_unset, executionCommand.shellCreateMode));
                 return null;
@@ -721,6 +733,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
                return ShellCreateMode.NO_SHELL_WITH_NAME;
             }
         else {
+            mShellManager.retirePending(executionCommand);
             TermuxPluginUtils.setAndProcessPluginExecutionCommandError(this, LOG_TAG, executionCommand, false,
                 getString(R.string.error_termux_service_unsupported_execution_command_shell_create_mode, executionCommand.shellCreateMode));
             return null;
