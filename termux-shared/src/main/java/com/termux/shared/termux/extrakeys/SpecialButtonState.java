@@ -36,6 +36,11 @@ public class SpecialButtonState {
         if (state == State.UNCREATED) setState(State.INACTIVE);
     }
 
+    /** A modifier removed from the layout no longer owns a latch or lock. */
+    void markUncreated() {
+        setState(State.UNCREATED);
+    }
+
     /** Tap: toggle the one-shot modifier. A locked modifier is released first. */
     void toggle() {
         if (state == State.UNCREATED) return;
