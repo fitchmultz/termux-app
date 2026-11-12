@@ -51,6 +51,7 @@ public class FileReceiverActivity extends AppCompatActivity {
      * activity must stay open to show the error.
      */
     private NameDialogDismiss mNameDialogDismiss = NameDialogDismiss.FINISH_ACTIVITY;
+    private InputStream mPendingInput;
 
     private static final String API_TAG = TermuxConstants.TERMUX_APP_NAME + "FileReceiver";
 
@@ -162,63 +163,89 @@ public class FileReceiverActivity extends AppCompatActivity {
     }
 
     void promptNameAndSave(final InputStream in, final String attachmentFileName) {
-        TextInputDialogUtils.textInput(this, R.string.title_file_received, attachmentFileName,
-            R.string.action_file_received_edit, text -> {
-                File outFile = saveStreamWithName(in, text);
-                if (outFile == null) return;
+        closePendingInput(mPendingInput);
+        mPendingInput = in;
+        try {
+            TextInputDialogUtils.textInput(this, R.string.title_file_received, attachmentFileName,
+                R.string.action_file_received_edit, text -> {
+                    File outFile = saveStreamWithName(in, text);
+                    if (outFile == null) return;
 
-                final File editorProgramFile = new File(EDITOR_PROGRAM);
-                if (!editorProgramFile.isFile()) {
-                    showErrorDialogAndQuit("The following file does not exist:\n$HOME/bin/termux-file-editor\n\n"
-                        + "Create this file as a script or a symlink - it will be called with the received file as only argument.");
-                    return;
-                }
+                    final File editorProgramFile = new File(EDITOR_PROGRAM);
+                    if (!editorProgramFile.isFile()) {
+                        showErrorDialogAndQuit("The following file does not exist:\n$HOME/bin/termux-file-editor\n\n"
+                            + "Create this file as a script or a symlink - it will be called with the received file as only argument.");
+                        return;
+                    }
 
-                // Do this for the user if necessary:
-                //noinspection ResultOfMethodCallIgnored
-                editorProgramFile.setExecutable(true);
+                    // Do this for the user if necessary:
+                    //noinspection ResultOfMethodCallIgnored
+                    editorProgramFile.setExecutable(true);
 
-                final Uri scriptUri = UriUtils.getFileUri(EDITOR_PROGRAM);
+                    final Uri scriptUri = UriUtils.getFileUri(EDITOR_PROGRAM);
 
-                Intent executeIntent = new Intent(TERMUX_SERVICE.ACTION_SERVICE_EXECUTE, scriptUri);
-                executeIntent.setClass(FileReceiverActivity.this, TermuxService.class);
-                executeIntent.putExtra(TERMUX_SERVICE.EXTRA_ARGUMENTS, new String[]{outFile.getAbsolutePath()});
-                startService(executeIntent);
-                finish();
-            },
-            R.string.action_file_received_open_directory, text -> {
-                if (saveStreamWithName(in, text) == null) return;
+                    Intent executeIntent = new Intent(TERMUX_SERVICE.ACTION_SERVICE_EXECUTE, scriptUri);
+                    executeIntent.setClass(FileReceiverActivity.this, TermuxService.class);
+                    executeIntent.putExtra(TERMUX_SERVICE.EXTRA_ARGUMENTS, new String[]{outFile.getAbsolutePath()});
+                    startService(executeIntent);
+                    finish();
+                },
+                R.string.action_file_received_open_directory, text -> {
+                    if (saveStreamWithName(in, text) == null) return;
 
-                Intent executeIntent = new Intent(TERMUX_SERVICE.ACTION_SERVICE_EXECUTE);
-                executeIntent.putExtra(TERMUX_SERVICE.EXTRA_WORKDIR, TERMUX_RECEIVEDIR);
-                executeIntent.setClass(FileReceiverActivity.this, TermuxService.class);
-                startService(executeIntent);
-                finish();
-            },
-            android.R.string.cancel, text -> finish(), dialog -> {
-                if (mNameDialogDismiss == NameDialogDismiss.FINISH_ACTIVITY) finish();
-            });
+                    Intent executeIntent = new Intent(TERMUX_SERVICE.ACTION_SERVICE_EXECUTE);
+                    executeIntent.putExtra(TERMUX_SERVICE.EXTRA_WORKDIR, TERMUX_RECEIVEDIR);
+                    executeIntent.setClass(FileReceiverActivity.this, TermuxService.class);
+                    startService(executeIntent);
+                    finish();
+                },
+                android.R.string.cancel, text -> finish(), dialog -> {
+                    closePendingInput(in);
+                    if (mNameDialogDismiss == NameDialogDismiss.FINISH_ACTIVITY) finish();
+                });
+        } catch (RuntimeException e) {
+            closePendingInput(in);
+            throw e;
+        }
     }
 
-    public File saveStreamWithName(InputStream in, String attachmentFileName) {
-        File receiveDir = new File(TERMUX_RECEIVEDIR);
+    @Override
+    protected void onDestroy() {
+        closePendingInput(mPendingInput);
+        super.onDestroy();
+    }
 
-        if (DataUtils.isNullOrEmpty(attachmentFileName)) {
-            showErrorDialogAndQuit("File name cannot be null or empty");
-            return null;
-        }
-
-        if (!receiveDir.isDirectory() && !receiveDir.mkdirs()) {
-            showErrorDialogAndQuit("Cannot create directory: " + receiveDir.getAbsolutePath());
-            return null;
-        }
-
+    private void closePendingInput(InputStream input) {
+        if (input == null || input != mPendingInput) return;
+        mPendingInput = null;
         try {
+            input.close();
+        } catch (IOException e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Error closing received input", e);
+        }
+    }
+
+    /** Consumes and closes the input, including when validation or saving fails. */
+    public File saveStreamWithName(InputStream in, String attachmentFileName) {
+        if (mPendingInput == in) mPendingInput = null;
+        try (InputStream input = in) {
+            File receiveDir = new File(TERMUX_RECEIVEDIR);
+
+            if (DataUtils.isNullOrEmpty(attachmentFileName)) {
+                showErrorDialogAndQuit("File name cannot be null or empty");
+                return null;
+            }
+
+            if (!receiveDir.isDirectory() && !receiveDir.mkdirs()) {
+                showErrorDialogAndQuit("Cannot create directory: " + receiveDir.getAbsolutePath());
+                return null;
+            }
+
             final File outFile = new File(receiveDir, attachmentFileName);
             try (FileOutputStream f = new FileOutputStream(outFile)) {
                 byte[] buffer = new byte[4096];
                 int readBytes;
-                while ((readBytes = in.read(buffer)) > 0) {
+                while ((readBytes = input.read(buffer)) > 0) {
                     f.write(buffer, 0, readBytes);
                 }
             }
