@@ -1,5 +1,6 @@
 package com.termux.app.api.file;
 
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
@@ -52,6 +53,8 @@ public class FileReceiverActivity extends AppCompatActivity {
      */
     private NameDialogDismiss mNameDialogDismiss = NameDialogDismiss.FINISH_ACTIVITY;
     private InputStream mPendingInput;
+    private AlertDialog mNameDialog;
+    private boolean mIntentHandled;
 
     private static final String API_TAG = TermuxConstants.TERMUX_APP_NAME + "FileReceiver";
 
@@ -67,6 +70,8 @@ public class FileReceiverActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (mIntentHandled) return;
+        mIntentHandled = true;
 
         final Intent intent = getIntent();
         final String action = intent.getAction();
@@ -128,6 +133,15 @@ public class FileReceiverActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        dismissNameDialog();
+        closePendingInput(mPendingInput);
+        setIntent(intent);
+        mIntentHandled = false;
+    }
+
     void showErrorDialogAndQuit(String message) {
         mNameDialogDismiss = NameDialogDismiss.KEEP_ACTIVITY;
         MessageDialogUtils.showMessage(this,
@@ -163,11 +177,14 @@ public class FileReceiverActivity extends AppCompatActivity {
     }
 
     void promptNameAndSave(final InputStream in, final String attachmentFileName) {
+        dismissNameDialog();
         closePendingInput(mPendingInput);
         mPendingInput = in;
+        mNameDialogDismiss = NameDialogDismiss.FINISH_ACTIVITY;
         try {
-            TextInputDialogUtils.textInput(this, R.string.title_file_received, attachmentFileName,
+            mNameDialog = TextInputDialogUtils.textInputDialog(this, R.string.title_file_received, attachmentFileName,
                 R.string.action_file_received_edit, text -> {
+                    if (in != mPendingInput) return;
                     File outFile = saveStreamWithName(in, text);
                     if (outFile == null) return;
 
@@ -191,6 +208,7 @@ public class FileReceiverActivity extends AppCompatActivity {
                     finish();
                 },
                 R.string.action_file_received_open_directory, text -> {
+                    if (in != mPendingInput) return;
                     if (saveStreamWithName(in, text) == null) return;
 
                     Intent executeIntent = new Intent(TERMUX_SERVICE.ACTION_SERVICE_EXECUTE);
@@ -199,8 +217,10 @@ public class FileReceiverActivity extends AppCompatActivity {
                     startService(executeIntent);
                     finish();
                 },
-                android.R.string.cancel, text -> finish(), dialog -> {
+                android.R.string.cancel, text -> { if (in == mPendingInput) finish(); }, dialog -> {
                     closePendingInput(in);
+                    if (dialog != mNameDialog) return;
+                    mNameDialog = null;
                     if (mNameDialogDismiss == NameDialogDismiss.FINISH_ACTIVITY) finish();
                 });
         } catch (RuntimeException e) {
@@ -211,8 +231,15 @@ public class FileReceiverActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        dismissNameDialog();
         closePendingInput(mPendingInput);
         super.onDestroy();
+    }
+
+    private void dismissNameDialog() {
+        AlertDialog dialog = mNameDialog;
+        mNameDialog = null;
+        if (dialog != null) dialog.dismiss();
     }
 
     private void closePendingInput(InputStream input) {

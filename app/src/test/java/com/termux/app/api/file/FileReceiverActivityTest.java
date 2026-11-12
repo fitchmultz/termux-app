@@ -31,6 +31,45 @@ public class FileReceiverActivityTest {
         @Override public void close() { closes++; }
     }
 
+    public static class ReceivingActivity extends FileReceiverActivity {
+        final List<ReceivedInput> opened = new ArrayList<>();
+        @Override void handleContentUri(android.net.Uri uri, String title) {
+            ReceivedInput input = new ReceivedInput();
+            opened.add(input);
+            promptNameAndSave(input, title);
+        }
+    }
+
+    @Test
+    @Config(sdk = 28, application = android.app.Application.class)
+    public void resumingKeepsOnePromptAndANewIntentReplacesItsOwnedInput() {
+        android.content.Intent first = new android.content.Intent(android.content.Intent.ACTION_SEND)
+            .setType("application/octet-stream")
+            .putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse("content://received/first"));
+        org.robolectric.android.controller.ActivityController<ReceivingActivity> controller =
+            Robolectric.buildActivity(ReceivingActivity.class, first).create().start().resume();
+        ReceivingActivity activity = controller.get();
+        android.app.AlertDialog firstDialog = ShadowAlertDialog.getLatestAlertDialog();
+        controller.pause().resume();
+        Assert.assertEquals(1, activity.opened.size());
+        Assert.assertSame(firstDialog, ShadowAlertDialog.getLatestAlertDialog());
+        Assert.assertEquals(0, activity.opened.get(0).closes);
+
+        android.content.Intent next = new android.content.Intent(first)
+            .putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse("content://received/next"));
+        controller.pause().newIntent(next).resume();
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        Assert.assertEquals(2, activity.opened.size());
+        Assert.assertEquals(next, activity.getIntent());
+        Assert.assertFalse(firstDialog.isShowing());
+        Assert.assertNotSame(firstDialog, ShadowAlertDialog.getLatestAlertDialog());
+        Assert.assertEquals(1, activity.opened.get(0).closes);
+        Assert.assertEquals(0, activity.opened.get(1).closes);
+        Assert.assertFalse(activity.isFinishing());
+        controller.pause().stop().destroy();
+        Assert.assertEquals(1, activity.opened.get(1).closes);
+    }
+
     @Test
     @Config(sdk = 28, application = android.app.Application.class)
     public void receivedInputsCloseOnSaveValidationFailureAndReadFailure() {
