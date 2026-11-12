@@ -136,8 +136,9 @@ public class EvidenceDockTest {
         restored.saveState(restoredState);
         android.content.Intent pending = restoredState.getParcelable("evidence_pending_share");
         assertEquals("shared note", pending.getStringExtra(android.content.Intent.EXTRA_TEXT));
-        ReflectionHelpers.callInstanceMethod(restored, "finishSharedIntent");
-        restored.saveState(restoredState);
+        // Keep the restored pending share for the stop/start checks below.
+        ReflectionHelpers.callInstanceMethod(dock, "finishSharedIntent");
+        dock.saveState(restoredState);
         EvidenceDock completed = new EvidenceDock(activity);
         completed.restoreState(restoredState);
         completed.handleSharedIntent(share);
