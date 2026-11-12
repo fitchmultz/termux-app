@@ -402,6 +402,19 @@ public class TerminalSessionWriteTest {
         assertTrue(NoSignals.killedPids.isEmpty());
     }
 
+    @Test public void adoptedDescriptorCleanupInvalidatesTheBorrowedJavaDescriptor() throws Exception {
+        // No real PTY or syscall claim: protect the shared Java descriptor's ownership identity.
+        TerminalPty pty = new TerminalPty(9123);
+        java.io.FileDescriptor borrowed = pty.getFileDescriptor();
+        assertTrue(borrowed.valid());
+        ReflectionHelpers.setField(session, "mPty", pty);
+        ReflectionHelpers.setField(session, "mTerminalFileDescriptor", 9123);
+        session.cleanupResources(0);
+        session.cleanupResources(0);
+        assertFalse(borrowed.valid());
+        assertTrue("Adopted descriptors must not also use raw JNI.close", NoPty.closed.isEmpty());
+    }
+
     @Test public void postNativeClientFailureRejectsReentrantInputAndHandsChildToExistingWaiter() throws Exception {
         NoPty.createFailure = null;
         NoPty.returnedDescriptor = 24;

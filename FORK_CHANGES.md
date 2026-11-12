@@ -38,6 +38,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Source branch `audit-fix/extra-keys`: Runs extra-key repeats on the main looper and cancels pending presses on reload or detach. Removed modifiers lose their latches and locks; popups are released on cancellation, dismissal, reload, and detach.
 
+- Source branch `audit-fix/terminal`: Android owns the shared PTY descriptor through `ParcelFileDescriptor`; process exit wakes the reader to publish its readable tail before the finished callback, rejects further input/signals to the reaped PID, and does not wait for descendants to close the slave.
+
 - Source branch `audit-fix/terminal`: session changes, view detach and framework action-mode destruction tear selection down immediately; only gesture dismissal retains the short grace period.
 
 - Source branch `audit-fix/terminal`: retained terminal screens, images, partial transfers and synchronized frames share a stable callback handle, so replacing the session client releases the previous activity. A null client retains the existing Android logging fallback.
@@ -78,7 +80,7 @@ This is the canonical concise inventory of intentional differences from the audi
 
 - Gives the APC parser and image draining one explicit state each. An APC string is now in `TYPE`, `IGNORED`, `HEADER` or `PAYLOAD`, instead of three booleans. A rejected control string records `NONE`, `OSC`, `DCS` or `APC` plus whether an ESC is pending, so draining can no longer be confused with a real escape state.
 
-- Gives a terminal session one explicit shell lifecycle (`CREATED`, `STARTING`, `RUNNING`, `EXITED`, `FAILED`, `CANCELLED`) instead of a pid that also encoded progress plus two flags. Input admission, the waiter handshake, failure handling and `isRunning()` now read that state. A session that never started no longer sends `SIGKILL` to pid `0`, which targets the app's own process group, and finishing it records `CANCELLED`, closes its queues, records exit status 137, and delivers the finished callback once. Later sizing cannot start the cancelled shell, and a missing transcript is not returned as the text "null". The input-rejection episode carries one named state instead of a nullable reason.
+- Gives a terminal session one explicit shell lifecycle (`CREATED`, `STARTING`, `RUNNING`, `DRAINING`, `EXITED`, `FAILED`, `CANCELLED`) instead of a pid that also encoded progress plus two flags. Input admission, the waiter handshake, failure handling and `isRunning()` now read that state. A session that never started no longer sends `SIGKILL` to pid `0`, which targets the app's own process group, and finishing it records `CANCELLED`, closes its queues, records exit status 137, and delivers the finished callback once. Later sizing cannot start the cancelled shell, and a missing transcript is not returned as the text "null". The input-rejection episode carries one named state instead of a nullable reason.
 
 - Gives a queue capacity reservation one explicit state (`AVAILABLE`, `HELD`, `SPENT`, `CANCELLED`) instead of two flags. Only a held promise owns reserved bytes, so spending or cancelling twice still cannot return capacity twice.
 
