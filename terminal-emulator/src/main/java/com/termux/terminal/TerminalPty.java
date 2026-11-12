@@ -20,7 +20,7 @@ import java.io.IOException;
 final class TerminalPty implements Closeable {
     private final ParcelFileDescriptor master;
     private ParcelFileDescriptor[] processExitPipe;
-    private int remainingAtExit = -1;
+    private boolean processHasExited;
     private final StructPollfd terminal = new StructPollfd();
     private final StructPollfd exit = new StructPollfd();
     private final StructPollfd[] pollDescriptors = { terminal, exit };
@@ -47,25 +47,26 @@ final class TerminalPty implements Closeable {
     }
 
     /**
-     * One reader owns this method. On shell exit, drain the kernel's readable tail, not an
-     * unbounded stream from descendants that inherited the slave. Android available() uses
-     * FIONREAD, including for PTYs, from API 24 onward:
-     * https://android.googlesource.com/platform/libcore/+/android-7.0.0_r1/ojluni/src/main/native/FileInputStream.c#91
+     * One reader owns this method. After shell exit, read while the PTY is ready without
+     * waiting for inherited slave holders to reach EOF. Active descendant output can continue
+     * while readable. Poll again after every read: FIONREAD only counts the line discipline's
+     * current buffer, whereas n_tty_poll flushes pending flip-buffer work when that buffer empties.
+     * https://github.com/torvalds/linux/blob/v6.18/drivers/tty/n_tty.c#L2445-L2460
+     * https://github.com/torvalds/linux/blob/v6.18/drivers/tty/n_tty.c#L2500-L2511
      */
     int read(FileInputStream input, byte[] buffer) throws IOException {
-        if (remainingAtExit < 0) {
-            try {
+        try {
+            if (!processHasExited) {
                 Os.poll(pollDescriptors, -1);
-            } catch (ErrnoException e) {
-                throw e.rethrowAsIOException();
+                processHasExited = exit.revents != 0;
             }
-            if (exit.revents != 0) remainingAtExit = input.available();
-            else if ((terminal.revents & OsConstants.POLLIN) == 0) return -1;
+            // The first poll may have inspected the PTY before the exit pipe became ready.
+            if (processHasExited) Os.poll(pollDescriptors, 0);
+        } catch (ErrnoException e) {
+            throw e.rethrowAsIOException();
         }
-        if (remainingAtExit == 0) return -1;
-        int count = input.read(buffer, 0, remainingAtExit < 0 ? buffer.length : Math.min(buffer.length, remainingAtExit));
-        if (remainingAtExit > 0 && count > 0) remainingAtExit -= count;
-        return count;
+        if ((terminal.revents & OsConstants.POLLIN) == 0) return -1;
+        return input.read(buffer);
     }
 
     @Override

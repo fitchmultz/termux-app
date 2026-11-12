@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- In this source branch, after shell exit, terminal readers recheck PTY readiness after every read instead of treating one `FIONREAD` count as the whole tail. Queued flip-buffer output reaches the transcript before completion; quiet inherited slave holders do not delay it. Active descendant output can continue while readable.
+
 - This source branch retires each run-command forwarding service start after handoff or rejection, including null restarts. Removing its foreground notification no longer leaves an idle started service behind.
 
 - This source branch makes Help own and destroy its WebView, removing it from the view hierarchy first and ignoring page callbacks after destruction. Both the loading and displayed states release the browser's native resources.
