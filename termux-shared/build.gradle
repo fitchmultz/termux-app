@@ -44,7 +44,7 @@ dependencies {
     implementation "androidx.core:core:$coreVersion"
     implementation "com.google.android.material:material:$materialVersion"
     // Public property schemas expose Guava map types; MoreFiles needs the JRE variant.
-    api "com.google.guava:guava:33.7.2-jre"
+    api "com.google.guava:guava:33.8.0-jre"
     implementation "io.noties.markwon:core:$markwonVersion"
     implementation "io.noties.markwon:ext-strikethrough:$markwonVersion"
     implementation "io.noties.markwon:linkify:$markwonVersion"
