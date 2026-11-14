@@ -56,16 +56,18 @@ global Git configuration is performed. Version probes do not launch an
 interactive zsh or evaluate project environments.
 
 The seven companion roots add only `libcap` and `libgit2` to the previous closure.
-The same authenticated **2026-10-24 14:22:36 UTC** repository snapshot retains all
-110 earlier package records unchanged. Those nine companion packages total 14,905,984
-downloaded `.deb` bytes and 53,977,088 declared installed-size bytes; these are
-**not** ZIP sizes. Two Fold-native builds of this payload were byte-identical:
-SHA-256 `bf6307625a44465055e7116839085bcdffd88e44ae894d34ab76e8e249fd71e3`,
-96,430,913 compressed bytes / 244,554,131 expanded bytes, using Python 3.15.2
-and zlib 1.3.2. The verifier checked 121 packages, 29 commands, 1,478 symlinks,
-and 454 ARM64 ELFs. Nine inherited installed-test ELFs were inspected but are
-not claimed runnable. The bundled chezmoi executable
-matches the installed 2.73.3-1 binary that runs on this Fold. The whole ZIP
+The authenticated **2026-11-14 19:00:05 UTC** repository snapshot updates 20 of the
+121 locked packages (`apt 2.8.4`, `ca-certificates 1:2026.11.05-1`, `chezmoi 2.74.1`,
+`command-not-found 3.5.0-19`, `fd 10.5.2`, `fzf 0.75.0`, `git 2.56.1`, `krb5 1.22.3`,
+`libexpat 2.10.0`, `libiconv 1.19.1`, `liblz4 1.11.1`, `libnghttp2 1.71.0`,
+`libnghttp3 1.19.0`, `libngtcp2 1.26.0`, `libunistring 1.5`, `openssh 10.6p2`,
+`openssh-sftp-server 10.6p2`, `p11-kit 0.26.6`, `rsync 3.5.2`, and `zlib 1.4`)
+while retaining the remaining 101 records and the `lsof 4.99.7-0fold1` backport.
+On Fold-native Python 3.15.2 / zlib 1.4, the verified payload is SHA-256
+`f4c2b224eaea40a40674bc38cdb94ae9658194b9b54504d3ecf8049e53389dbe`,
+96,611,424 compressed bytes / 245,018,273 expanded bytes. The verifier checked
+121 packages, 29 commands, 1,478 symlinks, and 454 ARM64 ELFs. Nine inherited
+installed-test ELFs were inspected but are not claimed runnable. The whole ZIP
 crosses JNI as one Java byte array; physical fresh-bootstrap heap behavior has
 not been measured.
 
@@ -107,10 +109,9 @@ configuration adjusts the default prompt/command-not-found handler and sources
 the existing Termux profile **only when the user chooses that shell**. No user
 dotfiles or shell selection are changed.
 
-The locked [chezmoi 2.73.3-1](https://github.com/twpayne/chezmoi/tree/v2.73.3)
-package is included. Its authenticated `.deb` is 10,682,256 bytes and has no
-maintainer scripts; its installed executable matches the version already running
-on the Fold. Mise, Rust/compiler, Tcl/Tk, X11, and language-runtime stacks remain
+The locked [chezmoi 2.74.1](https://github.com/twpayne/chezmoi/tree/v2.74.1)
+package is included. Its authenticated `.deb` is 10,726,104 bytes and has no
+maintainer scripts. Mise, Rust/compiler, Tcl/Tk, X11, and language-runtime stacks remain
 separate development packages.
 
 ## Termux:API client and Android companion boundary
