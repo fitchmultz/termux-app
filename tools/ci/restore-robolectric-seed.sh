@@ -3,7 +3,7 @@ set -euo pipefail
 
 repository="$(mktemp -d "$FOLD_CI_WORK/robolectric-repository.XXXXXXXX")"
 trap 'rm -rf -- "$repository"' EXIT
-base='https://github.com/fitchmultz/termux-app/releases/download/ci-robolectric-cache-1.0.19'
+base='https://github.com/fitchmultz/termux-app/releases/download/ci-robolectric-cache-1.0.20'
 curl_args=(--disable --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3)
 
 fetch_verified() {
@@ -21,11 +21,11 @@ fetch_verified() {
 }
 
 gradle_ready=false
-gradle_dir="$repository/org/robolectric/nativeruntime-dist-compat/1.0.19"
-if fetch_verified 'nativeruntime-dist-compat-1.0.19.pom' \
-    'd4918b9791ff87c4b7eb51beef56394d8b58e96a153318f978160d7807173173' "$gradle_dir" &&
-   fetch_verified 'nativeruntime-dist-compat-1.0.19.jar' \
-    '33e0a0982b3ba599763af250b86eb8d67ab6c186c2fa2c5e823ee003bdcd4ed8' "$gradle_dir"; then
+gradle_dir="$repository/org/robolectric/nativeruntime-dist-compat/1.0.20"
+if fetch_verified 'nativeruntime-dist-compat-1.0.20.pom' \
+    '6ed047e73f94de759b41f00a731f3f21a627881561262f74110a59273b238362' "$gradle_dir" &&
+   fetch_verified 'nativeruntime-dist-compat-1.0.20.jar' \
+    'f25c88ce3a02c5f88cf2fb474c2e9c220ec5fa7ba3ac3deeef3d6d26d7861385' "$gradle_dir"; then
     gradle_ready=true
 else
     rm -rf -- "$gradle_dir"
@@ -41,7 +41,7 @@ while read -r version checksum; do
 done <<'RUNTIME_SEEDS'
 7.0.0_r1-robolectric-r1-i7 57dc8d57a5d69adacf3aa4306aefbf147bd1621da347e20f3cf1f41c88a5dd49
 9-robolectric-4913185-2-i7 dbb1c88987b54cef3132695a1b4d2f4851ba06286a6fa7d15772f98fd1f0cdf7
-17-robolectric-15733970-i7 30a15243ba9a6a016361876facc75432f4ec5db0f9e27d4984a4a6b167b432bd
+17-robolectric-16653203-i7 a0536dd688c5bd92c78f55c6f6e4e7565ada75534b196a62d9d3668485cdc4e9
 RUNTIME_SEEDS
 
 if [[ "$gradle_ready" == true ]]; then
