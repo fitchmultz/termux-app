@@ -153,6 +153,7 @@ public abstract class TerminalTestCase extends TestCase {
 			int usedChars = lines[i].getSpaceUsed();
 			int currentColumn = 0;
 			for (int j = 0; j < usedChars; j++) {
+				int startOfCodePointIndex = j;
 				char c = text[j];
 				int codePoint;
 				if (Character.isHighSurrogate(c)) {
@@ -164,7 +165,7 @@ public abstract class TerminalTestCase extends TestCase {
 					codePoint = c;
 				}
 				assertFalse("Screen should never contain unassigned characters", Character.getType(codePoint) == Character.UNASSIGNED);
-				int width = WcWidth.width(codePoint);
+				int width = WcWidth.width(text, startOfCodePointIndex, usedChars);
 				assertFalse("The first column should not start with combining character", currentColumn == 0 && width < 0);
 				if (width > 0) currentColumn += width;
 			}

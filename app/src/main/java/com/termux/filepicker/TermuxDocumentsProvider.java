@@ -165,6 +165,7 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
         final LinkedList<File> pending = new LinkedList<>();
         pending.add(parent);
 
+        final String normalizedQuery = query == null ? "" : query.toLowerCase(Locale.ROOT);
         final int MAX_SEARCH_RESULTS = 50;
         while (!pending.isEmpty() && result.getCount() < MAX_SEARCH_RESULTS) {
             final File file = pending.removeFirst();
@@ -180,7 +181,7 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
                 if (file.isDirectory()) {
                     Collections.addAll(pending, file.listFiles());
                 } else {
-                    if (file.getName().toLowerCase().contains(query)) {
+                    if (file.getName().toLowerCase(Locale.ROOT).contains(normalizedQuery)) {
                         includeFile(result, null, file);
                     }
                 }

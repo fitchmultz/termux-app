@@ -442,6 +442,12 @@ public final class TerminalEmulator implements TerminalRendererState {
      * Any cursor movement clears it.
      */
     private boolean mAutoWrapPending;
+    /**
+     * True when the last printed spacing glyph clamped at {@code mRightMargin - 1} (whether
+     * {@link #DECSET_BIT_AUTOWRAP} is enabled or disabled), so a subsequent combining character
+     * targets {@code mCursorCol} rather than {@code mCursorCol - 1}.
+     */
+    private boolean mCursorAtLastPrintedCell;
 
     /**
      * Whether the view's blinker drives the cursor. Orthogonal to {@link #mCursorBlinkState}: the
@@ -514,6 +520,9 @@ public final class TerminalEmulator implements TerminalRendererState {
 
     private final Utf8Decoder mUtf8Decoder = new Utf8Decoder();
     private int mLastEmittedCodePoint = -1;
+    private int mVariationSelectorWideningCandidateCodePoint = -1;
+    private int mVariationSelectorWideningCandidateRow = -1;
+    private int mVariationSelectorWideningCandidateColumn = -1;
 
     /**
      * Incremental UTF-8 decoder for PTY bytes. It is idle, or collecting exactly one 2-4 byte
@@ -809,6 +818,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         mScreen.resize(mColumns, mRows, newTotalRows, cursor, getStyle(), isAlternateBufferActive());
         mCursorCol = cursor[0];
         mCursorRow = cursor[1];
+        mVariationSelectorWideningCandidateCodePoint = -1;
     }
 
     @Override
@@ -903,10 +913,21 @@ public final class TerminalEmulator implements TerminalRendererState {
 
                 TerminalRow row = mScreen.allocateFullLineIfNecessary(mScreen.externalToInternalRow(mCursorRow));
                 row.setAscii(mCursorCol, buffer, i, end - i, getStyle(), mHyperlinkId);
-                mLastEmittedCodePoint = buffer[end - 1];
+                int lastAscii = buffer[end - 1];
+                mLastEmittedCodePoint = lastAscii;
                 int columnAfterRun = mCursorCol + end - i;
+                if (WcWidth.isEmojiVariationSequenceBase(lastAscii)) {
+                    mVariationSelectorWideningCandidateCodePoint = lastAscii;
+                    mVariationSelectorWideningCandidateRow = mCursorRow;
+                    mVariationSelectorWideningCandidateColumn = columnAfterRun - 1;
+                } else {
+                    mVariationSelectorWideningCandidateCodePoint = -1;
+                }
+                mCursorAtLastPrintedCell = columnAfterRun == mRightMargin;
                 if (isDecsetInternalBitSet(DECSET_BIT_AUTOWRAP))
-                    mAutoWrapPending = columnAfterRun == mRightMargin;
+                    mAutoWrapPending = mCursorAtLastPrintedCell;
+                else
+                    mAutoWrapPending = false;
                 mCursorCol = Math.min(columnAfterRun, mRightMargin - 1);
                 i = end;
             } else {
@@ -971,6 +992,9 @@ public final class TerminalEmulator implements TerminalRendererState {
     }
 
     public void processCodePoint(int b) {
+        if (mEscapeState != ESC_NONE || mDiscardControlString != DiscardControlString.NONE || b < 32 || b == 127) {
+            mVariationSelectorWideningCandidateCodePoint = -1;
+        }
         if (drainDiscardedControlString(b)) return;
         // Cancellation must take precedence over image fast paths and release partial payloads.
         if ((b == 24 || b == 26) && (mEscapeState == ESC_DCS || mEscapeState == ESC_OSC
@@ -1044,7 +1068,8 @@ public final class TerminalEmulator implements TerminalRendererState {
                 //       printf "\033[41m\t\r\033[42m\tXX\033[0m\n"
                 // the first cells are created with a red background, but when tabbing over
                 // them again with a green background they are not overwritten.
-                mCursorCol = nextTabStop(1);
+                int nextTabStop = nextTabStop(1);
+                if (nextTabStop != mCursorCol) setCursorCol(nextTabStop);
                 break;
             case 10: // Line feed (LF, \n).
             case 11: // Vertical tab (VT, \v).
@@ -1208,10 +1233,10 @@ public final class TerminalEmulator implements TerminalRendererState {
                                 // Reverse attributes in rectangular area (DECRARA - http://www.vt100.net/docs/vt510-rm/DECRARA).
                                 boolean reverse = b == 't';
                                 // FIXME: "coordinates of the rectangular area are affected by the setting of origin mode (DECOM)".
-                                int top = Math.min(getArg(0, 1, true) - 1, effectiveBottomMargin) + effectiveTopMargin;
-                                int left = Math.min(getArg(1, 1, true) - 1, effectiveRightMargin) + effectiveLeftMargin;
-                                int bottom = Math.min(getArg(2, mRows, true) + 1, effectiveBottomMargin - 1) + effectiveTopMargin;
-                                int right = Math.min(getArg(3, mColumns, true) + 1, effectiveRightMargin - 1) + effectiveLeftMargin;
+                                int top = Math.min(getArg(0, 1, true) - 1 + effectiveTopMargin, effectiveBottomMargin);
+                                int left = Math.min(getArg(1, 1, true) - 1 + effectiveLeftMargin, effectiveRightMargin);
+                                int bottom = Math.min(getArg(2, mRows, true) + effectiveTopMargin, effectiveBottomMargin);
+                                int right = Math.min(getArg(3, mColumns, true) + effectiveLeftMargin, effectiveRightMargin);
                                 if (mArgIndex >= 4) {
                                     if (mArgIndex >= mArgs.length) mArgIndex = mArgs.length - 1;
                                     for (int i = 4; i <= mArgIndex; i++) {
@@ -1977,7 +2002,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             case 'J': // Selective erase in display (DECSED) - http://www.vt100.net/docs/vt510-rm/DECSED.
             case 'K': // Selective erase in line (DECSEL) - http://vt100.net/docs/vt510-rm/DECSEL.
-                mAutoWrapPending = false;
+                clearWrapAndCombiningState();
                 int fillChar = ' ';
                 int startCol = -1;
                 int startRow = -1;
@@ -2308,7 +2333,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             case '6': // Back index (http://www.vt100.net/docs/vt510-rm/DECBI). Move left, insert blank column if start.
                 if (mCursorCol > mLeftMargin) {
-                    mCursorCol--;
+                    setCursorCol(mCursorCol - 1);
                 } else {
                     int rows = mBottomMargin - mTopMargin;
                     mScreen.blockCopy(mLeftMargin, mTopMargin, mRightMargin - mLeftMargin - 1, rows, mLeftMargin + 1, mTopMargin);
@@ -2323,7 +2348,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             case '9': // Forward Index (http://www.vt100.net/docs/vt510-rm/DECFI). Move right, insert blank column if end.
                 if (mCursorCol < mRightMargin - 1) {
-                    mCursorCol++;
+                    setCursorCol(mCursorCol + 1);
                 } else {
                     int rows = mBottomMargin - mTopMargin;
                     mScreen.blockCopy(mLeftMargin + 1, mTopMargin, mRightMargin - mLeftMargin - 1, rows, mLeftMargin, mTopMargin);
@@ -2344,7 +2369,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 doLinefeed();
                 break;
             case 'F': // Cursor to lower-left corner of screen
-                setCursorRowCol(0, mBottomMargin - 1);
+                setCursorRowCol(mBottomMargin - 1, isDecsetInternalBitSet(DECSET_BIT_ORIGIN_MODE) ? mLeftMargin : 0);
                 break;
             case 'H': // Tab set
                 mTabStop[mCursorCol] = true;
@@ -2354,10 +2379,11 @@ public final class TerminalEmulator implements TerminalRendererState {
                 // position on the preceding line. If the active position is at the top margin, a scroll down is performed".
                 // Above the top margin it is a plain cursor up, which stops at the top of the screen (as in xterm).
                 if (mCursorRow == mTopMargin) {
+                    clearWrapAndCombiningState();
                     mScreen.blockCopy(mLeftMargin, mTopMargin, mRightMargin - mLeftMargin, mBottomMargin - (mTopMargin + 1), mLeftMargin, mTopMargin + 1);
                     blockClear(mLeftMargin, mTopMargin, mRightMargin - mLeftMargin);
                 } else if (mCursorRow > 0) {
-                    mCursorRow--;
+                    setCursorRow(mCursorRow - 1);
                 }
                 break;
             case 'N': // SS2, ignore.
@@ -2441,7 +2467,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 break;
             case '@': {
                 // "CSI{n}@" - Insert ${n} space characters (ICH) - http://www.vt100.net/docs/vt510-rm/ICH.
-                mAutoWrapPending = false;
+                clearWrapAndCombiningState();
                 int columnsAfterCursor = mColumns - mCursorCol;
                 int spacesToInsert = Math.min(getArg0(1), columnsAfterCursor);
                 int charsToMove = columnsAfterCursor - spacesToInsert;
@@ -2500,7 +2526,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                         unknownSequence(b);
                         return;
                 }
-                mAutoWrapPending = false;
+                clearWrapAndCombiningState();
                 break;
             case 'K': // "CSI{n}K" - Erase in line (EL).
                 switch (getArg0(0)) {
@@ -2517,7 +2543,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                         unknownSequence(b);
                         return;
                 }
-                mAutoWrapPending = false;
+                clearWrapAndCombiningState();
                 break;
             case 'L': // "${CSI}{N}L" - insert ${N} lines (IL).
             {
@@ -2530,7 +2556,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             break;
             case 'M': // "${CSI}${N}M" - delete N lines (DL).
             {
-                mAutoWrapPending = false;
+                clearWrapAndCombiningState();
                 int linesAfterCursor = mBottomMargin - mCursorRow;
                 int linesToDelete = Math.min(getArg0(1), linesAfterCursor);
                 int linesToMove = linesAfterCursor - linesToDelete;
@@ -2545,7 +2571,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 // As characters are deleted, the remaining characters between the cursor and right margin move to the left.
                 // Character attributes move with the characters. The terminal adds blank spaces with no visual character
                 // attributes at the right margin. DCH has no effect outside the scrolling margins."
-                mAutoWrapPending = false;
+                clearWrapAndCombiningState();
                 int cellsAfterCursor = mColumns - mCursorCol;
                 int cellsToDelete = Math.min(getArg0(1), cellsAfterCursor);
                 int cellsToMove = cellsAfterCursor - cellsToDelete;
@@ -2579,7 +2605,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                 }
                 break;
             case 'X': // "${CSI}${N}X" - Erase ${N:=1} character(s) (ECH). FIXME: Clears character attributes?
-                mAutoWrapPending = false;
+                clearWrapAndCombiningState();
                 mScreen.blockSet(mCursorCol, mCursorRow, Math.min(getArg0(1), mColumns - mCursorCol), 1, ' ', getStyle());
                 break;
             case 'Z': // Cursor Backward Tabulation (CBT). Move the active position n tabs backward.
@@ -2592,7 +2618,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                             break;
                         }
                     }
-                mCursorCol = newCol;
+                if (newCol != mCursorCol) setCursorCol(newCol);
                 break;
             case '?': // Esc [ ? -- start of a private parameter byte
                 continueSequence(ESC_CSI_QUESTIONMARK);
@@ -3009,7 +3035,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             // Kitty's production graphics.c moves by effective rows-1, unlike its prose.
             advanceImageRows(Math.max(0, delta[0] - 1), canScroll);
             mCursorCol = Math.min(right - 1, mCursorCol + delta[1]);
-            mAutoWrapPending = false;
+            clearWrapAndCombiningState();
         }
     }
 
@@ -3247,14 +3273,15 @@ public final class TerminalEmulator implements TerminalRendererState {
                         if (endOfInput || textParameter.charAt(charIndex) == ';') {
                             try {
                                 int colorToReset = Integer.parseInt(textParameter.substring(lastIndex, charIndex));
-                                mColors.reset(colorToReset);
-                                mSession.onColorsChanged();
-                                if (endOfInput) break;
-                                charIndex++;
-                                lastIndex = charIndex;
+                                if (colorToReset >= 0 && colorToReset < TextStyle.NUM_INDEXED_COLORS) {
+                                    mColors.reset(colorToReset);
+                                    mSession.onColorsChanged();
+                                }
                             } catch (NumberFormatException e) {
                                 // Ignore.
                             }
+                            if (endOfInput) break;
+                            lastIndex = charIndex + 1;
                         }
                     }
                 }
@@ -3378,7 +3405,7 @@ public final class TerminalEmulator implements TerminalRendererState {
                                 col = imageLeft;
                             }
                             advanceImageRows(cursorDelta[0], imageCanScroll);
-                            mCursorCol = col;
+                            setCursorCol(col);
                         }
                         // Saving files in downloads folder is not supported currently.
                         else {}
@@ -3929,6 +3956,7 @@ public final class TerminalEmulator implements TerminalRendererState {
             if (cursorInLastColumn && ((mAutoWrapPending && displayWidth == 1) || displayWidth == 2)) {
                 mScreen.setLineWrap(mCursorRow);
                 mCursorCol = mLeftMargin;
+                clearWrapAndCombiningState();
                 if (mCursorRow + 1 < mBottomMargin) {
                     mCursorRow++;
                 } else {
@@ -3941,37 +3969,57 @@ public final class TerminalEmulator implements TerminalRendererState {
             return;
         }
 
-        if (mInsertMode && displayWidth > 0) {
+        int offsetDueToCombiningChar = ((displayWidth <= 0 && mCursorCol > 0 && !mCursorAtLastPrintedCell) ? 1 : 0);
+        int column = mCursorCol - offsetDueToCombiningChar;
+        if (column < 0) column = 0;
+
+        final boolean wideningWithVariationSelector = codePoint == WcWidth.VARIATION_SELECTOR_16
+            && mVariationSelectorWideningCandidateCodePoint != -1
+            && mVariationSelectorWideningCandidateRow == mCursorRow
+            && mVariationSelectorWideningCandidateColumn == column
+            && column < mRightMargin - 1
+            && mScreen.canWidenEmojiVariationBase(column, mCursorRow, mVariationSelectorWideningCandidateCodePoint);
+        final int cursorAdvanceWidth = wideningWithVariationSelector ? 1 : displayWidth;
+
+        if (mInsertMode && cursorAdvanceWidth > 0) {
             // Move character to right one space.
-            int destCol = mCursorCol + displayWidth;
+            int destCol = mCursorCol + cursorAdvanceWidth;
             if (destCol < mRightMargin)
                 mScreen.blockCopy(mCursorCol, mCursorRow, mRightMargin - destCol, 1, destCol, mCursorRow);
         }
 
-        int offsetDueToCombiningChar = ((displayWidth <= 0 && mCursorCol > 0 && !mAutoWrapPending) ? 1 : 0);
-        int column = mCursorCol - offsetDueToCombiningChar;
+        mScreen.setChar(column, mCursorRow, codePoint, getStyle(), mHyperlinkId, wideningWithVariationSelector);
 
-        // Fix TerminalRow.setChar() ArrayIndexOutOfBoundsException index=-1 exception reported
-        // The offsetDueToCombiningChar would never be 1 if mCursorCol was 0 to get column/index=-1,
-        // so was mCursorCol changed after the offsetDueToCombiningChar conditional by another thread?
-        // TODO: Check if there are thread synchronization issues with mCursorCol and mCursorRow, possibly causing others bugs too.
-        if (column < 0) column = 0;
-        mScreen.setChar(column, mCursorRow, codePoint, getStyle(), mHyperlinkId);
+        if (cursorAdvanceWidth > 0) {
+            mCursorAtLastPrintedCell = (mCursorCol == mRightMargin - cursorAdvanceWidth);
+            mAutoWrapPending = autoWrap && mCursorAtLastPrintedCell;
+        }
 
-        if (autoWrap && displayWidth > 0)
-            mAutoWrapPending = (mCursorCol == mRightMargin - displayWidth);
+        mCursorCol = Math.min(mCursorCol + cursorAdvanceWidth, mRightMargin - 1);
 
-        mCursorCol = Math.min(mCursorCol + displayWidth, mRightMargin - 1);
+        if (displayWidth == 1 && WcWidth.isEmojiVariationSequenceBase(codePoint)) {
+            mVariationSelectorWideningCandidateCodePoint = codePoint;
+            mVariationSelectorWideningCandidateRow = mCursorRow;
+            mVariationSelectorWideningCandidateColumn = column;
+        } else {
+            mVariationSelectorWideningCandidateCodePoint = -1;
+        }
+    }
+
+    private void clearWrapAndCombiningState() {
+        mAutoWrapPending = false;
+        mCursorAtLastPrintedCell = false;
+        mVariationSelectorWideningCandidateCodePoint = -1;
     }
 
     private void setCursorRow(int row) {
         mCursorRow = row;
-        mAutoWrapPending = false;
+        clearWrapAndCombiningState();
     }
 
     private void setCursorCol(int col) {
         mCursorCol = col;
-        mAutoWrapPending = false;
+        clearWrapAndCombiningState();
     }
 
     /**
@@ -4000,7 +4048,7 @@ public final class TerminalEmulator implements TerminalRendererState {
     private void setCursorRowCol(int row, int col) {
         mCursorRow = Math.max(0, Math.min(row, mRows - 1));
         mCursorCol = Math.max(0, Math.min(col, mColumns - 1));
-        mAutoWrapPending = false;
+        clearWrapAndCombiningState();
     }
 
     public int getScrollCounter() {
@@ -4041,7 +4089,7 @@ public final class TerminalEmulator implements TerminalRendererState {
         mTopMargin = mLeftMargin = 0;
         mBottomMargin = mRows;
         mRightMargin = mColumns;
-        mAutoWrapPending = false;
+        clearWrapAndCombiningState();
         mForeColor = mSavedStateMain.mSavedForeColor = mSavedStateAlt.mSavedForeColor = TextStyle.COLOR_INDEX_FOREGROUND;
         mBackColor = mSavedStateMain.mSavedBackColor = mSavedStateAlt.mSavedBackColor = TextStyle.COLOR_INDEX_BACKGROUND;
         setDefaultTabStops();

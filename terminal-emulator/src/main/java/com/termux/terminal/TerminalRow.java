@@ -93,14 +93,19 @@ public final class TerminalRow {
         final int[] sourceLinks = (this == line && line.mLinks != null) ? line.mLinks.clone() : line.mLinks;
         int latestNonCombiningWidth = 0;
         for (int i = x1; i < x2; i++) {
+            int startOfChar = i;
             char sourceChar = sourceChars[i];
-            int codePoint = Character.isHighSurrogate(sourceChar) ? Character.toCodePoint(sourceChar, sourceChars[++i]) : sourceChar;
+            int codePoint = (Character.isHighSurrogate(sourceChar) && i + 1 < x2 && Character.isLowSurrogate(sourceChars[i + 1]))
+                ? Character.toCodePoint(sourceChar, sourceChars[++i]) : sourceChar;
+            int w;
             if (startingFromSecondHalfOfWideChar) {
                 // Just treat copying second half of wide char as copying whitespace.
                 codePoint = ' ';
                 startingFromSecondHalfOfWideChar = false;
+                w = 1;
+            } else {
+                w = WcWidth.width(sourceChars, startOfChar, x2);
             }
-            int w = WcWidth.width(codePoint);
             if (w > 0) {
                 destinationX += latestNonCombiningWidth;
                 sourceX1 += latestNonCombiningWidth;
@@ -124,8 +129,8 @@ public final class TerminalRow {
             int newCharIndex = currentCharIndex;
             char c = mText[newCharIndex++]; // cci=1, cci=2
             boolean isHigh = Character.isHighSurrogate(c);
-            int codePoint = isHigh ? Character.toCodePoint(c, mText[newCharIndex++]) : c;
-            int wcwidth = WcWidth.width(codePoint); // 1, 2
+            if (isHigh) newCharIndex++;
+            int wcwidth = WcWidth.width(mText, currentCharIndex, mSpaceUsed); // 1, 2
             if (wcwidth > 0) {
                 currentColumn += wcwidth;
                 if (currentColumn == column) {
@@ -155,9 +160,10 @@ public final class TerminalRow {
 
     private boolean wideDisplayCharacterStartingAt(int column) {
         for (int currentCharIndex = 0, currentColumn = 0; currentCharIndex < mSpaceUsed; ) {
+            int startOfCharIndex = currentCharIndex;
             char c = mText[currentCharIndex++];
-            int codePoint = Character.isHighSurrogate(c) ? Character.toCodePoint(c, mText[currentCharIndex++]) : c;
-            int wcwidth = WcWidth.width(codePoint);
+            if (Character.isHighSurrogate(c)) currentCharIndex++;
+            int wcwidth = WcWidth.width(mText, startOfCharIndex, mSpaceUsed);
             if (wcwidth > 0) {
                 if (currentColumn == column && wcwidth == 2) return true;
                 currentColumn += wcwidth;
@@ -198,9 +204,38 @@ public final class TerminalRow {
 
     /** Write a cell carrying an OSC 8 hyperlink id (0 for none). */
     public void setChar(int columnToSet, int codePoint, long style, int link) {
+        setChar(columnToSet, codePoint, style, link, true);
+    }
+
+    /**
+     * Whether {@code columnToSet} currently holds the exact 1-column unmodified emoji variation
+     * sequence base {@code expectedBaseCodePoint} (or any eligible base when {@code expectedBaseCodePoint < 0}).
+     */
+    boolean hasWidenableEmojiVariationBaseAt(int columnToSet, int expectedBaseCodePoint) {
+        if (columnToSet < 0 || columnToSet >= mColumns || (columnToSet > 0 && wideDisplayCharacterStartingAt(columnToSet - 1)))
+            return false;
+        int startIndex = findStartOfColumn(columnToSet);
+        int baseCodePoint = Character.codePointAt(mText, startIndex, mSpaceUsed);
+        if ((expectedBaseCodePoint >= 0 && baseCodePoint != expectedBaseCodePoint)
+            || !WcWidth.isEmojiVariationSequenceBase(baseCodePoint)) {
+            return false;
+        }
+        int width = WcWidth.width(mText, startIndex, mSpaceUsed);
+        int charsUsed = (columnToSet + width < mColumns)
+            ? findStartOfColumn(columnToSet + width) - startIndex
+            : mSpaceUsed - startIndex;
+        return width == 1 && charsUsed == Character.charCount(baseCodePoint);
+    }
+
+    /**
+     * Write a cell carrying an OSC 8 hyperlink id (0 for none), optionally allowing immediate
+     * {@code U+FE0F} variation-selector widening of a 1-column emoji base.
+     */
+    public void setChar(int columnToSet, int codePoint, long style, int link, boolean allowVariationWidening) {
         if (columnToSet  < 0 || columnToSet >= mStyle.length)
             throw new IllegalArgumentException("TerminalRow.setChar(): columnToSet=" + columnToSet + ", codePoint=" + codePoint + ", style=" + style);
 
+        final long previousStyle = mStyle[columnToSet];
         mStyle[columnToSet] = style;
 
         if (!mHasTerminalBitmap && TextStyle.isTerminalBitmap(style)) {
@@ -247,8 +282,26 @@ public final class TerminalRow {
         }
 
         char[] text = mText;
+        final boolean wouldWidenEmojiBase = newIsCombining
+            && codePoint == WcWidth.VARIATION_SELECTOR_16
+            && hasWidenableEmojiVariationBaseAt(columnToSet, -1);
+        if (wouldWidenEmojiBase && (!allowVariationWidening || columnToSet >= mColumns - 1)) {
+            // Drop the selector when widening is disallowed (e.g. at DECSLRM right margin or after
+            // cursor movement) or when no second cell exists, so stored chars always match cell width.
+            mStyle[columnToSet] = previousStyle;
+            return;
+        }
+        final boolean wideningWithVariationSelector = wouldWidenEmojiBase;
+        if (wideningWithVariationSelector && wideDisplayCharacterStartingAt(columnToSet + 1)) {
+            long trailingStyle = wideCharTrailingStyle(columnToSet + 2, style);
+            setChar(columnToSet + 1, ' ', wideCharCleanupStyle(columnToSet + 1, style));
+            mStyle[columnToSet + 2] = trailingStyle;
+            text = mText;
+        }
+
         final int oldStartOfColumnIndex = findStartOfColumn(columnToSet);
-        final int oldCodePointDisplayWidth = WcWidth.width(text, oldStartOfColumnIndex);
+        final int oldCodePointDisplayWidth = WcWidth.width(text, oldStartOfColumnIndex, mSpaceUsed);
+        final int effectiveNewCodePointDisplayWidth = wideningWithVariationSelector ? 2 : newCodePointDisplayWidth;
 
         // Get the number of elements in the mText array this column uses now
         int oldCharactersUsedForColumn;
@@ -302,7 +355,7 @@ public final class TerminalRow {
         //noinspection ResultOfMethodCallIgnored - since we already now how many java chars is used.
         Character.toChars(codePoint, text, oldStartOfColumnIndex + (newIsCombining ? oldCharactersUsedForColumn : 0));
 
-        if (oldCodePointDisplayWidth == 2 && newCodePointDisplayWidth == 1) {
+        if (oldCodePointDisplayWidth == 2 && effectiveNewCodePointDisplayWidth == 1) {
             // Replace second half of wide char with a space. Which mean that we actually add a ' ' java character.
             if (mSpaceUsed + 1 > text.length) {
                 char[] newText = new char[text.length + mColumns];
@@ -316,16 +369,18 @@ public final class TerminalRow {
             mStyle[columnToSet + 1] = wideCharTrailingStyle(columnToSet + 1, style);
 
             ++mSpaceUsed;
-        } else if (oldCodePointDisplayWidth == 1 && newCodePointDisplayWidth == 2) {
+        } else if (oldCodePointDisplayWidth == 1 && effectiveNewCodePointDisplayWidth == 2) {
             if (columnToSet == mColumns - 1) {
                 throw new IllegalArgumentException("Cannot put wide character in last column");
             } else if (columnToSet == mColumns - 2) {
                 // Truncate the line to the second part of this wide char:
                 mSpaceUsed = newNextColumnIndex;
             } else {
-                // Overwrite the contents of the next column, which mean we actually remove java characters. Due to the
-                // check at the beginning of this method we know that we are not overwriting a wide char.
+                // Overwrite the contents of the next column, including any attached combining marks.
                 int newNextNextColumnIndex = newNextColumnIndex + (Character.isHighSurrogate(mText[newNextColumnIndex]) ? 2 : 1);
+                while (newNextNextColumnIndex < mSpaceUsed && WcWidth.width(mText, newNextNextColumnIndex, mSpaceUsed) <= 0) {
+                    newNextNextColumnIndex += Character.isHighSurrogate(mText[newNextNextColumnIndex]) ? 2 : 1;
+                }
                 int nextLen = newNextNextColumnIndex - newNextColumnIndex;
 
                 // Shift the array leftwards.
@@ -335,16 +390,16 @@ public final class TerminalRow {
         }
         // A wide text glyph covers its second cell too. An old image payload there must not
         // survive to render again or make geometry invalidation erase the new wide glyph.
-        if (newCodePointDisplayWidth == 2)
+        if (effectiveNewCodePointDisplayWidth == 2)
             mStyle[columnToSet + 1] = wideCharTrailingStyle(columnToSet + 1, style);
 
         // Written again last, because blanking a wide character's other half above rewrites this cell too. A
         // wide character's second cell is part of it, and the space left where one stood is part of nothing.
         setHyperlink(columnToSet, link);
         if (columnToSet + 1 < mColumns) {
-            if (newCodePointDisplayWidth == 2 || (newIsCombining && oldCodePointDisplayWidth == 2))
+            if (effectiveNewCodePointDisplayWidth == 2 || (newIsCombining && oldCodePointDisplayWidth == 2))
                 setHyperlink(columnToSet + 1, link);
-            else if (oldCodePointDisplayWidth == 2 && newCodePointDisplayWidth == 1) setHyperlink(columnToSet + 1, 0);
+            else if (oldCodePointDisplayWidth == 2 && effectiveNewCodePointDisplayWidth == 1) setHyperlink(columnToSet + 1, 0);
         }
     }
 

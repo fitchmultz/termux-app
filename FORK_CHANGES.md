@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Syncs reviewed upstream terminal and shared-library fixes with Fold invariants preserved: widens narrow-by-default emoji bases followed immediately by `U+FE0F` (`VARIATION_SELECTOR-16`) across `WcWidth`, `TerminalRow` (including OSC 8 hyperlinks, bitmap-slice cleanup, and `copyInterval`), `TerminalBuffer.resize` reflow, `TerminalEmulator` (including ASCII fast-path keycap bases, right-margin wrap, and insert mode), and `TerminalRenderer` (including composing preview); fixes `ESC F` lower-left cursor coordinates, `DECCARA`/`DECRARA` 1-based inclusive row/column bounds, `OSC 104` multi-parameter iteration and 256-color bounds, unpaired trailing surrogates during `resize`, legacy `KEYCODE_SYSRQ` pass-through (retaining negotiated Kitty `57361`), `ArgumentTokenizer` trailing double-quote backslashes, `TermuxShellUtils` shebang arguments, UTF-8 byte-budget truncation in `DataUtils.getTruncatedCommandOutput`, and `Locale.ROOT` case conversions.
+
 - Documents resource owners, cleanup boundaries, main-thread obligations and borrowed-data validity in [App ownership and lifetimes](docs/OWNERSHIP.md), with borrowing contracts beside the shared APIs.
 
 - In this source branch, after shell exit, terminal readers recheck PTY readiness after every read instead of treating one `FIONREAD` count as the whole tail. Queued flip-buffer output reaches the transcript before completion; quiet inherited slave holders do not delay it. Active descendant output can continue while readable.

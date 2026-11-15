@@ -424,9 +424,48 @@ public class TerminalRowTest extends TestCase {
 		row.setChar(COLUMNS - 1, 'ö', 0);
 		assertEquals('Z', row.mText[row.findStartOfColumn(COLUMNS - 2)]);
 		assertEquals('ö', row.mText[row.findStartOfColumn(COLUMNS - 1)]);
-		// line.setChar(COLUMNS - 1, ONE_JAVA_CHAR_DISPLAY_WIDTH_TWO_1);
-		// assertEquals('Z', line.mText[line.findStartOfColumn(COLUMNS - 2)]);
-		// assertEquals(' ', line.mText[line.findStartOfColumn(COLUMNS - 1)]);
+	}
+
+	public void testEmojiVariationSelectorWidensAndPreservesLinksAndCopies() {
+		final int HEART = 0x2764;
+		row.setChar(0, 'a', 0, 0);
+		row.setChar(1, HEART, 0, 7);
+		assertEquals(1, WcWidth.width(row.mText, row.findStartOfColumn(1), row.getSpaceUsed()));
+
+		row.setChar(1, WcWidth.VARIATION_SELECTOR_16, 0, 7);
+		assertLineStartsWith('a', HEART, WcWidth.VARIATION_SELECTOR_16, ' ');
+		assertColumnCharIndicesStartsWith(0, 1, 1, 3, 4);
+		assertEquals(2, WcWidth.width(row.mText, row.findStartOfColumn(1), row.getSpaceUsed()));
+		assertEquals(7, row.getHyperlink(1));
+		assertEquals(7, row.getHyperlink(2));
+
+		row.setChar(3, 'b', 0, 9);
+		assertLineStartsWith('a', HEART, WcWidth.VARIATION_SELECTOR_16, 'b');
+
+		TerminalRow copy = new TerminalRow(COLUMNS, TextStyle.NORMAL);
+		copy.copyInterval(row, 0, 4, 2);
+		assertEquals('a', copy.mText[copy.findStartOfColumn(2)]);
+		assertEquals(HEART, copy.mText[copy.findStartOfColumn(3)]);
+		assertEquals(2, WcWidth.width(copy.mText, copy.findStartOfColumn(3), copy.getSpaceUsed()));
+		assertEquals('b', copy.mText[copy.findStartOfColumn(5)]);
+		assertEquals(7, copy.getHyperlink(3));
+		assertEquals(7, copy.getHyperlink(4));
+		assertEquals(9, copy.getHyperlink(5));
+	}
+
+	public void testEmojiVariationSelectorAtLastColumnAndAfterOtherCombining() {
+		final int HEART = 0x2764;
+		row.setChar(COLUMNS - 1, HEART, 0);
+		row.setChar(COLUMNS - 1, WcWidth.VARIATION_SELECTOR_16, 0);
+		assertEquals(HEART, row.mText[row.findStartOfColumn(COLUMNS - 1)]);
+		assertEquals(1, WcWidth.width(row.mText, row.findStartOfColumn(COLUMNS - 1), row.getSpaceUsed()));
+
+		// An intervening combining mark prevents immediate VS16 widening, keeping width bookkeeping consistent.
+		row.setChar(0, HEART, 0);
+		row.setChar(0, 0x0301, 0);
+		row.setChar(0, WcWidth.VARIATION_SELECTOR_16, 0);
+		assertEquals(1, WcWidth.width(row.mText, row.findStartOfColumn(0), row.getSpaceUsed()));
+		assertEquals(' ', row.mText[row.findStartOfColumn(1)]);
 	}
 
 }

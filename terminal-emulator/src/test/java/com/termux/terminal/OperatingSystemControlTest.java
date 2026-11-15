@@ -274,4 +274,18 @@ public class OperatingSystemControlTest extends TerminalTestCase {
 		assertEnteringStringGivesResponse("\033]10;?\033\\", "\033]10;rgb:abab/cdcd/0000\033\\");
 	}
 
+	public void testOsc104MultiParameterAndBounds() {
+		withTerminalSized(4, 4);
+		int orig1 = mTerminal.mColors.mCurrentColors[1];
+		int orig12 = mTerminal.mColors.mCurrentColors[12];
+		enterString("\033]4;1;#112233;12;#445566\007");
+		assertEquals(0xFF112233, mTerminal.mColors.mCurrentColors[1]);
+		assertEquals(0xFF445566, mTerminal.mColors.mCurrentColors[12]);
+
+		// Resetting multiple semicolon-separated indices must not skip the first digit after ';' or crash on out-of-range values.
+		enterString("\033]104;-1;1;12;999\007");
+		assertEquals(orig1, mTerminal.mColors.mCurrentColors[1]);
+		assertEquals(orig12, mTerminal.mColors.mCurrentColors[12]);
+	}
+
 }
