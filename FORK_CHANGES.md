@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Adds `DECSET 1003` any-event mouse tracking on a dedicated internal flag bit (`1 << 15`, preserving `DECSET 2026`/`2031`), stops inventing post-release kinetic wheel reports while mouse tracking is active, adds axis-locked horizontal touch-wheel reporting (`66`/`67`) sharing `TerminalView`'s `MouseScrollAnchor`, and uses `mFontLineSpacingAndAscent` instead of a hardcoded `40px` offset in `TerminalView.getCursorY`.
+
 - Syncs reviewed upstream terminal and shared-library fixes with Fold invariants preserved: widens narrow-by-default emoji bases followed immediately by `U+FE0F` (`VARIATION_SELECTOR-16`) across `WcWidth`, `TerminalRow` (including OSC 8 hyperlinks, bitmap-slice cleanup, and `copyInterval`), `TerminalBuffer.resize` reflow, `TerminalEmulator` (including ASCII fast-path keycap bases, right-margin wrap, and insert mode), and `TerminalRenderer` (including composing preview); fixes `ESC F` lower-left cursor coordinates, `DECCARA`/`DECRARA` 1-based inclusive row/column bounds, `OSC 104` multi-parameter iteration and 256-color bounds, unpaired trailing surrogates during `resize`, legacy `KEYCODE_SYSRQ` pass-through (retaining negotiated Kitty `57361`), `ArgumentTokenizer` trailing double-quote backslashes, `TermuxShellUtils` shebang arguments, UTF-8 byte-budget truncation in `DataUtils.getTruncatedCommandOutput`, and `Locale.ROOT` case conversions.
 
 - Documents resource owners, cleanup boundaries, main-thread obligations and borrowed-data validity in [App ownership and lifetimes](docs/OWNERSHIP.md), with borrowing contracts beside the shared APIs.
@@ -139,7 +141,7 @@ This is the canonical concise inventory of intentional differences from the audi
 - Adapts fuller JNI partial-allocation/UTF/local-reference/PTY failure cleanup, preserving pending exceptions and validating PID output, plus connected-client-FD and single AM-error-result repairs. Does not import unsafe unconditional process killing or change the independently pinned API companion producer.
 
 - This source branch batches ordinary printable ASCII into row-bounded runs instead of repeating decoding, width lookup, and cell setup for every byte. UTF-8, escapes, line drawing, insert mode, wrapping, cursor normalization, and complex Unicode rows retain their existing paths.
-- This source branch schedules terminal flings on Android's animation frames instead of immediately reposting the polling loop. It retains the existing scrolling physics, history bounds, mouse reporting, and pane/session cancellation.
+- This source branch schedules untracked scrollback flings on Android's animation frames instead of immediately reposting the polling loop, retaining history bounds and pane/session cancellation while aborting flings when mouse tracking becomes active.
 - Routes multiline IME commits through the existing paste path when bracketed paste is enabled, while keeping ordinary text, single Enter, and unbracketed terminal input unchanged.
 - Adapts upstream `74ab5126` to retain each session's scroll offset across session/pane replacement, activity-view restoration, keyboard/window resizing, and foreground refresh, bounded by remaining history. SCROLL reconciles background/detached output once; cancelled evicted selections follow live output unless scroll-locked. All view refreshes defer unfinished synchronized frames, while normal new output still follows the terminal.
 
