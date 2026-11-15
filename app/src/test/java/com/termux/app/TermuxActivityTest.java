@@ -1,6 +1,16 @@
 package com.termux.app;
 
+import android.app.Application;
+import android.content.ComponentName;
+import android.content.Intent;
+import android.graphics.Rect;
+import android.view.View;
+import android.view.ViewGroup;
+
+import com.termux.app.terminal.io.FullScreenWorkAround;
 import com.termux.shared.termux.data.TermuxUrlUtils;
+import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
+import com.termux.shared.termux.shell.TermuxShellManager;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -8,6 +18,8 @@ import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
+import org.robolectric.Shadows;
+import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowDialog;
 import org.robolectric.util.ReflectionHelpers;
@@ -89,6 +101,52 @@ public class TermuxActivityTest {
 
         assertUrlsAre("hello https://example.com/#bar https://example.com/foo#bar",
             "https://example.com/#bar", "https://example.com/foo#bar");
+    }
+
+    @Test
+    public void overlappingActivityDestroyDoesNotClobberReplacementSessionClientOrFullscreenListener() {
+        Application app = RuntimeEnvironment.getApplication();
+        TermuxAppSharedProperties.init(app);
+        TermuxShellManager manager = TermuxShellManager.init(app);
+        manager.mTermuxSessions.clear();
+        TermuxService service = Robolectric.buildService(TermuxService.class).create().get();
+        Shadows.shadowOf(app).setComponentNameAndServiceForBindService(
+            new ComponentName(app, TermuxService.class), service.onBind(new Intent(app, TermuxService.class)));
+
+        ActivityController<TermuxActivity> firstController = Robolectric.buildActivity(TermuxActivity.class);
+        TermuxActivity first = firstController.create().get();
+        View firstContent = ((ViewGroup) first.findViewById(android.R.id.content)).getChildAt(0);
+        FullScreenWorkAround.apply(first);
+        first.mTermuxService = service;
+        service.setTermuxTerminalSessionClient(first.mTermuxTerminalSessionActivityClient);
+
+        ActivityController<TermuxActivity> secondController = Robolectric.buildActivity(TermuxActivity.class);
+        TermuxActivity second = secondController.create().get();
+        View secondContent = ((ViewGroup) second.findViewById(android.R.id.content)).getChildAt(0);
+        FullScreenWorkAround.apply(second);
+        second.mTermuxService = service;
+        service.setTermuxTerminalSessionClient(second.mTermuxTerminalSessionActivityClient);
+
+        // Simulate first activity finishing teardown after replacement activity already bound.
+        Rect visibleFrame = new Rect();
+        secondContent.getWindowVisibleDisplayFrame(visibleFrame);
+        Assert.assertTrue(visibleFrame.height() > 0);
+        firstContent.getRootView().layout(0, 0, visibleFrame.width(), visibleFrame.height());
+        secondContent.getRootView().layout(0, 0, visibleFrame.width(), visibleFrame.height());
+        firstController.destroy();
+        Assert.assertSame(second.mTermuxTerminalSessionActivityClient, service.getTermuxTerminalSessionClient());
+
+        firstContent.getLayoutParams().height = ViewGroup.LayoutParams.MATCH_PARENT;
+        firstContent.getViewTreeObserver().dispatchOnGlobalLayout();
+        Assert.assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, firstContent.getLayoutParams().height);
+
+        secondContent.getLayoutParams().height = ViewGroup.LayoutParams.MATCH_PARENT;
+        secondContent.getViewTreeObserver().dispatchOnGlobalLayout();
+        Assert.assertEquals(visibleFrame.height(), secondContent.getLayoutParams().height);
+
+        secondController.destroy();
+        Assert.assertNotSame(second.mTermuxTerminalSessionActivityClient, service.getTermuxTerminalSessionClient());
+        service.onDestroy();
     }
 
 }

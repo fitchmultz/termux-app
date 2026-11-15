@@ -45,6 +45,7 @@ import com.termux.app.activities.SettingsActivity;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.app.terminal.TermuxSessionsListViewController;
+import com.termux.app.terminal.io.FullScreenWorkAround;
 import com.termux.app.terminal.io.TerminalToolbarViewPager;
 import com.termux.app.terminal.TermuxTerminalViewClient;
 import com.termux.shared.termux.extrakeys.ExtraKeysView;
@@ -138,6 +139,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      * The client for the {@link #mExtraKeysView}.
      */
     TermuxTerminalExtraKeys mTermuxTerminalExtraKeys;
+
+    /**
+     * Per-activity fullscreen keyboard-inset listener, owned and removed by this activity.
+     */
+    private FullScreenWorkAround mFullScreenWorkAround;
 
     /**
      * The termux sessions list controller.
@@ -400,13 +406,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         Logger.logDebug(LOG_TAG, "onDestroy");
 
+        if (mFullScreenWorkAround != null) {
+            mFullScreenWorkAround.remove();
+            mFullScreenWorkAround = null;
+        }
+
         if (isInvalid()) return;
         TermuxInstaller.detachBootstrapObserver(this);
         if (mEvidenceDock != null) mEvidenceDock.dispose();
 
         if (mTermuxService != null) {
             // Do not leave service and session clients with references to activity.
-            mTermuxService.unsetTermuxTerminalSessionClient();
+            // Pass our own client so we don't clobber a newer activity's client if we are being
+            // destroyed while a new instance has already bound.
+            mTermuxService.unsetTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
             mTermuxService = null;
         }
 
@@ -918,6 +931,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     public ExtraKeysView getExtraKeysView() {
         return mExtraKeysView;
+    }
+
+    public void setFullScreenWorkAround(FullScreenWorkAround fullScreenWorkAround) {
+        if (mFullScreenWorkAround != null) {
+            mFullScreenWorkAround.remove();
+        }
+        mFullScreenWorkAround = fullScreenWorkAround;
     }
 
     public TermuxTerminalExtraKeys getTermuxTerminalExtraKeys() {
