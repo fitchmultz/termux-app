@@ -4,7 +4,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.graphics.Color;
+import android.content.res.ColorStateList;
+import android.content.res.TypedArray;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Button;
@@ -51,9 +52,9 @@ public class MessageDialogUtils {
                                    final DialogInterface.OnClickListener onNegativeButton,
                                    final DialogInterface.OnDismissListener onDismiss) {
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(context, androidx.appcompat.R.style.Theme_AppCompat_Light_Dialog);
+        AlertDialog.Builder builder = new AlertDialog.Builder(context, R.style.Theme_MessageDialog_DayNight);
 
-        LayoutInflater inflater = (LayoutInflater) context.getSystemService( Context.LAYOUT_INFLATER_SERVICE );
+        LayoutInflater inflater = LayoutInflater.from(builder.getContext());
         View view = inflater.inflate(R.layout.dialog_show_message, null);
         if (view != null) {
             builder.setView(view);
@@ -81,15 +82,25 @@ public class MessageDialogUtils {
 
         dialog.setOnShowListener(dialogInterface -> {
             Logger.logError("dialog");
-            Button button = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            if (button != null)
-                button.setTextColor(Color.BLACK);
-            button = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            if (button != null)
-                button.setTextColor(Color.BLACK);
+            applyDialogButtonTextColors(dialog);
         });
 
         dialog.show();
+        applyDialogButtonTextColors(dialog);
+    }
+
+    private static void applyDialogButtonTextColors(AlertDialog dialog) {
+        TypedArray ta = dialog.getContext().obtainStyledAttributes(new int[]{android.R.attr.textColorPrimary});
+        ColorStateList textColors = ta.getColorStateList(0);
+        int fallbackColor = ta.getColor(0, 0xFF000000);
+        ta.recycle();
+
+        for (int which : new int[]{AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE}) {
+            Button button = dialog.getButton(which);
+            if (button == null) continue;
+            if (textColors != null) button.setTextColor(textColors);
+            else button.setTextColor(fallbackColor);
+        }
     }
 
     public static void exitAppWithErrorMessage(Context context, String titleText, String messageText) {

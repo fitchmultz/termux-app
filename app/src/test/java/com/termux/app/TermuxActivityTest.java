@@ -1,13 +1,19 @@
 package com.termux.app;
 
 import android.app.Application;
+import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.graphics.Color;
 import android.graphics.Rect;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.TextView;
 
 import com.termux.app.terminal.io.FullScreenWorkAround;
+import com.termux.shared.interact.MessageDialogUtils;
 import com.termux.shared.termux.data.TermuxUrlUtils;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
 import com.termux.shared.termux.shell.TermuxShellManager;
@@ -147,6 +153,55 @@ public class TermuxActivityTest {
         secondController.destroy();
         Assert.assertNotSame(second.mTermuxTerminalSessionActivityClient, service.getTermuxTerminalSessionClient());
         service.onDestroy();
+    }
+
+    @Test
+    public void messageDialogPreservesWhiteHeaderTitleAndDialogThemeButtonColors() {
+        AlertDialog dialog = showSampleMessageDialog();
+        int surfaceColor = dialogSurfaceColor(dialog);
+        TextView messageView = dialog.findViewById(com.termux.shared.R.id.dialog_message);
+        int buttonColor = dialog.getButton(AlertDialog.BUTTON_POSITIVE).getCurrentTextColor();
+
+        Assert.assertTrue("Expected light dialog surface in day mode", Color.red(surfaceColor) > 200);
+        Assert.assertTrue("Expected dark body text in day mode", Color.red(messageView.getCurrentTextColor()) < 80);
+        Assert.assertTrue("Expected dark button text in day mode", Color.red(buttonColor) < 80);
+        dialog.dismiss();
+    }
+
+    @Test
+    @Config(qualifiers = "night")
+    public void messageDialogNightModeUsesDarkWindowSurfaceForLightText() {
+        AlertDialog dialog = showSampleMessageDialog();
+        int surfaceColor = dialogSurfaceColor(dialog);
+        TextView messageView = dialog.findViewById(com.termux.shared.R.id.dialog_message);
+        int buttonColor = dialog.getButton(AlertDialog.BUTTON_POSITIVE).getCurrentTextColor();
+
+        Assert.assertTrue("Expected dark dialog surface in night mode", Color.red(surfaceColor) < 100);
+        Assert.assertTrue("Expected light body text in night mode", Color.red(messageView.getCurrentTextColor()) > 200);
+        Assert.assertTrue("Expected light button text in night mode", Color.red(buttonColor) > 200);
+        dialog.dismiss();
+    }
+
+    private static AlertDialog showSampleMessageDialog() {
+        android.app.Activity host = Robolectric.buildActivity(android.app.Activity.class).setup().get();
+        MessageDialogUtils.showMessage(host, "Header", "Body https://example.com",
+            "Yes", null, "No", null, null);
+        AlertDialog dialog = (AlertDialog) ShadowDialog.getLatestDialog();
+        Assert.assertNotNull(dialog);
+        Assert.assertTrue(dialog.isShowing());
+
+        TextView titleView = dialog.findViewById(com.termux.shared.R.id.dialog_title);
+        Assert.assertEquals(Color.WHITE, titleView.getCurrentTextColor());
+        Assert.assertEquals(
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).getCurrentTextColor(),
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).getCurrentTextColor());
+        return dialog;
+    }
+
+    private static int dialogSurfaceColor(AlertDialog dialog) {
+        InsetDrawable inset = (InsetDrawable) dialog.getWindow().getDecorView().getBackground();
+        GradientDrawable shape = (GradientDrawable) inset.getDrawable();
+        return shape.getColor().getDefaultColor();
     }
 
 }

@@ -13,6 +13,8 @@ This is the canonical concise inventory of intentional differences from the audi
 
 ## Fixes
 
+- Adds a `Paste` item to the terminal context menu (`CONTEXT_MENU_PASTE_ID = 13`, keeping Fold's `CONTEXT_MENU_STAGE_EVIDENCE = 12` intact while leaving Fold's IME/Honeyboard `onCreateInputConnection` untouched) and adopts DayNight theming across `TextIOActivity`, `MessageDialogUtils` (using `Theme.MessageDialog.DayNight` with a `?attr/colorBackgroundFloating` window surface while keeping white title text on `@color/red_400`), shared toolbars (`AppBarLayout`), and dark-mode markdown code spans while keeping `windowLightStatusBar=false` over `TermuxActivity`'s black terminal window.
+
 - Guards `TermuxService.unsetTermuxTerminalSessionClient(client)` by client identity so an outgoing `TermuxActivity.onDestroy()` cannot clobber a replacement activity's session client, gives each `TermuxActivity` direct ownership and `onDestroy()` removal of its `FullScreenWorkAround` layout listener (instead of a static singleton), and snapshots terminal transcripts on the owning main thread before running UTF-8 byte truncation (`shareSessionTranscript`) or URL extraction (`showUrlSelection`) off-UI with live-activity guards.
 
 - Adds `DECSET 1003` any-event mouse tracking on a dedicated internal flag bit (`1 << 15`, preserving `DECSET 2026`/`2031`), stops inventing post-release kinetic wheel reports while mouse tracking is active, adds axis-locked horizontal touch-wheel reporting (`66`/`67`) sharing `TerminalView`'s `MouseScrollAnchor`, and uses `mFontLineSpacingAndAscent` instead of a hardcoded `40px` offset in `TerminalView.getCursorY`.
