@@ -11,7 +11,6 @@ import androidx.annotation.NonNull;
 import com.termux.shared.R;
 import com.termux.shared.data.DataUtils;
 
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
@@ -308,20 +307,11 @@ public class Logger {
     public static String getStackTraceString(Throwable throwable) {
         if (throwable == null) return null;
 
-        String stackTraceString = null;
-
-        try {
-            StringWriter errors = new StringWriter();
-            PrintWriter pw = new PrintWriter(errors);
-            throwable.printStackTrace(pw);
-            pw.close();
-            stackTraceString = errors.toString();
-            errors.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        return stackTraceString;
+        StringWriter errors = new StringWriter();
+        PrintWriter pw = new PrintWriter(errors);
+        throwable.printStackTrace(pw);
+        pw.close();
+        return errors.toString();
     }
 
 

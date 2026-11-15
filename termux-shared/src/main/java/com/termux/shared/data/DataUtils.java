@@ -22,18 +22,21 @@ public class DataUtils {
 
     public static String getTruncatedCommandOutput(String text, int maxLength, boolean fromEnd, boolean onNewline, boolean addPrefix) {
         if (text == null) return null;
+        if (maxLength < 0) return text;
 
         String prefix = "(truncated) ";
+        int totalBytes = getUtf8ByteLength(text);
+        if (totalBytes <= maxLength) return text;
 
-        if (addPrefix)
-            maxLength = maxLength - prefix.length();
-
-        if (maxLength < 0 || text.length() < maxLength) return text;
+        if (addPrefix) {
+            maxLength -= prefix.length();
+            if (maxLength <= 0) return "";
+        }
 
         if (fromEnd) {
-            text = text.substring(0, maxLength);
+            text = getStringFromStartByByteLength(text, maxLength);
         } else {
-            int cutOffIndex = text.length() - maxLength;
+            int cutOffIndex = getCharIndexAtByteOffset(text, totalBytes - maxLength);
 
             if (onNewline) {
                 int nextNewlineIndex = text.indexOf('\n', cutOffIndex);
@@ -48,6 +51,50 @@ public class DataUtils {
             text = prefix + text;
 
         return text;
+    }
+
+    private static int getUtf8ByteLength(String text) {
+        int byteCount = 0;
+        for (int i = 0, len = text.length(); i < len; ) {
+            int codePoint = text.codePointAt(i);
+            byteCount += getUtf8CodePointByteLength(codePoint);
+            i += Character.charCount(codePoint);
+        }
+        return byteCount;
+    }
+
+    private static String getStringFromStartByByteLength(String text, int maxByteLength) {
+        int byteCount = 0;
+        int i = 0;
+        int len = text.length();
+        while (i < len) {
+            int codePoint = text.codePointAt(i);
+            int charByteLength = getUtf8CodePointByteLength(codePoint);
+            if (byteCount + charByteLength > maxByteLength) break;
+            byteCount += charByteLength;
+            i += Character.charCount(codePoint);
+        }
+        return text.substring(0, i);
+    }
+
+    private static int getCharIndexAtByteOffset(String text, int byteOffset) {
+        int byteCount = 0;
+        int i = 0;
+        int len = text.length();
+        while (i < len) {
+            if (byteCount >= byteOffset) return i;
+            int codePoint = text.codePointAt(i);
+            byteCount += getUtf8CodePointByteLength(codePoint);
+            i += Character.charCount(codePoint);
+        }
+        return i;
+    }
+
+    private static int getUtf8CodePointByteLength(int codePoint) {
+        if (codePoint <= 0x7F) return 1;
+        if (codePoint <= 0x7FF) return 2;
+        if (codePoint <= 0xFFFF) return 3;
+        return 4;
     }
 
     /**

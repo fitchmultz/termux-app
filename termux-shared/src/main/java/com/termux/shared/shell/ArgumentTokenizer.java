@@ -101,14 +101,19 @@ public abstract class ArgumentTokenizer {
                         }
                         else if (c == '\\') {
                             // Look ahead, and only escape quotes or backslashes
-                            i++;
-                            char next = arguments.charAt(i);
-                            if (next == '"' || next == '\\') {
-                                currArg.append(next);
+                            if (i + 1 < len) {
+                                i++;
+                                char next = arguments.charAt(i);
+                                if (next == '"' || next == '\\') {
+                                    currArg.append(next);
+                                }
+                                else {
+                                    currArg.append(c);
+                                    currArg.append(next);
+                                }
                             }
                             else {
                                 currArg.append(c);
-                                currArg.append(next);
                             }
                         }
                         else {

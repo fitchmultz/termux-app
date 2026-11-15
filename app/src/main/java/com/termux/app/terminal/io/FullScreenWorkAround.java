@@ -3,6 +3,7 @@ package com.termux.app.terminal.io;
 import android.graphics.Rect;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 
 import com.termux.app.TermuxActivity;
 
@@ -20,10 +21,12 @@ public class FullScreenWorkAround {
     private final ViewGroup.LayoutParams mViewGroupLayoutParams;
 
     private final int mNavBarHeight;
+    private final ViewTreeObserver.OnGlobalLayoutListener mGlobalLayoutListener = this::possiblyResizeChildOfContent;
+    private boolean mRemoved;
 
 
     public static void apply(TermuxActivity activity) {
-        new FullScreenWorkAround(activity);
+        activity.setFullScreenWorkAround(new FullScreenWorkAround(activity));
     }
 
     private FullScreenWorkAround(TermuxActivity activity) {
@@ -31,10 +34,17 @@ public class FullScreenWorkAround {
         mChildOfContent = content.getChildAt(0);
         mViewGroupLayoutParams = mChildOfContent.getLayoutParams();
         mNavBarHeight = activity.getNavBarHeight();
-        mChildOfContent.getViewTreeObserver().addOnGlobalLayoutListener(this::possiblyResizeChildOfContent);
+        mChildOfContent.getViewTreeObserver().addOnGlobalLayoutListener(mGlobalLayoutListener);
+    }
+
+    public void remove() {
+        if (mRemoved) return;
+        mRemoved = true;
+        mChildOfContent.getViewTreeObserver().removeOnGlobalLayoutListener(mGlobalLayoutListener);
     }
 
     private void possiblyResizeChildOfContent() {
+        if (mRemoved) return;
         int usableHeightNow = computeUsableHeight();
         if (usableHeightNow != mUsableHeightPrevious) {
             int usableHeightSansKeyboard = mChildOfContent.getRootView().getHeight();

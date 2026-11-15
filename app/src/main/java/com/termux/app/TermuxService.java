@@ -51,6 +51,7 @@ import com.termux.terminal.TerminalSessionClient;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * A service holding a list of {@link TermuxSession} in {@link TermuxShellManager#mTermuxSessions} and background {@link AppShell}
@@ -338,12 +339,12 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         Logger.logDebug(LOG_TAG, "Acquiring WakeLocks");
 
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        PowerManager.WakeLock wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TermuxConstants.TERMUX_APP_NAME.toLowerCase() + ":service-wakelock");
+        PowerManager.WakeLock wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TermuxConstants.TERMUX_APP_NAME.toLowerCase(Locale.ROOT) + ":service-wakelock");
         wakeLock.acquire();
 
         // http://tools.android.com/tech-docs/lint-in-studio-2-3#TOC-WifiManager-Leak
         WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        WifiManager.WifiLock wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, TermuxConstants.TERMUX_APP_NAME.toLowerCase());
+        WifiManager.WifiLock wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, TermuxConstants.TERMUX_APP_NAME.toLowerCase(Locale.ROOT));
         wifiLock.acquire();
 
         mWakeLocks = new WakeLocks(wakeLock, wifiLock);
@@ -839,6 +840,15 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             mShellManager.mTermuxSessions.get(i).getTerminalSession().updateTerminalSessionClient(mTermuxTerminalSessionServiceClient);
 
         mTermuxTerminalSessionActivityClient = null;
+    }
+
+    /**
+     * Only unsets the client if it matches {@code client}, so a newly bound activity's client is
+     * not clobbered by a previous activity's {@code onDestroy()}.
+     */
+    public synchronized void unsetTermuxTerminalSessionClient(TermuxTerminalSessionActivityClient client) {
+        if (mTermuxTerminalSessionActivityClient == client)
+            unsetTermuxTerminalSessionClient();
     }
 
 

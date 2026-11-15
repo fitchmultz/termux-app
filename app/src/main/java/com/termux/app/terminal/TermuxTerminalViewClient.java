@@ -772,13 +772,20 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
         TerminalSession session = mActivity.getCurrentSession();
         if (session == null) return;
 
-        String transcriptText = ShellUtils.getTerminalSessionTranscriptText(session, false, true);
+        // Snapshot the mutable TerminalBuffer on the main thread that owns it before processing off-UI.
+        final String transcriptText = ShellUtils.getTerminalSessionTranscriptText(session, false, true);
         if (transcriptText == null) return;
 
-        // See https://github.com/termux/termux-app/issues/1166.
-        transcriptText = DataUtils.getTruncatedCommandOutput(transcriptText, DataUtils.TRANSACTION_SIZE_LIMIT_IN_BYTES, false, true, false).trim();
-        ShareUtils.shareText(mActivity, mActivity.getString(R.string.title_share_transcript),
-            transcriptText, mActivity.getString(R.string.title_share_transcript_with));
+        new Thread(() -> {
+            // See https://github.com/termux/termux-app/issues/1166.
+            String textToShare = DataUtils.getTruncatedCommandOutput(
+                transcriptText, DataUtils.TRANSACTION_SIZE_LIMIT_IN_BYTES, false, true, false).trim();
+            mActivity.runOnUiThread(() -> {
+                if (mActivity.isFinishing() || mActivity.isDestroyed()) return;
+                ShareUtils.shareText(mActivity, mActivity.getString(R.string.title_share_transcript),
+                    textToShare, mActivity.getString(R.string.title_share_transcript_with));
+            });
+        }).start();
     }
 
     public void shareSelectedText() {
@@ -792,35 +799,45 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
         TerminalSession session = mActivity.getCurrentSession();
         if (session == null) return;
 
-        String text = ShellUtils.getTerminalSessionTranscriptText(session, true, true);
+        // Snapshot the mutable TerminalBuffer on the main thread that owns it before scanning URLs off-UI.
+        final String text = ShellUtils.getTerminalSessionTranscriptText(session, true, true);
 
-        LinkedHashSet<CharSequence> urlSet = TermuxUrlUtils.extractUrls(text);
-        if (urlSet.isEmpty()) {
-            new AlertDialog.Builder(mActivity).setMessage(R.string.title_select_url_none_found).show();
-            return;
-        }
+        new Thread(() -> {
+            LinkedHashSet<CharSequence> urlSet = TermuxUrlUtils.extractUrls(text);
+            if (urlSet.isEmpty()) {
+                mActivity.runOnUiThread(() -> {
+                    if (mActivity.isFinishing() || mActivity.isDestroyed()) return;
+                    new AlertDialog.Builder(mActivity).setMessage(R.string.title_select_url_none_found).show();
+                });
+                return;
+            }
 
-        final CharSequence[] urls = urlSet.toArray(new CharSequence[0]);
-        Collections.reverse(Arrays.asList(urls)); // Latest first.
+            final CharSequence[] urls = urlSet.toArray(new CharSequence[0]);
+            Collections.reverse(Arrays.asList(urls)); // Latest first.
 
-        // Click to copy url to clipboard:
-        final AlertDialog dialog = new AlertDialog.Builder(mActivity).setItems(urls, (di, which) -> {
-            String url = (String) urls[which];
-            ShareUtils.copyTextToClipboard(mActivity, url, mActivity.getString(R.string.msg_select_url_copied_to_clipboard));
-        }).setTitle(R.string.title_select_url_dialog).create();
+            mActivity.runOnUiThread(() -> {
+                if (mActivity.isFinishing() || mActivity.isDestroyed()) return;
 
-        // Long press to open URL:
-        dialog.setOnShowListener(di -> {
-            ListView lv = dialog.getListView(); // this is a ListView with your "buds" in it
-            lv.setOnItemLongClickListener((parent, view, position, id) -> {
-                dialog.dismiss();
-                String url = (String) urls[position];
-                ShareUtils.openUrl(mActivity, url);
-                return true;
+                // Click to copy url to clipboard:
+                final AlertDialog dialog = new AlertDialog.Builder(mActivity).setItems(urls, (di, which) -> {
+                    String url = (String) urls[which];
+                    ShareUtils.copyTextToClipboard(mActivity, url, mActivity.getString(R.string.msg_select_url_copied_to_clipboard));
+                }).setTitle(R.string.title_select_url_dialog).create();
+
+                // Long press to open URL:
+                dialog.setOnShowListener(di -> {
+                    ListView lv = dialog.getListView(); // this is a ListView with your "buds" in it
+                    lv.setOnItemLongClickListener((parent, view, position, id) -> {
+                        dialog.dismiss();
+                        String url = (String) urls[position];
+                        ShareUtils.openUrl(mActivity, url);
+                        return true;
+                    });
+                });
+
+                dialog.show();
             });
-        });
-
-        dialog.show();
+        }).start();
     }
 
     public void reportIssueFromTranscript() {

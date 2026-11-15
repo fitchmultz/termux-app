@@ -415,13 +415,14 @@ public final class TerminalBuffer {
                 } else {
                     int column = 0;
                     for (int i = 0; i < oldLine.getSpaceUsed();) {
+                        int startOfChar = i;
                         int codePoint = Character.codePointAt(oldLine.mText, i, oldLine.getSpaceUsed());
                         i += Character.charCount(codePoint);
                         // Hyperlinks occupy cells even when their labels are spaces. Track
                         // terminal columns separately from UTF-16 indices and combining marks.
                         if (codePoint != ' ' || oldLine.getHyperlink(column) != 0)
                             lastNonSpaceIndex = i;
-                        column += Math.max(0, WcWidth.width(codePoint));
+                        column += Math.max(0, WcWidth.width(oldLine.mText, startOfChar, oldLine.getSpaceUsed()));
                     }
                 }
 
@@ -430,9 +431,18 @@ public final class TerminalBuffer {
                 int linkAtCol = 0;
                 for (int i = 0; i < lastNonSpaceIndex; i++) {
                     // Note that looping over java character, not cells.
+                    int startOfChar = i;
                     char c = oldLine.mText[i];
-                    int codePoint = (Character.isHighSurrogate(c)) ? Character.toCodePoint(c, oldLine.mText[++i]) : c;
-                    int displayWidth = WcWidth.width(codePoint);
+                    int codePoint;
+                    if (Character.isHighSurrogate(c)) {
+                        if (i + 1 < lastNonSpaceIndex && Character.isLowSurrogate(oldLine.mText[i + 1]))
+                            codePoint = Character.toCodePoint(c, oldLine.mText[++i]);
+                        else
+                            codePoint = TerminalEmulator.UNICODE_REPLACEMENT_CHAR;
+                    } else {
+                        codePoint = c;
+                    }
+                    int displayWidth = WcWidth.width(oldLine.mText, startOfChar, lastNonSpaceIndex);
                     // Use the last style if this is a zero-width character:
                     if (displayWidth > 0) {
                         styleAtCol = oldLine.getStyle(currentOldCol);
@@ -441,7 +451,7 @@ public final class TerminalBuffer {
                     }
 
                     // Line wrap as necessary:
-                    if (currentOutputExternalColumn + displayWidth > mColumns) {
+                    if (currentOutputExternalColumn > 0 && currentOutputExternalColumn + displayWidth > mColumns) {
                         setLineWrap(currentOutputExternalRow);
                         if (currentOutputExternalRow == mScreenRows - 1) {
                             if (newCursorPlaced) newCursorRow--;
@@ -455,6 +465,15 @@ public final class TerminalBuffer {
                     int offsetDueToCombiningChar = ((displayWidth <= 0 && currentOutputExternalColumn > 0) ? 1 : 0);
                     int outputColumn = currentOutputExternalColumn - offsetDueToCombiningChar;
                     setChar(outputColumn, currentOutputExternalRow, codePoint, styleAtCol, linkAtCol);
+                    if (displayWidth == 2 && WcWidth.width(codePoint) == 1 && i + 1 < lastNonSpaceIndex
+                        && oldLine.mText[i + 1] == WcWidth.VARIATION_SELECTOR_16) {
+                        i++;
+                        if (outputColumn + 1 < mColumns) {
+                            setChar(outputColumn, currentOutputExternalRow, WcWidth.VARIATION_SELECTOR_16, styleAtCol, linkAtCol);
+                        } else {
+                            displayWidth = 1;
+                        }
+                    }
 
                     if (displayWidth > 0) {
                         if (oldCursorRow == externalOldRow && oldCursorColumn == currentOldCol) {
@@ -597,10 +616,20 @@ public final class TerminalBuffer {
 
     /** as {@link #setChar(int, int, int, long)}, printed under the OSC 8 hyperlink {@code link} (0 for none). */
     public void setChar(int column, int row, int codePoint, long style, int link) {
+        setChar(column, row, codePoint, style, link, true);
+    }
+
+    public void setChar(int column, int row, int codePoint, long style, int link, boolean allowVariationWidening) {
         if (row  < 0 || row >= mScreenRows || column < 0 || column >= mColumns)
             throw new IllegalArgumentException("TerminalBuffer.setChar(): row=" + row + ", column=" + column + ", mScreenRows=" + mScreenRows + ", mColumns=" + mColumns);
         row = externalToInternalRow(row);
-        allocateFullLineIfNecessary(row).setChar(column, codePoint, style, link);
+        allocateFullLineIfNecessary(row).setChar(column, codePoint, style, link, allowVariationWidening);
+    }
+
+    boolean canWidenEmojiVariationBase(int column, int row, int expectedBaseCodePoint) {
+        if (row < 0 || row >= mScreenRows || column < 0 || column >= mColumns - 1) return false;
+        TerminalRow line = mLines[externalToInternalRow(row)];
+        return line != null && line.hasWidenableEmojiVariationBaseAt(column, expectedBaseCodePoint);
     }
 
     public long getStyleAt(int externalRow, int column) {

@@ -450,7 +450,8 @@ public final class KeyHandler {
                 return transformForModifiers("\033[24", keyMode, '~');
 
             case KEYCODE_SYSRQ:
-                return "\033[32~"; // Sys Request / Print
+                // Leave Print Screen unhandled in legacy mode so Android can capture a screenshot.
+                return null;
             // Is this Scroll lock? case Cancel: return "\033[33~";
             case KEYCODE_BREAK:
                 return "\033[34~"; // Pause/Break

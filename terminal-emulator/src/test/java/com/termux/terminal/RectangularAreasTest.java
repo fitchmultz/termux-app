@@ -89,6 +89,14 @@ public class RectangularAreasTest extends TerminalTestCase {
 		// Now with http://www.vt100.net/docs/vt510-rm/DECSACE ("${CSI}2*x") specifying rectangle:
 		withTerminalSized(3, 3).enterString("\033[2*xABCDEFGHI\033[1;1;2;2;1$r").assertLinesAre("ABC", "DEF", "GHI");
 		assertEffectAttributesSet(effectLine(b, b, 0), effectLine(b, b, 0), effectLine(0, 0, 0));
+
+		// Single cell (1x1), full screen including last row/col (3x3), and off-screen no-op:
+		withTerminalSized(3, 3).enterString("\033[2*xABCDEFGHI\033[1;1;1;1;1$r").assertLinesAre("ABC", "DEF", "GHI");
+		assertEffectAttributesSet(effectLine(b, 0, 0), effectLine(0, 0, 0), effectLine(0, 0, 0));
+		withTerminalSized(3, 3).enterString("\033[2*xABCDEFGHI\033[1;1;3;3;1$r").assertLinesAre("ABC", "DEF", "GHI");
+		assertEffectAttributesSet(effectLine(b, b, b), effectLine(b, b, b), effectLine(b, b, b));
+		withTerminalSized(3, 3).enterString("\033[2*xABCDEFGHI\033[100;1;100;2;1$r").assertLinesAre("ABC", "DEF", "GHI");
+		assertEffectAttributesSet(effectLine(0, 0, 0), effectLine(0, 0, 0), effectLine(0, 0, 0));
 	}
 
 	/** http://vt100.net/docs/vt510-rm/DECCARA */

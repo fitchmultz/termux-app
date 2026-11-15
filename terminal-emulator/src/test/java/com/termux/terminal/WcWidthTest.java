@@ -78,4 +78,23 @@ public class WcWidthTest extends TestCase {
 		assertWidthIs(2, 0x1F643); // UPSIDE-DOWN FACE (Unicode 8).
 	}
 
+	public void testEmojiVariationSequences() {
+		assertEquals(1, WcWidth.width(0x2764)); // HEAVY BLACK HEART alone.
+		assertEquals(1, WcWidth.width(0x1F5E1)); // DAGGER KNIFE alone.
+		assertEquals(1, WcWidth.width(0x1F5FA)); // WORLD MAP alone.
+
+		assertEquals(2, WcWidth.width(new char[]{0x2764, WcWidth.VARIATION_SELECTOR_16}, 0));
+		assertEquals(1, WcWidth.width(new char[]{0x2764}, 0));
+		assertEquals(2, WcWidth.width(new char[]{'1', WcWidth.VARIATION_SELECTOR_16}, 0));
+
+		char[] dagger = new char[3];
+		Character.toChars(0x1F5E1, dagger, 0);
+		dagger[2] = WcWidth.VARIATION_SELECTOR_16;
+		assertEquals(2, WcWidth.width(dagger, 0));
+		assertEquals(2, WcWidth.width(dagger, 0, dagger.length));
+		assertEquals(1, WcWidth.width(dagger, 0, 2));
+
+		assertEquals(0, WcWidth.width(new char[]{'a', WcWidth.VARIATION_SELECTOR_16}, 1, 2));
+	}
+
 }

@@ -278,4 +278,10 @@ public class CursorAndScreenTest extends TerminalTestCase {
 		Assert.assertEquals(TextStyle.CHARACTER_ATTRIBUTE_UNDERLINE, TextStyle.decodeEffect(s));
 	}
 
+	public void testEscFLowerLeftCursor() {
+		withTerminalSized(5, 4).enterString("ABC\033FZ").assertCursorAt(3, 1).assertLinesAre("ABC  ", "     ", "     ", "Z    ");
+		withTerminalSized(5, 4).enterString("\033[?69h\033[2;4s\033[?6h\033FZ").assertCursorAt(3, 2)
+			.assertLinesAre("     ", "     ", "     ", " Z   ");
+	}
+
 }

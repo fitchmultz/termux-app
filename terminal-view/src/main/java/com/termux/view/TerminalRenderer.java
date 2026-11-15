@@ -136,16 +136,19 @@ public final class TerminalRenderer {
                     lastRunFontWidthMismatch = false;
                     continue;
                 }
-                final int codePointWcWidth = WcWidth.width(codePoint);
+                final int codePointWcWidth = WcWidth.width(line, currentCharIndex, charsUsedInLine);
                 final boolean insideCursor = (cursorX == column || (codePointWcWidth == 2 && cursorX == column + 1));
                 final boolean insideSelection = column >= selx1 && column <= selx2;
+
+                final int charsForMeasurement = (codePointWcWidth == 2 && WcWidth.width(codePoint) == 1)
+                    ? charsForCodePoint + 1 : charsForCodePoint;
 
                 // Check if the measured text width for this code point is not the same as that expected by wcwidth().
                 // This could happen for some fonts which are not truly monospace, or for more exotic characters such as
                 // smileys which android font renders as wide.
                 // If this is detected, we draw this code point scaled to match what wcwidth() expects.
-                final float measuredCodePointWidth = (codePoint < asciiMeasures.length) ? asciiMeasures[codePoint] : mTextPaint.measureText(line,
-                    currentCharIndex, charsForCodePoint);
+                final float measuredCodePointWidth = (codePoint < asciiMeasures.length && charsForMeasurement == charsForCodePoint)
+                    ? asciiMeasures[codePoint] : mTextPaint.measureText(line, currentCharIndex, charsForMeasurement);
                 final boolean fontWidthMismatch = Math.abs(measuredCodePointWidth / mFontWidth - codePointWcWidth) > 0.01;
 
                 if (lastRunStartColumn < 0 || style != lastRunStyle || insideCursor != lastRunInsideCursor || insideSelection != lastRunInsideSelection || fontWidthMismatch || lastRunFontWidthMismatch) {
@@ -174,7 +177,7 @@ public final class TerminalRenderer {
                 measuredWidthForRun += measuredCodePointWidth;
                 column += codePointWcWidth;
                 currentCharIndex += charsForCodePoint;
-                while (currentCharIndex < charsUsedInLine && WcWidth.width(line, currentCharIndex) <= 0) {
+                while (currentCharIndex < charsUsedInLine && WcWidth.width(line, currentCharIndex, charsUsedInLine) <= 0) {
                     // Eat combining chars so that they are treated as part of the last non-combining code point,
                     // instead of e.g. being considered inside the cursor in the next run.
                     currentCharIndex += Character.isHighSurrogate(line[currentCharIndex]) ? 2 : 1;
@@ -312,18 +315,11 @@ public final class TerminalRenderer {
         // Number of grid columns the composing text occupies, used for the same width-mismatch
         // scaling applied to normal text in drawTextRun().
         int runWidthColumns = 0;
+        final int end = start + len;
         for (int i = 0; i < len; ) {
             char c = text[start + i];
-            int cp;
-            int chars;
-            if (Character.isHighSurrogate(c) && i + 1 < len && Character.isLowSurrogate(text[start + i + 1])) {
-                cp = Character.toCodePoint(c, text[start + i + 1]);
-                chars = 2;
-            } else {
-                cp = c;
-                chars = 1;
-            }
-            int w = WcWidth.width(cp);
+            int chars = (Character.isHighSurrogate(c) && i + 1 < len && Character.isLowSurrogate(text[start + i + 1])) ? 2 : 1;
+            int w = WcWidth.width(text, start + i, end);
             if (w < 0) w = 0;
             runWidthColumns += w;
             i += chars;
@@ -363,9 +359,8 @@ public final class TerminalRenderer {
             int colsBefore = 0;
             for (int i = 0; i < cursorOffsetInChars; ) {
                 char c = text[start + i];
-                int chars = (Character.isHighSurrogate(c) && i + 1 < cursorOffsetInChars && Character.isLowSurrogate(text[start + i + 1])) ? 2 : 1;
-                int cp = (chars == 2) ? Character.toCodePoint(c, text[start + i + 1]) : c;
-                int w = WcWidth.width(cp);
+                int chars = (Character.isHighSurrogate(c) && i + 1 < len && Character.isLowSurrogate(text[start + i + 1])) ? 2 : 1;
+                int w = WcWidth.width(text, start + i, end);
                 if (w < 0) w = 0;
                 colsBefore += w;
                 i += chars;

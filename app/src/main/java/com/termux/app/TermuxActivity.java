@@ -45,6 +45,7 @@ import com.termux.app.activities.SettingsActivity;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.app.terminal.TermuxSessionsListViewController;
+import com.termux.app.terminal.io.FullScreenWorkAround;
 import com.termux.app.terminal.io.TerminalToolbarViewPager;
 import com.termux.app.terminal.TermuxTerminalViewClient;
 import com.termux.shared.termux.extrakeys.ExtraKeysView;
@@ -140,6 +141,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     TermuxTerminalExtraKeys mTermuxTerminalExtraKeys;
 
     /**
+     * Per-activity fullscreen keyboard-inset listener, owned and removed by this activity.
+     */
+    private FullScreenWorkAround mFullScreenWorkAround;
+
+    /**
      * The termux sessions list controller.
      */
     TermuxSessionsListViewController mTermuxSessionListViewController;
@@ -190,6 +196,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_SHARE_TRANSCRIPT_ID = 1;
     private static final int CONTEXT_MENU_SHARE_SELECTED_TEXT = 10;
     private static final int CONTEXT_MENU_STAGE_EVIDENCE = 12;
+    private static final int CONTEXT_MENU_PASTE_ID = 13;
     private static final int CONTEXT_MENU_AUTOFILL_USERNAME = 11;
     private static final int CONTEXT_MENU_AUTOFILL_PASSWORD = 2;
     private static final int CONTEXT_MENU_RESET_TERMINAL_ID = 3;
@@ -400,13 +407,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         Logger.logDebug(LOG_TAG, "onDestroy");
 
+        if (mFullScreenWorkAround != null) {
+            mFullScreenWorkAround.remove();
+            mFullScreenWorkAround = null;
+        }
+
         if (isInvalid()) return;
         TermuxInstaller.detachBootstrapObserver(this);
         if (mEvidenceDock != null) mEvidenceDock.dispose();
 
         if (mTermuxService != null) {
             // Do not leave service and session clients with references to activity.
-            mTermuxService.unsetTermuxTerminalSessionClient();
+            // Pass our own client so we don't clobber a newer activity's client if we are being
+            // destroyed while a new instance has already bound.
+            mTermuxService.unsetTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
             mTermuxService = null;
         }
 
@@ -741,6 +755,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         boolean autoFillEnabled = mTerminalView.isAutoFillEnabled();
 
         menu.add(Menu.NONE, CONTEXT_MENU_SELECT_URL_ID, Menu.NONE, R.string.action_select_url);
+        menu.add(Menu.NONE, CONTEXT_MENU_PASTE_ID, Menu.NONE, R.string.action_paste);
         menu.add(Menu.NONE, CONTEXT_MENU_SHARE_TRANSCRIPT_ID, Menu.NONE, R.string.action_share_transcript);
         if (!DataUtils.isNullOrEmpty(mTerminalView.getStoredSelectedText())) {
             menu.add(Menu.NONE, CONTEXT_MENU_SHARE_SELECTED_TEXT, Menu.NONE, R.string.action_share_selected_text);
@@ -773,6 +788,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         switch (item.getItemId()) {
             case CONTEXT_MENU_SELECT_URL_ID:
                 mTermuxTerminalViewClient.showUrlSelection();
+                return true;
+            case CONTEXT_MENU_PASTE_ID:
+                mTermuxTerminalViewClient.doPaste();
                 return true;
             case CONTEXT_MENU_SHARE_TRANSCRIPT_ID:
                 mTermuxTerminalViewClient.shareSessionTranscript();
@@ -918,6 +936,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     public ExtraKeysView getExtraKeysView() {
         return mExtraKeysView;
+    }
+
+    public void setFullScreenWorkAround(FullScreenWorkAround fullScreenWorkAround) {
+        if (mFullScreenWorkAround != null) {
+            mFullScreenWorkAround.remove();
+        }
+        mFullScreenWorkAround = fullScreenWorkAround;
     }
 
     public TermuxTerminalExtraKeys getTermuxTerminalExtraKeys() {
