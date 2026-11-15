@@ -131,7 +131,7 @@ jobs:
           fi
 
       - name: Set up Java 21
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: '21'
@@ -153,7 +153,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -d' ' -f1)" = \
-            '3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98'
+            '621008afc4f5d59357fcf06ffa644dd5aade5e091bdc363742710445f73cdaf8'
 
       - name: Verify and reproduce the unsigned release
         shell: bash
@@ -288,7 +288,7 @@ jobs:
           tar -xzf "$gh_archive" -C "$work"
           printf '%s/gh_2.103.2_linux_amd64/bin\n' "$work" >> "$GITHUB_PATH"
       - name: Set up Java 21
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: '21'
